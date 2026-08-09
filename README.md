@@ -1,0 +1,445 @@
+# Hausmeister App
+
+Multi-Tenant-SaaS für Hausmeisterservice- und Objektmanagement.
+
+Tech-Stack: Next.js 16 (App Router) + TypeScript + Supabase + Tailwind CSS 4 + shadcn/ui + TanStack Query + MapLibre + Playwright.
+
+## Dokumente in dieser Reihenfolge lesen
+
+1. `MASTER_PROMPT.md` — 62 Produkt- und UX-Anforderungen (bindend).
+2. `PROJECT_SETUP.md` — Tech-Stack, Konventionen, Sicherheits-/DSGVO-Leitplanken, Deployment.
+3. `PLAN.md` — Phase 1 (Analyse) + Phase 2 (Architektur, Datenmodell, RLS, Module, Permissions). **Bindende Arbeitsgrundlage.**
+
+Wer neu einsteigt, liest diese drei Dokumente vollständig, bevor Code angefasst wird. Änderungen am Datenmodell oder Berechtigungssystem gehen in `PLAN.md`, nicht in Ad-hoc-Commits.
+
+## Was bereits liegt
+
+- Vollständige Basis-Konfiguration (`package.json`, `tsconfig.json`, `next.config.mjs`, Tailwind 4, PostCSS, `.gitignore`, `.env.example`, `.nvmrc`)
+- App-Skeleton (`src/app/layout.tsx`, `src/app/globals.css`, `src/app/page.tsx` mit Redirect auf `/dashboard`)
+- Supabase-Clients (`src/lib/supabase/{browser,server,service}.ts`) für die drei Kontexte
+- Env-Validator (`src/lib/env.ts`) mit zod
+- Modul-Registry (`src/lib/modules/registry.ts`) mit allen 30+ Modulen
+- Permission-Registry (`src/lib/permissions/registry.ts`) mit allen Permissions + System-Rollen-Templates
+- Basis-Migration (`supabase/migrations/20260801000000_init.sql`): `app_auth`-Helper, `tenants`, `tenant_modules`, `users`, `memberships`, `roles`, `permissions`, `role_permissions`, `user_roles`, `user_groups`, `user_group_members`, RLS-Policies
+
+## Nächste Schritte (Phase 3 fortsetzen)
+
+### 3.a Repo lauffähig machen
+
+```bash
+pnpm install
+```
+
+`.env.local` aus `.env.example` erstellen, sobald das Supabase-Projekt existiert.
+
+### 3.b Supabase-Projekt anlegen
+
+Neues, eigenständiges Projekt in Region **Frankfurt** (nicht mit vaydena teilen). Per Supabase MCP oder Dashboard:
+
+- Projekt-Name: `hausmeister-app` (oder analog)
+- Region: `eu-central-1`
+- Postgres-Passwort sicher ablegen
+
+Anschließend lokal verlinken und Migration ausführen:
+
+```bash
+pnpm supabase login
+pnpm supabase link --project-ref <ref>
+pnpm supabase db push
+```
+
+Danach TypeScript-Types generieren:
+
+```bash
+pnpm db:types
+```
+
+### 3.c Permission-Registry in die DB syncen
+
+Ein Sync-Skript schreibt alle Einträge aus `src/lib/permissions/registry.ts` in `public.permissions` (idempotent, upsert). Datei: `supabase/seed/permissions.ts`. Läuft auch in CI vor `db push` in prod.
+
+### 3.d Auth-Flows
+
+`(auth)/login`, `(auth)/reset-password`, `(auth)/invite/[token]`. Server Actions rufen Supabase Auth; nach Login setzt eine Server-Aktion den Tenant-Claim (`app_tenant_id` im JWT), damit `app_auth.current_tenant_id()` greift.
+
+### 3.e App-Shell
+
+Sidebar + Mobile-Bottom-Nav gemäß `PLAN.md` §2.6. Menüpunkte werden dynamisch aus der Modul-Registry + `tenant_modules` gerendert. Deaktivierte Module = kein Menüpunkt, Route liefert 404.
+
+### 3.f Dashboards
+
+Rollenspezifisch: Admin (KPIs, §56), Mitarbeiter (§55), Bewohner (§54), Eigentümer (§25). Erst Skeletons mit echten Daten-Slots, keine Fake-Zahlen.
+
+### 3.g Objekte + Mitarbeiter + Aufträge
+
+Migrationen `20260801100000_objects.sql`, `20260801110000_people.sql`, `20260801120000_work_orders.sql` in der Reihenfolge. Jeweils inkl. RLS + Server Actions + UI.
+
+### 3.h Audit-Log + In-App-Notifications (Grundgerüst)
+
+Migration + Trigger + einfacher Notification-Feed.
+
+### 3.i Demo-Seed
+
+`supabase/seed/run.ts` erzeugt „Hausmeisterservice" mit realistischen Daten (siehe `PLAN.md` §2.12).
+
+### 3.j Tests
+
+Vitest für Permission-Resolver + Wartungs-Fälligkeit. Playwright für Login, Auftrags-End-to-End, Mandantentrennung.
+
+**E2E-Setup (einmalig):**
+
+```bash
+# Chromium-Binaries installieren
+pnpm exec playwright install chromium
+
+# Credentials-Datei anlegen (gitignored)
+cp .env.test.local.example .env.test.local
+# → E2E_TEST_EMAIL und E2E_TEST_PASSWORD des Demo-Owners eintragen
+```
+
+**Tests ausführen:**
+
+```bash
+pnpm test:e2e                       # alle Tests
+pnpm test:e2e smoke.spec.ts         # nur Smoke-Tests
+pnpm test:e2e --ui                  # interaktiver Mode
+```
+
+Der Dev-Server startet automatisch auf Port 3001 (siehe `playwright.config.ts`), oder es wird eine laufende Instanz genutzt. Tests hängen an einer echten Supabase-DB gegen den Demo-Tenant — vorher `pnpm tsx supabase/seed/demo-data.ts` laufen lassen.
+
+## Bewohner-Portal
+
+Externe Ansicht unter `/portal/*`. Bewohner ohne Mitarbeiter-Rolle sehen eine
+schlanke Oberfläche mit:
+
+- Dashboard (Objekt, Einheit, offene Ankündigungen/Meldungen)
+- Ankündigungen (mit Lese-/Quittierungs-Status)
+- Eigene Mängelmeldungen (`Neue Meldung`-Formular)
+- Nachrichten (Antworten auf bestehende Threads der Verwaltung)
+
+Portal-Zugang einladen (Mitarbeiter-Sicht): in `/people/residents/[id]` unter
+„Bewohner-Portal" auf **Portal-Zugang einladen** klicken. Es wird eine
+Einladungs-E-Mail versendet, der Bewohner setzt sich selbst ein Passwort und
+meldet sich unter `/portal` an. Das Verknüpfen kann jederzeit über **Portal-Zugang
+entkoppeln** gelöst werden.
+
+Demo-Bewohner mit Portal-Zugang seeden (optional):
+
+```bash
+SEED_RESIDENT_PASSWORD='<gewaehltes-passwort>' pnpm tsx supabase/seed/demo-data.ts
+```
+
+Ohne `SEED_RESIDENT_PASSWORD` werden keine auth-User für Bewohner angelegt (der
+Seed läuft aber weiterhin fehlerfrei durch).
+
+Zugriffskontrolle:
+
+- `src/proxy.ts` erkennt `/portal/login` und `/portal/reset-password` als
+  öffentliche Portal-Pfade und leitet unauthentifizierte Portal-Requests dorthin
+  (statt zum Mitarbeiter-Login).
+- RLS: `app_auth.is_resident_of_tenant()` öffnet residents/properties/units/
+  buildings, announcements, defect_reports und messages punktuell für Bewohner.
+  Bewohner sehen ausschließlich ihre eigene Einheit, ihr Objekt sowie an sie
+  gerichtete Ankündigungen und eigene Meldungen.
+
+## PDF-Rechnungen und -Angebote
+
+Rechnungen (`/billing/invoices/[id]`) und Angebote (`/billing/offers/[id]`) haben
+oben rechts einen **PDF öffnen**-Button, der eine on-the-fly generierte PDF-Datei
+liefert:
+
+- `GET /api/invoices/[id]/pdf` — DIN-A4-Rechnung
+- `GET /api/offers/[id]/pdf` — DIN-A4-Angebot
+
+Beide Routen sind über `proxy.ts` auth-geschützt (307 zu `/login` ohne Session)
+und laden die Absenderdaten aus dem Mandanten. Zugriff erfolgt via RLS, d.h. es
+werden nur Belege des eigenen Mandanten zurückgegeben.
+
+### Absenderdaten pflegen
+
+Unter `Einstellungen → Mandant` steht eine Sektion „Firmen- & Rechnungsdaten":
+
+- Anschrift (Straße, PLZ, Ort, Land)
+- Firmenname (rechtlich), Steuernummer, USt-IdNr.
+- Kontakt (E-Mail, Telefon, Website)
+- Bankverbindung (Bank, IBAN, BIC)
+- Zahlungsziel (Tage) und Fußnote
+
+Nur Inhaber:innen (Owner-Membership) dürfen diese Daten ändern (RLS).
+
+### Smoke-Test
+
+```bash
+pnpm tsx scripts/pdf-smoke.ts
+```
+
+Rendert eine Beispielrechnung ohne DB-Anfrage und prüft, dass der Renderer ein
+gültiges PDF (Magic-Bytes `%PDF-`) produziert.
+
+## E-Mail-Versand
+
+Rechnungen und Angebote lassen sich als PDF-Anhang direkt aus der Detail-Seite
+per E-Mail versenden. Der Button **Per E-Mail senden** öffnet einen Dialog mit
+Empfängerfeld (`An`, mehrere Adressen komma-separiert), optionalem CC, Betreff
+und einer vorbelegten Nachricht. Beim Absenden wird:
+
+1. das PDF frisch gerendert und als Anhang angehängt,
+2. die E-Mail über den konfigurierten Provider versandt,
+3. ein Eintrag in `sent_emails` (Audit-Log) angelegt,
+4. bei Belegen im Status *Entwurf* der Status automatisch auf *Verschickt*
+   gehoben (mit heutigem Ausstellungsdatum).
+
+### Provider konfigurieren
+
+Zwei Provider stehen zur Wahl (`src/lib/email/`):
+
+- **Resend** — Produktions-Provider. Gesetzt, sobald `RESEND_API_KEY` in der
+  Env liegt. Absenderdomain muss in Resend verifiziert sein.
+- **Log-Provider** — Fallback für Dev/Test. Aktiv, wenn `RESEND_API_KEY` fehlt.
+  Die E-Mail wird nur in der Server-Konsole ausgegeben und im Audit-Log
+  hinterlegt; es geht **kein** echter Versand raus.
+
+Env-Variablen in `.env.local` / hPanel:
+
+```
+RESEND_API_KEY=re_...
+EMAIL_FROM_ADDRESS=rechnungen@hausmeisterservice.example.de
+EMAIL_FROM_NAME=Hausmeisterservice Musterstadt
+EMAIL_REPLY_TO=  # optional, fällt sonst auf FROM_ADDRESS zurück
+```
+
+Absender-Adresse in der Mail: Wenn im Mandanten unter `Einstellungen → Mandant`
+eine E-Mail hinterlegt ist, wird sie als Absender verwendet; sonst `EMAIL_FROM_ADDRESS`.
+
+### Audit-Log
+
+Alle Sendevorgänge landen in `sent_emails` (RLS: nur Tenant-Mitglieder mit
+`billing.view`). Gespeichert werden Metadaten (Empfänger, Betreff, Provider,
+Status, Anhang-Namen, Provider-Message-ID, ggf. Fehler) sowie ein Hash des
+HTML-Bodys — der Inhalt selbst wird aus DSGVO-Gründen nicht persistiert.
+`DELETE` ist per RLS-Policy ausgeschlossen.
+
+### Smoke-Test
+
+```bash
+pnpm tsx scripts/email-smoke.ts
+```
+
+Rendert PDF + E-Mail-Template und ruft den Log-Provider auf, ohne Netz-Zugriff
+oder DB-Anbindung. Kein echter Versand.
+
+## Automatisierungen
+
+Unter `Einstellungen → Automatisierungen` lassen sich Regeln anlegen, die auf
+Ereignisse reagieren und Aktionen auslösen. Registry im Code:
+`src/lib/automations/registry.ts`.
+
+**Trigger**
+
+- `invoice.overdue` — Rechnung im Status *Verschickt* hat das Zahlungsziel überschritten.
+- `invoice.due_soon` — Rechnung wird in X Tagen fällig.
+- `maintenance.due_soon` — Aktiver Wartungsplan wird in X Tagen fällig.
+- `defect_report.created` — Eine neue Mängelmeldung wurde erfasst. Meldungen, die vor Anlegen der Regel entstanden sind, werden ignoriert (`created_at`-Cutoff); jede Meldung wird nur einmal ausgelöst (`dispatch_key='created'`).
+- `defect_report.status_changed` — Eine Mängelmeldung ist in einen der wichtigen Zustände gewechselt: `reviewing`, `converted`, `rejected` (`new` wird ignoriert, weil es mit `defect_report.created` überlappt). Dispatch-Key `status:<value>` — jeder Zielzustand triggert pro Meldung genau einmal. `updated_at`-Cutoff verhindert Historie-Flood. Da Mängelmeldungen kein Assignee-Feld haben, ist `notify_assignee` bei diesem Trigger nicht sinnvoll (durch das Schema-Guard blockiert); typische Zielgruppen sind `notify_users` (z. B. Owner) oder `notify_role`. Bekannte Grenze analog zu `work_order.status_changed`: Zustands-Zyklen (z. B. `reviewing` → `new` → `reviewing`) triggern das zweite `reviewing` nicht erneut.
+- `work_order.assigned` — Ein Auftrag wurde einem Mitarbeiter zugewiesen. Zuweisungen vor Anlegen der Regel werden ignoriert (`updated_at`-Cutoff). Der Dispatch-Key kodiert die Assignee-ID (`assigned:<user_id>`), sodass ein späterer Zuweisungs-Wechsel neu triggert, mehrfaches Speichern derselben Zuweisung aber nicht.
+- `work_order.status_changed` — Ein Auftrag ist in einen der wichtigen Zustände gewechselt: `in_progress`, `blocked`, `done`, `cancelled` (`new` und `planned` werden ignoriert, um Rauschen zu vermeiden). Dispatch-Key `status:<value>` — jeder Zielzustand triggert pro Auftrag genau einmal. Bekannte Grenze: ein späterer Zyklus (z. B. `done` → `new` → `done`) triggert das zweite `done` nicht erneut; für eine echte Zustandshistorie wäre ein `work_order_events`-Log der saubere Weg.
+
+**Aktionen**
+
+- `notify_users` — In-App-Notification an ausgewählte Benutzer (dank Push-Integration auch als System-Push, wenn ein Gerät angemeldet ist).
+- `notify_role` — dito, aber an alle Träger:innen einer Rolle.
+- `notify_assignee` — In-App + Push an genau den Benutzer, den der Trigger mitliefert (aktuell nur `work_order.assigned`). Wird durch das `superRefine` im Zod-Schema auf passende Trigger begrenzt.
+- `send_email` — E-Mail mit Betreff/Body/CTA-Deep-Link an drei mögliche Empfänger-Typen:
+  - `users` — auth-User-Emails
+  - `role` — auth-User-Emails aller Träger:innen einer Rolle
+  - `addresses` — freie E-Mail-Adressen (kommagetrennt), z. B. `buchhaltung@…`
+
+Absender kommt aus `tenants.invoice_data.email` (Fallback: `EMAIL_FROM_ADDRESS`);
+Rendering via `renderAutomationEmail` in `src/lib/email/automation-templates.ts`.
+Jeder Versand landet als Zeile in `sent_emails` (Body-Hash statt Klartext, DSGVO).
+
+Dedup: Pro Regel + Entität + Dispatch-Key (z. B. Fälligkeitsdatum) wird nur
+einmal ausgelöst. Bei einer neuen Fälligkeit (nächster Wartungstermin) startet
+ein neuer Dispatch. Läufe landen in `automation_runs`, ausgelöste Dispatches in
+`automation_dispatches` — beide sind aus dem UI per Detail-Seite einsehbar.
+
+### Cron einrichten
+
+Regeln laufen nicht von selbst. Ein externer Scheduler ruft die Route auf:
+
+```
+POST /api/cron/run-automations
+Authorization: Bearer <AUTOMATION_CRON_SECRET>
+```
+
+Die Route verlangt einen Bearer-Token, der als Env-Variable in der App gesetzt
+ist (`AUTOMATION_CRON_SECRET`, mindestens 16 Zeichen). Ohne Konfiguration
+liefert der Endpoint 401.
+
+Beispiele:
+
+- Hostinger Cron-Job (einmal täglich um 07:00):
+  `curl -X POST -H "Authorization: Bearer $AUTOMATION_CRON_SECRET" https://hausmeisterservice.vaydena.de/api/cron/run-automations`
+- `cron-job.org` mit Custom-Header
+
+### Testlauf per UI
+
+In der Detail-Ansicht einer Regel gibt es **Jetzt ausführen (Testlauf)** — führt
+die Regel sofort für den eigenen Tenant aus (echte Aktionen, Dispatches
+verhindern Doppel-Versand).
+
+### Run-Detail (welche Entities wurden getroffen?)
+
+Ein Klick auf den Zeitpunkt in „Letzte Läufe" öffnet
+`/settings/automations/[id]/runs/[runId]`: neben den Aggregatzahlen (Treffer,
+OK, Fehler) ist dort jeder von diesem Lauf ausgelöste Dispatch aufgelistet —
+mit Verlinkung zum betroffenen Vorgang (Rechnung, Angebot, Auftrag, Meldung,
+Wartungsplan), Dispatch-Key und Zeitstempel.
+
+Ermöglicht wird das durch die Spalte `automation_dispatches.run_id`, die seit
+Migration `20260810000000_automation_dispatches_run_id.sql` bei jedem
+neuen Dispatch mitgeschrieben wird (`on delete set null`, damit ein gelöschter
+Run die Dedup-Historie nicht verliert). Läufe vor der Migration haben keine
+Verknüpfung und zeigen in der Detail-Ansicht einen entsprechenden Hinweis.
+
+### Dispatches zurücksetzen
+
+**Dispatches zurücksetzen** in der Admin-Leiste löscht alle
+`automation_dispatches` einer Regel. Beim nächsten Lauf triggern damit alle
+noch passenden Vorgänge wieder — nützlich für:
+
+- **Zustands-Zyklen** — z. B. wenn ein Auftrag `done → new → done` durchlief
+  und der zweite `done`-Übergang erneut benachrichtigen soll.
+- **Regel-Tests** — nach einem Testlauf einer `send_email`-Regel die Historie
+  leeren, um erneut testen zu können.
+- **Fehlerhafte erste Läufe** — wenn eine Regel im ersten Lauf falsche
+  Empfänger hatte und man nach der Korrektur die betroffenen Matches erneut
+  auslösen möchte.
+
+Achtung: Es können Doppel-Benachrichtigungen entstehen, wenn Empfänger die
+ursprüngliche Notification schon erhalten haben. Die Detail-Seite zeigt die
+aktuelle Dispatch-Zahl an; der Button ist deaktiviert, solange sie 0 ist.
+Erfordert die Permission `automations.manage`.
+
+### Testmail an mich senden
+
+Für Regeln mit Aktion **`send_email`** erscheint in der Admin-Leiste zusätzlich
+**Testmail an mich senden**. Der Button verschickt eine Beispiel-Mail an die
+E-Mail-Adresse des aktuell angemeldeten Nutzers. Er umgeht Trigger-Evaluation,
+Cutoff und `automation_dispatches` und schreibt keinen `automation_runs`-Eintrag
+— die Mail landet aber in `sent_emails`, damit der Versand nachvollziehbar
+bleibt. Absender-Adresse, Reply-To und der Regel-Rückverweis werden identisch
+zum Produktivpfad aufgebaut; unterschiedlich ist nur der Betreff (`[Testmail]`-
+Prefix) und der Empfänger.
+
+Ohne konfigurierten `RESEND_API_KEY` läuft alles über den `log`-Provider — die
+Mail wird nicht wirklich zugestellt, aber `sent_emails.provider = 'log'` und die
+Server-Konsole zeigt die vollständigen Metadaten. Ein `sent`-Status im Log
+bedeutet dann „an den Provider übergeben", nicht „im Postfach angekommen".
+Erfordert die Permission `automations.manage`.
+
+### E-Mail-Log
+
+`/settings/emails` zeigt die letzten 100 ausgehenden Transaktions-Mails des
+Mandanten. Aufgeführt sind Rechnungs- und Angebots-Mails (Bereich verlinkt zurück
+auf den Beleg) sowie Automatisierungs-Mails inklusive der manuellen Testsends.
+Filter für Status (`queued` / `sent` / `failed`) und Bereich (Rechnung / Angebot /
+Automatisierung) helfen beim Nachvollziehen von Zustellproblemen.
+
+Zugriff hat, wer **`billing.view`** oder **`automations.manage`** besitzt — die
+Route greift per Service-Client auf `sent_emails` zu und deckt so beide Nutzer-
+gruppen ab, obwohl die RLS-Policy der Tabelle nur `billing.view` kennt (siehe
+`supabase/migrations/20260803001600_sent_emails.sql`). Nav-Sichtbarkeit ist an
+`billing.view` gebunden; Automations-Manager ohne Billing-Rechte erreichen die
+Seite über den Direktlink.
+
+Aus Datenschutzgründen wird kein Nachrichteninhalt gespeichert — nur Metadaten
+(Empfänger, Betreff, Provider, `body_hash`, Status). `DELETE` auf `sent_emails`
+ist per Policy verboten, das Log ist immutable.
+
+Ein Klick auf den Zeitstempel öffnet `/settings/emails/[id]` mit der Vollansicht
+eines Vorgangs: alle Empfänger (inkl. CC), Anhänge-Namen, Provider-Message-ID
+(für Zustell-Tracking), `body_hash` (Integritätsnachweis) sowie bei `failed`-
+Status die komplette Fehlermeldung im Klartext. Zugriffsregeln identisch zur
+Log-Übersicht.
+
+## Push-Benachrichtigungen
+
+Web-Push (VAPID) zusätzlich zu In-App-Bell und E-Mail. Jede über
+`createNotification` oder die Rules-Engine erzeugte Notification löst
+best-effort einen Push an alle Geräte des Empfängers aus — ungültige
+Subscriptions (HTTP 404/410) werden automatisch aus der DB entfernt.
+
+### Setup
+
+VAPID-Schlüssel einmalig erzeugen und in `.env.local` eintragen (analog Prod):
+
+```bash
+node -e "const w=require('web-push');const k=w.generateVAPIDKeys();console.log('NEXT_PUBLIC_VAPID_PUBLIC_KEY='+k.publicKey);console.log('VAPID_PRIVATE_KEY='+k.privateKey);"
+```
+
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — im Client-Bundle sichtbar, dient dem Browser als Application-Server-Key.
+- `VAPID_PRIVATE_KEY` — nur serverseitig, signiert den Push-Payload.
+- `VAPID_SUBJECT` — `mailto:<admin@…>` (Provider-Vorgabe).
+
+Ohne diese drei Variablen zeigt `/settings/notifications` einen entsprechenden
+Hinweis; die App bleibt lauffähig.
+
+### Nutzung
+
+Jeder eingeloggte User öffnet **Einstellungen → Benachrichtigungen**, klickt
+**Aktivieren** und bestätigt die Browser-Nachfrage. Ab da erscheinen alle
+Notifications zusätzlich als System-Push. Pro Gerät ist eine eigene
+Registrierung nötig; die Übersicht zeigt alle angemeldeten Geräte inkl.
+letztem Zustellzeitpunkt und Fehlern.
+
+- Service Worker: `public/sw.js` — zeigt Notification, öffnet auf Klick den `url`-Deep-Link.
+- Server-Routes: `GET /api/push/vapid-key`, `POST /api/push/subscribe`, `DELETE /api/push/unsubscribe`.
+- iOS/Safari: nur mit als PWA installierter App.
+
+### Smoke-Test
+
+```bash
+node -r dotenv/config node_modules/tsx/dist/cli.mjs scripts/push-smoke.ts dotenv_config_path=.env.local
+```
+
+Prüft VAPID-Setup und den Cleanup-Pfad bei ungültigen Endpoints — hilft, ein
+kaputtes Env vor dem ersten echten Push zu erkennen.
+
+## QR-Codes für Objekte
+
+Objekte, Schlüssel, Zähler, Fahrzeuge usw. bekommen einen QR-Code, den Hausmeister
+am Objekt anbringen. Ein Scan öffnet auf dem Handy direkt die Detail-Seite
+(nach Login).
+
+- **Bild-Endpoint** (SVG, cache 1 h): `GET /api/qr/{type}/{id}` — Types:
+  `property`, `unit`, `building`, `key`, `meter`, `vehicle`, `material`,
+  `defect-report`, `work-order`.
+- **Druck-Seite**: `/qr/{type}/{id}` — Titel + QR + Deep-Link, mit „Drucken"-Button
+  und Print-freundlichen `@media print`-Styles.
+- **Einstiegs-Buttons**: „QR-Code" auf Detail-Seiten von Properties, Keys und
+  Meters (weitere folgen bei Bedarf).
+
+Die Deep-URL enthält `?src=qr` — nützlich für spätere Auswertungen, wo Nutzer
+aus dem Feld auf die App zugreifen. Kein neuer DB-Layer nötig, keine
+Migrationen — QR wird pro Request aus der Entity-ID generiert.
+
+## Deployment
+
+Ziel: `https://hausmeisterservice.vaydena.de` — Subdomain unter dem bestehenden vaydena-Hostinger-Paket.
+
+- Server-Pfad: `/home/u424339903/domains/vaydena.de/public_html/hausmeisterservice`
+- Hostinger-hPanel: Subdomain als **Node.js-Anwendung** konfigurieren (Node 22, Start `pnpm start`).
+- Env-Variablen (v. a. `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_APP_URL=https://hausmeisterservice.vaydena.de`) im hPanel setzen — nie ins Repo.
+- Auth-Cookie-Domain **nicht** auf `.vaydena.de` scopen, sonst kollidieren die Sessions mit der vaydena-Hauptanwendung.
+- Git-Auto-Deploy analog vaydena einrichten.
+- CI-Pipeline: install → typecheck → lint → build → unit-tests → migration-dry-run → E2E gegen preview.
+
+## Konventionen
+
+- Codesprache **Englisch**, UI-Sprache **Deutsch** (i18n-fähig, `de-DE` default).
+- `Europe/Berlin`, EUR, `DD.MM.YYYY`.
+- Datenbank: `snake_case` plural. Komponenten: `PascalCase`.
+- Server-Actions statt Reload-Only-Mutations; TanStack Query für optimistische Updates.
+- Jede Migration bringt RLS + RLS-Tests mit; ohne grüne RLS-Tests kein Merge.
+- Kein „Coming Soon" — was im UI ist, funktioniert (`MASTER_PROMPT` §50).

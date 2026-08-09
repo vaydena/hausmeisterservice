@@ -1,0 +1,82 @@
+import { NextResponse, type NextRequest } from 'next/server';
+import { updateSession } from '@/lib/supabase/middleware';
+
+const STAFF_PUBLIC_ROUTES = ['/login', '/reset-password', '/invite'];
+const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
+// Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
+// selbst geprüft, nicht per Session-Cookie.
+const PUBLIC_API_PREFIXES = ['/api/cron/'];
+
+function isPublicApi(pathname: string): boolean {
+  return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+function isStaffPublic(pathname: string): boolean {
+  return STAFF_PUBLIC_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
+
+function isPortalPublic(pathname: string): boolean {
+  return PORTAL_PUBLIC_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
+
+function isPortalRoute(pathname: string): boolean {
+  return pathname === '/portal' || pathname.startsWith('/portal/');
+}
+
+export async function proxy(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+
+  // Public API-Routes (Cron, Webhooks) laufen ohne Session-Refresh.
+  if (isPublicApi(pathname)) {
+    return NextResponse.next();
+  }
+
+  const { response, user } = await updateSession(request);
+
+  // Unauthenticated user
+  if (!user) {
+    // Public routes (Staff + Portal) always allowed
+    if (isStaffPublic(pathname) || isPortalPublic(pathname)) return response;
+
+    // Portal requests → /portal/login
+    if (isPortalRoute(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/portal/login';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+
+    // Staff / rest → /login?next=…
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('next', pathname + search);
+    return NextResponse.redirect(url);
+  }
+
+  // Authenticated user hitting a public login/reset route → send to their app
+  if (isStaffPublic(pathname) || isPortalPublic(pathname)) {
+    // Let dashboards decide via Server Component redirect based on ctx (Staff→/dashboard, Resident→/portal/dashboard)
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
+
+  return response;
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except:
+     * - _next/static, _next/image
+     * - favicon, robots, sitemap
+     * - Files with a file extension (Fonts, images, PDFs)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|pdf|css|js)$).*)',
+  ],
+};

@@ -1,0 +1,251 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getResidentContext } from '@/lib/portal/current';
+
+export const metadata: Metadata = {
+  title: 'Bewohner-Portal',
+};
+
+export default async function PortalDashboardPage() {
+  const ctx = await getResidentContext();
+  if (!ctx) redirect('/portal/login');
+
+  const supabase = await createSupabaseServerClient();
+
+  const [announcementsRes, defectsRes, threadsRes, receiptsRes] = await Promise.all([
+    supabase
+      .from('announcements')
+      .select('id, title, published_at, requires_acknowledgement, target_type')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(5),
+    supabase
+      .from('defect_reports')
+      .select('id, code, title, status, priority, created_at')
+      .eq('reporter_user_id', ctx.userId)
+      .in('status', ['new', 'reviewing'])
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('message_threads')
+      .select('id, subject, last_message_at')
+      .order('last_message_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('announcement_receipts')
+      .select('announcement_id, read_at, acknowledged_at')
+      .eq('user_id', ctx.userId),
+  ]);
+
+  const announcements = announcementsRes.data ?? [];
+  const defects = defectsRes.data ?? [];
+  const threads = threadsRes.data ?? [];
+  const receipts = receiptsRes.data ?? [];
+
+  const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
+  const unreadCount = announcements.filter((a) => !receiptMap.get(a.id)?.read_at).length;
+  const openAckCount = announcements.filter(
+    (a) => a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at,
+  ).length;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex size-12 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+            <Home className="size-6" aria-hidden />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-xl font-semibold">Guten Tag, {ctx.firstName}!</h1>
+            <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+              {ctx.propertyName ?? '—'}
+              {ctx.buildingName ? ` · ${ctx.buildingName}` : ''}
+              {ctx.unitCode ? ` · Einheit ${ctx.unitCode}` : ''}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryCard
+          href="/portal/announcements"
+          label="Ankündigungen"
+          value={unreadCount}
+          hint={openAckCount > 0 ? `${openAckCount} noch zu quittieren` : 'alle gelesen'}
+          icon={<Megaphone className="size-5" aria-hidden />}
+          tone={openAckCount > 0 ? 'warning' : 'default'}
+        />
+        <SummaryCard
+          href="/portal/defects"
+          label="Offene Meldungen"
+          value={defects.length}
+          hint={defects.length === 0 ? 'keine offenen' : 'Bearbeitung läuft'}
+          icon={<Wrench className="size-5" aria-hidden />}
+          tone="default"
+        />
+        <SummaryCard
+          href="/portal/messages"
+          label="Nachrichten"
+          value={threads.length}
+          hint={threads.length === 0 ? 'keine Konversationen' : 'aktive Threads'}
+          icon={<MessageSquare className="size-5" aria-hidden />}
+          tone="default"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Panel title="Neueste Ankündigungen" href="/portal/announcements">
+          {announcements.length === 0 ? (
+            <p className="text-sm text-[var(--color-muted-foreground)]">
+              Es liegen aktuell keine Ankündigungen vor.
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-[var(--color-border)]">
+              {announcements.slice(0, 4).map((a) => {
+                const receipt = receiptMap.get(a.id);
+                const isUnread = !receipt?.read_at;
+                const needsAck = a.requires_acknowledgement && !receipt?.acknowledged_at;
+                return (
+                  <li key={a.id} className="py-2.5">
+                    <Link
+                      href={`/portal/announcements/${a.id}`}
+                      className="flex items-start justify-between gap-3 rounded-md hover:bg-[var(--color-muted)] -m-1 p-1"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          {isUnread && (
+                            <span
+                              aria-label="neu"
+                              className="size-2 rounded-full bg-[var(--color-primary)]"
+                            />
+                          )}
+                          <span className="text-sm font-medium">{a.title}</span>
+                        </div>
+                        {a.published_at && (
+                          <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
+                            {new Date(a.published_at).toLocaleDateString('de-DE')}
+                          </p>
+                        )}
+                      </div>
+                      {needsAck && (
+                        <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-950 dark:text-orange-300">
+                          quittieren
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Ihre offenen Meldungen" href="/portal/defects">
+          {defects.length === 0 ? (
+            <div className="flex flex-col items-start gap-3">
+              <p className="text-sm text-[var(--color-muted-foreground)]">
+                Sie haben aktuell keine offenen Meldungen.
+              </p>
+              <Link
+                href="/portal/defects/new"
+                className="inline-flex h-9 items-center rounded-md bg-[var(--color-primary)] px-3 text-sm font-medium text-[var(--color-primary-foreground)] hover:opacity-90"
+              >
+                Neuen Mangel melden
+              </Link>
+            </div>
+          ) : (
+            <ul className="flex flex-col divide-y divide-[var(--color-border)]">
+              {defects.map((d) => (
+                <li key={d.id} className="py-2.5">
+                  <Link
+                    href={`/portal/defects/${d.id}`}
+                    className="flex items-center justify-between gap-3 rounded-md hover:bg-[var(--color-muted)] -m-1 p-1"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{d.title}</p>
+                      <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
+                        {d.code ?? '—'} · Status: {d.status}
+                      </p>
+                    </div>
+                    <ChevronRight
+                      className="size-4 text-[var(--color-muted-foreground)]"
+                      aria-hidden
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  href,
+  label,
+  value,
+  hint,
+  icon,
+  tone,
+}: {
+  href: string;
+  label: string;
+  value: number;
+  hint: string;
+  icon: React.ReactNode;
+  tone: 'default' | 'warning';
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4 transition hover:border-[var(--color-primary)]/50 hover:shadow-sm"
+    >
+      <div
+        className={`flex size-10 items-center justify-center rounded-lg ${
+          tone === 'warning'
+            ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
+            : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+        }`}
+      >
+        {icon}
+      </div>
+      <div className="flex-1">
+        <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          {label}
+        </p>
+        <p className="text-2xl font-semibold leading-tight">{value}</p>
+        <p className="text-xs text-[var(--color-muted-foreground)]">{hint}</p>
+      </div>
+    </Link>
+  );
+}
+
+function Panel({
+  title,
+  href,
+  children,
+}: {
+  title: string;
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        <Link
+          href={href}
+          className="text-xs font-medium text-[var(--color-primary)] hover:underline"
+        >
+          Alle ansehen
+        </Link>
+      </div>
+      {children}
+    </section>
+  );
+}
