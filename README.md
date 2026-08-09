@@ -202,6 +202,18 @@ Aktuell abgedeckt:
   Ausnahmen kommen in `INTENTIONALLY_MUTABLE` (Stale-Sanity-Check
   inklusive). Neue Funktion? Header `set search_path = ''` und alle
   Referenzen inside body voll-qualifizieren.
+- `tests/migration-table-existence.test.ts` — jede Tabelle im
+  `public`-Schema, auf die eine Migration ein `alter table`,
+  `create policy on`, `create trigger ... on` oder `create index on`
+  ausführt, muss vorher (oder in derselben Migration) per
+  `create table` deklariert sein. Ohne diesen Guard bricht ein frisches
+  `supabase db reset` mit `relation "…" does not exist` ab, ohne dass
+  der Advisor es fängt (Remote-DB hat die Tabelle bereits).
+  Ausnahmen: Tabellen, die beim Bootstrap remote via Supabase-MCP
+  `apply_migration` angelegt wurden (aktuell nur `residents`), landen
+  in `INTENTIONALLY_EXTERNAL` mit Rationale — der Test wird rot, sobald
+  ein `create table` dafür in den SQL-Migrations erscheint, und zwingt
+  Cleanup.
 
 **E2E-Setup (einmalig):**
 
