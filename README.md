@@ -140,6 +140,20 @@ Aktuell abgedeckt:
   Verhindert das schlimmste Multi-Tenant-Leak: „neue Tabelle vergessen zu
   schützen, jeder Mandant liest alles". Neue Tabelle? In derselben Migration
   direkt `enable row level security` + Policies mitliefern.
+- `tests/nav-module-coverage.test.ts` — dreifacher Konsistenz-Check zwischen
+  `components/layout/nav-config.ts` und `lib/modules/registry.ts`:
+  jeder `NavItem.module` (nicht null) muss ein deklarierter `ModuleKey` sein
+  (Runtime-Guard zusätzlich zur TS-Typprüfung, fängt `as`-Casts);
+  jeder statische `NavItem.href` muss auf eine `page.tsx` unter
+  `src/app/(app)/` zeigen (Allowlist `KNOWN_MISSING_PAGES` für bewusst
+  ungebaute Routen wie `/map` und `/documents` — Einträge in der Allowlist
+  werden automatisch als stale markiert, sobald die `page.tsx` existiert);
+  jedes Modul mit `menuPath` muss von mindestens einem NavItem via
+  `module: <key>` referenziert werden (verhindert „menuPath ist tote
+  Registry-Konfiguration"). Verhindert stumme Sidebar-Ausfälle (Item
+  verschwindet weil `enabledModules.has(module)` false wird) und tote
+  Sidebar-Links (User klickt → 404). Neue Sidebar-Route? Nav-Eintrag +
+  `menuPath` im passenden Modul + echte `page.tsx`.
 
 **E2E-Setup (einmalig):**
 
