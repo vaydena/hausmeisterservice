@@ -214,6 +214,18 @@ Aktuell abgedeckt:
   in `INTENTIONALLY_EXTERNAL` mit Rationale — der Test wird rot, sobald
   ein `create table` dafür in den SQL-Migrations erscheint, und zwingt
   Cleanup.
+- `tests/portal-nav-route-coverage.test.ts` — bidirektionale
+  Konsistenz zwischen `src/app/(portal)/portal/_components/portal-nav.tsx`
+  und den Portal-Routen unter `src/app/(portal)/portal/*/page.tsx`.
+  (a) Jeder `href` im Portal-Nav zeigt auf eine existierende `page.tsx`
+  (sonst Sidebar-Klick → 404 für jeden Bewohner). (b) Jedes Top-Level-
+  Segment mit eigener `page.tsx` (z.B. `dashboard`, `announcements`,
+  `defects`, `messages`) ist im Nav referenziert (sonst Orphan-Route:
+  URL funktioniert, aber Bewohner können sie nur finden wenn sie den
+  Pfad kennen). Ausnahmen (z.B. `login`) kommen in
+  `INTENTIONALLY_NAV_HIDDEN` mit Stale-Sanity-Check. Ergänzt
+  `portal-deep-links.test.ts` (das nur hardcodierte URLs → Page prüft,
+  keine Orphan-Detection).
 
 **E2E-Setup (einmalig):**
 
