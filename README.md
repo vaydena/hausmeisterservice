@@ -154,6 +154,18 @@ Aktuell abgedeckt:
   verschwindet weil `enabledModules.has(module)` false wird) und tote
   Sidebar-Links (User klickt → 404). Neue Sidebar-Route? Nav-Eintrag +
   `menuPath` im passenden Modul + echte `page.tsx`.
+- `tests/storage-bucket-policy-coverage.test.ts` — jeder in einer Migration
+  per `insert into storage.buckets` deklarierte Bucket muss `public=false`
+  sein und mindestens eine SELECT- und INSERT-Policy auf `storage.objects`
+  besitzen, die per `bucket_id = '<id>'` an ihn gebunden ist. Zusätzlich
+  darf keine Storage-Policy `to public`/`to anon` gewährt sein, jede muss
+  einen `bucket_id`-Filter und einen Tenant-Scope-Check
+  (`app_auth.is_tenant_member(...)` oder `app_auth.current_tenant_id()`)
+  im Body enthalten, und jede darf sich nur auf einen deklarierten Bucket
+  beziehen. Verhindert den ekligsten Storage-Bug: „Upload klappt, aber
+  Nutzer aus Tenant B können die Datei von Tenant A laden". Neuer Bucket?
+  Zusammen mit Bucket-INSERT auch SELECT/INSERT-Policies + Tenant-Check
+  in derselben Migration mitliefern.
 
 **E2E-Setup (einmalig):**
 
