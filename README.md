@@ -310,6 +310,22 @@ Aktuell abgedeckt:
   weiß nichts davon — Supabase-Query-Aufrufe filtern silent auf einen
   zu engen Typ, oder Inserts mit dem neuen Wert scheitern erst zur
   Laufzeit an einer Postgres-Fehlermeldung statt am TypeScript-Compiler.
+- `tests/rls-policy-explicit-for-op-coverage.test.ts` — jede
+  `CREATE POLICY` in `supabase/migrations/**` muss im Header eine
+  explizite `for select|insert|update|delete|all`-Klausel haben.
+  Postgres behandelt fehlende Klausel als `FOR ALL`: dieselbe
+  Prädikate-Formel bindet dann SELECT + INSERT + UPDATE + DELETE
+  gleichzeitig — meist eine Read-Policy die versehentlich auch Write
+  öffnet. Zweite Schicht: `for all` selbst muss explizit whitelistet
+  werden (`INTENTIONALLY_FOR_ALL_POLICIES` mit `file::name::table`-Key
+  + Rationale). Aktuell 7 legitime `for all`-Policies (alle
+  Tenant-Config-Write-Policies in `20260801000000_init.sql`, die für
+  Admins C/U/D auf `tenant_modules`, `memberships`, `roles`,
+  `role_permissions`, `user_roles`, `user_groups`,
+  `user_group_members` bündeln — mit paralleler `_select`-Policy die
+  breiter fasst). Bidirektionaler Stale-Sanity-Check: jeder Allowlist-
+  Eintrag muss noch existieren UND noch `for all` verwenden — sonst
+  bricht der Test und forciert Re-Review.
 
 **E2E-Setup (einmalig):**
 
