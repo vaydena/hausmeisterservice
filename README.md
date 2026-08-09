@@ -297,6 +297,19 @@ Aktuell abgedeckt:
   `INTENTIONALLY_UNSCOPED_POLICIES` mit `file::name::table`-Key und
   Stale-Sanity-Check: sobald einer der Einträge eine Auth-Fn bekommt,
   wird der Eintrag Fehler und forciert Re-Review.
+- `tests/migration-enum-consistency-coverage.test.ts` — jeder
+  `CREATE TYPE ... AS ENUM (...)` in `supabase/migrations/**` (inkl.
+  aller nachfolgenden `ALTER TYPE ... ADD VALUE`) muss einen exakt
+  passenden Values-Set in `Constants.public.Enums` in
+  `src/types/database.ts` haben. Prüft in beide Richtungen: Namen-Set
+  muss identisch sein (fängt umbenannte oder gelöschte Enums), und für
+  jeden Namen muss der sortierte Values-Set übereinstimmen. Verhindert
+  den klassischen Drift: jemand fügt `ALTER TYPE ... ADD VALUE 'foo'`
+  hinzu, vergisst `pnpm gen:types` zu laufen, danach akzeptiert die DB
+  den neuen Wert, aber `Database["public"]["Enums"][…]` in TypeScript
+  weiß nichts davon — Supabase-Query-Aufrufe filtern silent auf einen
+  zu engen Typ, oder Inserts mit dem neuen Wert scheitern erst zur
+  Laufzeit an einer Postgres-Fehlermeldung statt am TypeScript-Compiler.
 
 **E2E-Setup (einmalig):**
 
