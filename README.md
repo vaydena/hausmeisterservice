@@ -249,6 +249,21 @@ Aktuell abgedeckt:
   entfernt den Eintrag automatisch, sobald die Datei einen Helper
   bekommt. Guard ist datei-weit (nicht per-function) — Absicherung
   einzelner exportierter Funktionen bleibt Code-Review-Aufgabe.
+- `tests/formdata-zod-parse-coverage.test.ts` — jede Datei, die
+  irgendwo `formData.get(...)` aufruft, muss auch mindestens einmal
+  ein Zod-Schema per `.safeParse(...)` prüfen. Roh-`FormData`-Werte
+  sind vom Client kontrollierte Strings (bzw. `File | null`) — sie
+  ohne Zod-Validierung in `.insert/.update/.eq` weiterzureichen
+  bedeutet unvalidierter User-Input direkt an Postgres. Ausnahme
+  aktuell: `src/app/(app)/checklist-runs/actions.ts` validiert jedes
+  Feld manuell (Whitelist-`kind`, `.slice(2000)` für Freitext,
+  `Number()`+`Number.isNaN` für Zahlen, UUID-via-`.single()` für
+  Foreign-Keys) — semantisch äquivalent, aber konventionsfremd; in
+  `INTENTIONALLY_MANUALLY_VALIDATED` mit Refactor-TODO. Stale-Sanity-
+  Check: sobald die Datei `.safeParse()` bekommt, wird der Eintrag
+  Fehler. Guard-Muster ist absichtlich eng auf `.safeParse(`
+  beschränkt (nicht `.parse(`), damit `JSON.parse`/`Date.parse` etc.
+  keine False-Positives auslösen.
 
 **E2E-Setup (einmalig):**
 
