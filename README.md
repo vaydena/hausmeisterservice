@@ -131,6 +131,15 @@ Aktuell abgedeckt:
   Guard-Check-Zeile heißt sonst „Nutzer wird stumm abgewiesen" oder „Nav-Link
   erscheint nie". Neuen Nav-Eintrag oder neuen Guard? Zuerst Key in
   `PERMISSIONS` deklarieren.
+- `tests/rls-coverage.test.ts` — jede Tabelle, die eine Migration unter
+  `supabase/migrations/` per `create table [public.]<name>` anlegt, muss
+  spätestens am Ende der Migrations-Kette ein `alter table … enable row level
+  security` haben, und keine Migration darf RLS wieder abschalten. Migrationen
+  werden lexicographisch sortiert durchlaufen (= chronologisch), das jeweils
+  letzte enable/disable pro Tabelle gewinnt — analog zum echten Postgres-Lauf.
+  Verhindert das schlimmste Multi-Tenant-Leak: „neue Tabelle vergessen zu
+  schützen, jeder Mandant liest alles". Neue Tabelle? In derselben Migration
+  direkt `enable row level security` + Policies mitliefern.
 
 **E2E-Setup (einmalig):**
 
