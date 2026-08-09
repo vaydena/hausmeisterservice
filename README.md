@@ -122,6 +122,15 @@ Aktuell abgedeckt:
   „Automation läuft, INSERT scheitert am DB-CHECK, Nutzer bekommt nichts".
   Neuen Kind eingeführt? → `NOTIFICATION_KINDS` erweitern **und** neue
   Migration schreiben, die den CHECK dropt + neu setzt.
+- `tests/permission-registry-coverage.test.ts` — jeder `permissions.has('x.y')`-
+  Aufruf im ganzen `src/`-Baum, jedes `permission:`-Feld in
+  `components/layout/nav-config.ts` und jede Permission in
+  `SYSTEM_ROLE_TEMPLATES` muss in `PERMISSIONS`
+  (`src/lib/permissions/registry.ts`) existieren. `PermissionKey` ist ein
+  String-Alias — TypeScript prüft die Zeichenkette nicht. Tippfehler in einer
+  Guard-Check-Zeile heißt sonst „Nutzer wird stumm abgewiesen" oder „Nav-Link
+  erscheint nie". Neuen Nav-Eintrag oder neuen Guard? Zuerst Key in
+  `PERMISSIONS` deklarieren.
 
 **E2E-Setup (einmalig):**
 
