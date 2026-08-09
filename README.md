@@ -236,6 +236,19 @@ Aktuell abgedeckt:
   Exports wie `runtime`, `dynamic`, `revalidate` etc. sind erlaubt. Kein
   Allowlist nötig — die drei Regeln sind absolute Anforderungen des
   Next-App-Routers.
+- `tests/server-action-auth-coverage.test.ts` — jede Datei mit
+  Top-Level `'use server'` ruft mindestens einmal einen der beiden
+  Auth-Helper: `requireTenantContext()` (App-Actions, Staff/Admin) oder
+  `requireResidentContext()` (Portal-Actions, Bewohner). Ohne Aufruf
+  laufen die exportierten Server Actions auch für anonyme Requests am
+  `/_next/action`-Endpunkt — Multi-Tenant-Leak über Bypass der
+  Application-Layer, RLS ist die letzte Verteidigungslinie (bricht,
+  sobald irgendeine Query den Service-Role-Client verwendet). Pre-
+  Session-Bootstrap (Login, Reset-Password, Portal-Login) ist in
+  `INTENTIONALLY_UNAUTHENTICATED` allowlisted; Stale-Sanity-Check
+  entfernt den Eintrag automatisch, sobald die Datei einen Helper
+  bekommt. Guard ist datei-weit (nicht per-function) — Absicherung
+  einzelner exportierter Funktionen bleibt Code-Review-Aufgabe.
 
 **E2E-Setup (einmalig):**
 
