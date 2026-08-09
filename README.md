@@ -101,6 +101,12 @@ Aktuell abgedeckt:
   Automation-Engine) muss auf eine echte `page.tsx` unter `src/app/(app)/`
   zeigen. Verhindert „404 nach Klick auf die Glocke". Neuen URL-Override in
   Notification-Code? Auch in die `overrides`-Liste des Tests eintragen.
+- `tests/portal-deep-links.test.ts` — jeder Bewohner-seitige Link (Portal-Nav,
+  Dashboard-Panels, dynamische Row-Links `/portal/announcements/[id]`,
+  `/portal/defects/[id]`, `/portal/messages/[id]`, Post-Login-Redirects aus
+  `(auth)/login` und `(app)/layout`) muss auf eine echte `page.tsx` unter
+  `src/app/(portal)/` zeigen. Neue Portal-Route oder neuer Link? Auch in die
+  `staticLinks`/`dynamicLinks`-Listen des Tests eintragen.
 
 **E2E-Setup (einmalig):**
 
