@@ -264,6 +264,24 @@ Aktuell abgedeckt:
   Fehler. Guard-Muster ist absichtlich eng auf `.safeParse(`
   beschränkt (nicht `.parse(`), damit `JSON.parse`/`Date.parse` etc.
   keine False-Positives auslösen.
+- `tests/server-secret-leak-coverage.test.ts` — jede Datei, die
+  ein Server-Secret liest (`SUPABASE_SERVICE_ROLE_KEY`,
+  `AUTOMATION_CRON_SECRET`, `RESEND_API_KEY`, `VAPID_PRIVATE_KEY`,
+  `SUPABASE_JWT_SECRET`), muss vom Bundler zwangsweise auf den
+  Server beschränkt sein — entweder Route-Handler unter
+  `src/app/api/**`, `import 'server-only'` als erster Statement
+  (Next.js wirft dann bei Client-Import einen Build-Error), oder
+  `'use server'` als File-Direktive. Zusätzlich darf kein
+  Secret-Consumer `'use client'` tragen. Guard-Muster ist eng auf
+  `.SECRETNAME`-Property-Access (nicht bloß bare String), damit
+  Kommentare mit dem Namen keine False-Positives auslösen. Ausnahme
+  aktuell: `src/lib/env.ts` ist die Zod-Schema-Definition selbst und
+  MUSS ohne `server-only`-Marker bleiben, weil `clientEnv` daneben
+  legitim von Client-Components importiert wird — `serverEnv()`
+  gated sich stattdessen zur Laufzeit via `typeof window !==
+  'undefined'`-Throw. In `INTENTIONALLY_UNGUARDED_SECRET_FILES` mit
+  Stale-Sanity-Check: sobald env.ts einen `server-only`-Import
+  bekommt, wird der Eintrag Fehler.
 
 **E2E-Setup (einmalig):**
 
