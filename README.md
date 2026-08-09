@@ -188,6 +188,20 @@ Aktuell abgedeckt:
   `app_auth.` erfolgt (unqualifizierte Calls resolven über `search_path`
   und können auf eine unbeabsichtigte Funktion treffen). Neue Permission
   in RLS-Policy? Vorher in `PERMISSIONS` eintragen, dann Migration.
+- `tests/function-search-path-coverage.test.ts` — jede Funktion in
+  `app_auth.*` oder `public.*`, die per `create or replace function`
+  angelegt wird, muss im Header (zwischen `returns` und `as $$`) einen
+  fixen `set search_path` pinnen. Prüft den finalen Zustand pro
+  `schema.name` (last-write-wins), damit eine spätere Härtungs-Migration
+  (siehe `20260801000100_harden_functions.sql`) eine frühere Definition
+  ohne Pin reparieren kann. Fehlender `search_path` auf einer
+  `security definer`-Funktion ist eine Privilege-Escalation-Fläche
+  (bekannter Supabase-Advisor `function_search_path_mutable`): ein
+  Angreifer kann per `create ... in pg_temp` eine gleich benannte
+  Funktion einschleusen, die dann mit den Rechten des Definers läuft.
+  Ausnahmen kommen in `INTENTIONALLY_MUTABLE` (Stale-Sanity-Check
+  inklusive). Neue Funktion? Header `set search_path = ''` und alle
+  Referenzen inside body voll-qualifizieren.
 
 **E2E-Setup (einmalig):**
 
