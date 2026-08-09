@@ -166,6 +166,18 @@ Aktuell abgedeckt:
   Nutzer aus Tenant B können die Datei von Tenant A laden". Neuer Bucket?
   Zusammen mit Bucket-INSERT auch SELECT/INSERT-Policies + Tenant-Check
   in derselben Migration mitliefern.
+- `tests/rls-policy-existence.test.ts` — Ergänzung zur RLS-Coverage:
+  jede in einer Migration per `create table public.<name>` angelegte
+  Tabelle, deren finaler RLS-Zustand `enabled` ist, muss mindestens eine
+  `create policy … on <name>` in irgendeiner Migration besitzen (quoted
+  und unquoted Policy-Namen werden akzeptiert). RLS aktiviert + null
+  Policies = deny-all — jeder Nutzer bekommt eine leere Ergebnismenge,
+  das Modul „funktioniert" ohne Fehlermeldung und niemand merkt was.
+  Für Tabellen, bei denen deny-all Absicht ist (Service-Role-only via
+  Trigger/Cron), gibt es die Allowlist `INTENTIONALLY_DENY_ALL` mit
+  Stale-Sanity-Check (sobald doch eine Policy hinzukommt, muss der
+  Eintrag entfernt werden). Neue Tabelle mit RLS? Policies in derselben
+  Migration mitliefern.
 
 **E2E-Setup (einmalig):**
 
