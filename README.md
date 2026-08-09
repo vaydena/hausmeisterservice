@@ -178,6 +178,16 @@ Aktuell abgedeckt:
   Stale-Sanity-Check (sobald doch eine Policy hinzukommt, muss der
   Eintrag entfernt werden). Neue Tabelle mit RLS? Policies in derselben
   Migration mitliefern.
+- `tests/rls-permission-key-coverage.test.ts` — jeder Permission-Key,
+  den eine RLS-Policy per `app_auth.has_permission('<key>', ...)`
+  abfragt, muss in `src/lib/permissions/registry.ts` (`PERMISSIONS`)
+  registriert sein. `app_auth.has_permission` liefert für unbekannte
+  Keys `false` zurück — ein Tippfehler wie `documents.viw` sperrt jeden
+  Nutzer stumm aus, ohne Fehlermeldung. Zusätzlich prüft der Guard,
+  dass jeder `has_permission(...)`-Aufruf schema-qualifiziert mit
+  `app_auth.` erfolgt (unqualifizierte Calls resolven über `search_path`
+  und können auf eine unbeabsichtigte Funktion treffen). Neue Permission
+  in RLS-Policy? Vorher in `PERMISSIONS` eintragen, dann Migration.
 
 **E2E-Setup (einmalig):**
 
