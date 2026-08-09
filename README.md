@@ -226,6 +226,16 @@ Aktuell abgedeckt:
   `INTENTIONALLY_NAV_HIDDEN` mit Stale-Sanity-Check. Ergänzt
   `portal-deep-links.test.ts` (das nur hardcodierte URLs → Page prüft,
   keine Orphan-Detection).
+- `tests/route-handler-method-coverage.test.ts` — jede
+  `src/app/**/route.ts` (App-Router-Handler) exportiert (a) keinen
+  `default`-Export (Next-Silent-Ignore: der Handler wird nicht
+  registriert, alle Requests → 404/405), (b) mindestens einen
+  case-sensitiv gültigen HTTP-Method-Handler (`GET`, `POST`, `PUT`,
+  `PATCH`, `DELETE`, `OPTIONS`, `HEAD`), und (c) keinen lowercase-Typo
+  (`get`, `post`, …), den Next stumm ignorieren würde. Nicht-Handler-
+  Exports wie `runtime`, `dynamic`, `revalidate` etc. sind erlaubt. Kein
+  Allowlist nötig — die drei Regeln sind absolute Anforderungen des
+  Next-App-Routers.
 
 **E2E-Setup (einmalig):**
 
