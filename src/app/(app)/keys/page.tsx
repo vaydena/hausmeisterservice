@@ -80,7 +80,20 @@ export default async function KeysPage({
       <PageHeader
         title="Schlüssel"
         description="Schlüsselstamm und Ausgabe-/Rückgabe-Historie pro Objekt."
-        action={canCreate ? <LinkButton href="/keys/new">Neuer Schlüssel</LinkButton> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {items.length > 0 && (
+              <Link
+                href={`/qr/print?type=key&ids=${items.slice(0, 60).map((k) => k.id).join(',')}`}
+                target="_blank"
+                className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+              >
+                QR-Sammel-Druck ({Math.min(items.length, 60)})
+              </Link>
+            )}
+            {canCreate && <LinkButton href="/keys/new">Neuer Schlüssel</LinkButton>}
+          </div>
+        }
       />
 
       {(propertiesForFilter?.length ?? 0) > 0 && (

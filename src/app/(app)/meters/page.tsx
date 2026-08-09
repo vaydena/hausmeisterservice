@@ -84,7 +84,20 @@ export default async function MetersPage({
       <PageHeader
         title="Zähler"
         description="Zählerstamm und Ablesungshistorie pro Objekt."
-        action={canCreate ? <LinkButton href="/meters/new">Neuer Zähler</LinkButton> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            {items.length > 0 && (
+              <Link
+                href={`/qr/print?type=meter&ids=${items.slice(0, 60).map((m) => m.id).join(',')}`}
+                target="_blank"
+                className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+              >
+                QR-Sammel-Druck ({Math.min(items.length, 60)})
+              </Link>
+            )}
+            {canCreate && <LinkButton href="/meters/new">Neuer Zähler</LinkButton>}
+          </div>
+        }
       />
 
       {(propertiesForFilter?.length ?? 0) > 0 && (

@@ -417,6 +417,11 @@ am Objekt anbringen. Ein Scan öffnet auf dem Handy direkt die Detail-Seite
   `defect-report`, `work-order`.
 - **Druck-Seite**: `/qr/{type}/{id}` — Titel + QR + Deep-Link, mit „Drucken"-Button
   und Print-freundlichen `@media print`-Styles.
+- **Sammel-Druck**: `/qr/print?type={type}&ids={uuid,uuid,…}` — A4-Bogen mit
+  15 Aufklebern pro Seite (3×5). Types: `property`, `key`, `meter`, `vehicle`.
+  Cap: 60 IDs pro URL (≈ 4 Seiten). Fehlende oder gelöschte IDs werden übersprungen
+  und oben rot ausgewiesen. Einstieg: „QR-Sammel-Druck"-Button in den Listen von
+  Objekten, Schlüsseln und Zählern — nimmt die aktuell gefilterten ersten 60 IDs.
 - **Einstiegs-Buttons**: „QR-Code" auf Detail-Seiten von Properties, Keys und
   Meters (weitere folgen bei Bedarf).
 

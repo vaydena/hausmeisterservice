@@ -42,9 +42,18 @@ export default async function PropertiesPage() {
         title="Objekte"
         description="Liegenschaften mit Adresse, Zugangs- und Notfallhinweisen."
         action={
-          canCreate ? (
-            <LinkButton href="/properties/new">Neues Objekt</LinkButton>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {items.length > 0 && (
+              <Link
+                href={`/qr/print?type=property&ids=${items.slice(0, 60).map((p) => p.id).join(',')}`}
+                target="_blank"
+                className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+              >
+                QR-Sammel-Druck ({Math.min(items.length, 60)})
+              </Link>
+            )}
+            {canCreate && <LinkButton href="/properties/new">Neues Objekt</LinkButton>}
+          </div>
         }
       />
 
