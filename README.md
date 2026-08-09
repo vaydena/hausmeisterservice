@@ -107,6 +107,12 @@ Aktuell abgedeckt:
   `(auth)/login` und `(app)/layout`) muss auf eine echte `page.tsx` unter
   `src/app/(portal)/` zeigen. Neue Portal-Route oder neuer Link? Auch in die
   `staticLinks`/`dynamicLinks`-Listen des Tests eintragen.
+- `tests/automations-registry-coverage.test.ts` — jeder `TriggerKey` aus
+  `src/lib/automations/registry.ts` muss einen `case`-Zweig in
+  `evaluateTrigger` haben, jeder `ActionKey` einen `=== '…'`-Branch in
+  `runRule`/`resolveRecipients`. Sichert außerdem, dass `TRIGGERS`/`ACTIONS`
+  vollständige Definitions-Arrays für alle Keys liefern. Verhindert „Regel
+  läuft still, weil vergessener Evaluator/Dispatcher".
 
 **E2E-Setup (einmalig):**
 
