@@ -282,6 +282,21 @@ Aktuell abgedeckt:
   'undefined'`-Throw. In `INTENTIONALLY_UNGUARDED_SECRET_FILES` mit
   Stale-Sanity-Check: sobald env.ts einen `server-only`-Import
   bekommt, wird der Eintrag Fehler.
+- `tests/rls-policy-tenant-scope-coverage.test.ts` — jede
+  `CREATE POLICY`-Definition in `supabase/migrations/**` muss im
+  USING/WITH-CHECK-Body mindestens einmal eine Scope-Fn referenzieren
+  (`app_auth.current_tenant_id`, `app_auth.is_tenant_member`,
+  `app_auth.has_permission`, `is_resident_of_tenant`, `auth.uid`).
+  Eine Policy ohne Scope-Fn ist effektiv public — jeder mit Session
+  (oder bei `to public` sogar anonym) erfüllt das Prädikat, die
+  Mandanten-Isolation ist raus. Ausnahmen aktuell (2 von 177):
+  `tenants_insert` mit `with check (false)` (Hard-Lockdown, stärker
+  als jeder Auth-Check — Tenants werden nur vom Service-Role-Client
+  provisioniert) und `permissions_select` mit `using (true)` (globales
+  Permission-Enum-Registry, nicht tenant-scoped). Beide in
+  `INTENTIONALLY_UNSCOPED_POLICIES` mit `file::name::table`-Key und
+  Stale-Sanity-Check: sobald einer der Einträge eine Auth-Fn bekommt,
+  wird der Eintrag Fehler und forciert Re-Review.
 
 **E2E-Setup (einmalig):**
 
