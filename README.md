@@ -113,6 +113,15 @@ Aktuell abgedeckt:
   `runRule`/`resolveRecipients`. Sichert außerdem, dass `TRIGGERS`/`ACTIONS`
   vollständige Definitions-Arrays für alle Keys liefern. Verhindert „Regel
   läuft still, weil vergessener Evaluator/Dispatcher".
+- `tests/notification-kinds-consistency.test.ts` — drei-Achsen-Guard:
+  jedes `notification_kind`/`entity_type`-Literal in
+  `src/lib/automations/engine.ts` muss in `NOTIFICATION_KINDS` bzw.
+  `NOTIFICATION_ENTITY_TYPES` (`src/lib/schemas/notifications.ts`) deklariert
+  sein; die letzte `notifications_kind_check`/`notifications_entity_type_check`-
+  Migration muss exakt dieselben Werte erlauben (bidirektional). Verhindert
+  „Automation läuft, INSERT scheitert am DB-CHECK, Nutzer bekommt nichts".
+  Neuen Kind eingeführt? → `NOTIFICATION_KINDS` erweitern **und** neue
+  Migration schreiben, die den CHECK dropt + neu setzt.
 
 **E2E-Setup (einmalig):**
 
