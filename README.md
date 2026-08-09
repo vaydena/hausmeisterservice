@@ -84,7 +84,23 @@ Migration + Trigger + einfacher Notification-Feed.
 
 ### 3.j Tests
 
-Vitest für Permission-Resolver + Wartungs-Fälligkeit. Playwright für Login, Auftrags-End-to-End, Mandantentrennung.
+Vitest für Unit-/Contract-Tests (schnell, ohne Server). Playwright für Login,
+Auftrags-End-to-End, Mandantentrennung.
+
+**Vitest ausführen:**
+
+```bash
+pnpm test           # einmalig
+pnpm test:watch     # Watch-Mode
+```
+
+Aktuell abgedeckt:
+
+- `tests/notification-deep-links.test.ts` — jede Notification-URL (aus
+  `notificationHref()` + statische `url:`-Overrides in Server-Actions und der
+  Automation-Engine) muss auf eine echte `page.tsx` unter `src/app/(app)/`
+  zeigen. Verhindert „404 nach Klick auf die Glocke". Neuen URL-Override in
+  Notification-Code? Auch in die `overrides`-Liste des Tests eintragen.
 
 **E2E-Setup (einmalig):**
 
