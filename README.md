@@ -473,6 +473,30 @@ Aktuell abgedeckt:
   Fall zur PR-Review-Zeit, bevor die Migration deployed wird.
   Bidirektionaler Stale-Check auf Whitelist-Einträge: sowohl Existenz
   als auch Schema-Zuordnung werden geprüft.
+- `tests/migration-destructive-statement-coverage.test.ts` — jede
+  Migration wird gegen zwei Klassen destruktiver Statements gescannt.
+  Klasse 1 (Prohibited, keine Whitelist, 13 Patterns): `truncate`,
+  `create [unique] index concurrently`, `drop index concurrently`,
+  `drop database/schema/role/user/owned`, `alter system`,
+  `set role` / `reset role`, `copy ... from program`. Diese sind
+  entweder irreversible Datenverlust-Primitives (`truncate` copy-paste
+  aus Dev-Reset-Script leert die Produktions-Tabelle bei Migration-
+  Apply lautlos), transaction-brechende DDLs (`CONCURRENTLY` erhebt
+  25001 innerhalb des transaktionalen Migration-Wrappers und lässt
+  das Schema halbmigriert zurück), Cluster-weite Config-Änderungen
+  (`alter system` persistiert cluster-weit, requires superuser) oder
+  Session-Role-Escalations (`set role` lässt alle nachfolgenden
+  Statements als anderer Role laufen). Klasse 2 (Requires-IF-EXISTS,
+  mit Whitelist, 6 Patterns): `drop table/function/trigger/policy/
+  view/type` ohne `if exists`. Grund: idempotente Re-Apply-Safety
+  bei partiell migrierten DBs (Recovery, Dev-Reseed, Staging-
+  Refresh) — die naked-Variante wirft error und bricht das File in
+  der Mitte ab. Aktuell 0 Prohibited-Hits (grüne Baseline) und
+  3 Naked-Drops auf Whitelist, alle im `notifications_perf_polish`-
+  Rewrite (bewusst grandfathered, weil das File bereits in Prod
+  applied ist und ein Rewrite Ledger-Checksum-Mismatch riskieren
+  würde). Bidirektionaler Stale-Check (missing/stale) plus per-
+  Entry-Existence-Check.
 
 **E2E-Setup (einmalig):**
 
