@@ -326,6 +326,23 @@ Aktuell abgedeckt:
   breiter fasst). Bidirektionaler Stale-Sanity-Check: jeder Allowlist-
   Eintrag muss noch existieren UND noch `for all` verwenden — sonst
   bricht der Test und forciert Re-Review.
+- `tests/env-var-client-bundle-coverage.test.ts` — jeder
+  `process.env.<NAME>`-Zugriff in `src/**` außer `NEXT_PUBLIC_*` nur
+  in Files mit Server-Only-Marker (api-route, `'use server'`,
+  `import 'server-only'`) oder auf expliziter Whitelist. Ist die
+  strukturelle Verallgemeinerung des Server-Secret-Guards (Batch 17):
+  der prüft nur 5 namentliche Secrets, dieser fängt jeden **neuen**
+  privaten env-Zugriff sofort. Failure-Mode: jemand fügt
+  `process.env.MY_NEW_API_KEY` in einer Utility-Datei ein, die
+  Utility wird versehentlich in eine Client-Komponente importiert —
+  der Env-Name landet dann im Browser-Bundle (Wert bleibt undefined,
+  weil Next.js nur `NEXT_PUBLIC_*` inlint, aber der übliche
+  „Fix" ist Umbenennung nach `NEXT_PUBLIC_MY_NEW_API_KEY`, wodurch
+  auch der Wert leakt). Whitelist enthält `src/lib/env.ts` (Schema-
+  Definition mit `serverEnv()`/`clientEnv()`-Split, darf keinen
+  server-only-Marker haben weil `clientEnv` legitim von
+  Client-Komponenten importiert wird). Sekundärer Test: kein
+  private-env-File darf `'use client'` haben.
 
 **E2E-Setup (einmalig):**
 
