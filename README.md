@@ -433,6 +433,27 @@ Aktuell abgedeckt:
   kein Tenant-Scope). Bidirektionaler Stale-Check: wird die Whitelist-
   Policy jemals tightend oder umbenannt, forciert der Test Removal
   bzw. Update des Eintrags.
+- `tests/route-handler-auth-coverage.test.ts` — jede `src/app/**/route.ts`
+  bzw. `route.tsx` muss entweder einen bekannten Auth-Marker im Source
+  enthalten oder auf einer expliziten "public"-Whitelist stehen.
+  Marker-Set: `requireTenantContext(` (App-Side-Auth-Helper),
+  `requireResidentContext(` (Portal-Side), `loadBillingDocumentData(`
+  (transitiver Auth via PDF-Loader, der intern `requireTenantContext()`
+  ruft), `.auth.signOut(` (Logout-Routen, no session needed) und
+  `AUTOMATION_CRON_SECRET` (Bearer-Token-Pattern für Cron). Parallel-
+  Guard zu `server-action-auth-coverage.test.ts` — Server-Actions und
+  Route-Handler sind die zwei parallel-existierenden HTTP-Einstiegs-
+  punkte, beide brauchen den gleichen Auth-Guard. Aktuell 12 Route-
+  Handler: 10 auth-gated, 2 auf Public-Whitelist. Whitelist-Einträge
+  mit dokumentierter Rationale: `api/push/vapid-key/route.ts` (VAPID
+  public key ist per Design kein Secret und muss vor Login abrufbar
+  sein) und `api/qr/[type]/[id]/route.ts` (QR-Scan von Papier-
+  Ausdrucken muss unauthentifiziert funktionieren; Deep-Link-URL
+  redirected dann in die auth-geschützte App). Failure-Mode fängt den
+  klassischen "Ich-habe-eine-API-Route-vergessen-zu-authen"-Bug —
+  z.B. ein `/api/some-thing/route.ts` ohne `requireTenantContext()`
+  wäre ein offener Endpoint auf jeder Deploy-URL, RLS würde nichts
+  helfen weil ohne Auth-Context kein `auth.uid()` gesetzt ist.
 
 **E2E-Setup (einmalig):**
 
