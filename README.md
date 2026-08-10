@@ -648,6 +648,35 @@ Aktuell abgedeckt:
   überlangem Table+Column-Namen (`this_is_a_very_long_table_name.
   another_very_long_reference_column_id`) würde einen truncated
   Auto-Namen erzeugen; der Guard blockt vor Migration-Apply.
+- `tests/migration-trigger-naming-coverage.test.ts` — jeder Trigger
+  MUSS `<shortTable>_<verb>` als Namensmuster folgen (z. B.
+  `tenants_set_updated_at`, `work_orders_log_change`,
+  `defect_reports_generate_code`). Warum die Konvention gilt:
+  (a) `\dS <table>` in psql listet Trigger alphabetisch — das
+  Table-Prefix hält alle Trigger einer Tabelle im Output zusammen
+  statt sie über die Trigger-Liste zu verteilen; (b) Postgres emitt
+  den Trigger-Namen in Fehler-Meldungen, Cascade-Traces und
+  `pg_stat_user_functions` — ein prefix-freier Name wie `audit`
+  in einer Log-Zeile zwingt den Reader, `information_schema.
+  triggers` querzuchecken um zu wissen zu welcher Tabelle er
+  gehört; (c) beim Rename einer Tabelle surfacen die grep-baren
+  Trigger-Namen das Drift sofort (Trigger auf Tabelle X trägt
+  noch den alten Table-Namen). Aktuelle Baseline: 49 Trigger, 48
+  folgen der Konvention, 1 grandfathered — `on_auth_user_created`
+  auf `auth.users` (Supabase-Idiom für auth-Schema-Trigger, per
+  NAME_PREFIX_EXCEPTIONS-Set exemtiert). Zusätzlich enforced:
+  Namen-Uniqueness codebase-weit (Postgres erlaubt Trigger-Namen
+  pro Tabelle zu scopen — codebase-weite Uniqueness macht
+  `git grep <trigger_name>` deterministisch und Log-Zeilen
+  unmissverständlich), Identifier-Regex `/^[a-z_][a-z0-9_]*$/`,
+  63-Zeichen-Postgres-Limit (Max aktuell 37:
+  `time_entry_corrections_set_updated_at`). Bidirektionaler
+  Stale-Check: NAME_PREFIX_EXCEPTIONS-Einträge auf umbenannte /
+  gelöschte Trigger werden als orphan geflagt. Failure-Mode:
+  eine neue Migration mit `create trigger audit after insert on
+  work_orders ...` würde den `<table>_`-Prefix verletzen und
+  gleichzeitig mit einem hypothetischen `audit` auf einer anderen
+  Tabelle kollidieren — der Guard blockt beides.
 
 **E2E-Setup (einmalig):**
 
