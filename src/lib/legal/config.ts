@@ -16,40 +16,37 @@
 export const legalConfig = {
   company: {
     /** Firmenname wie im Handelsregister (bzw. Einzelunternehmen). */
-    name: '{FIRMENNAME}',
+    name: 'Karl-Heinz Bicker',
     /** Optional: abweichender Handelsname / Marke. */
     tradeName: null as string | null,
     /** Rechtsform, z. B. "GmbH", "UG (haftungsbeschränkt)", "Einzelunternehmen". */
-    legalForm: '{RECHTSFORM}',
+    legalForm: 'Einzelunternehmen',
   },
   address: {
-    street: '{STRASSE UND HAUSNUMMER}',
-    zip: '{PLZ}',
-    city: '{ORT}',
+    street: 'Biberstraße 27',
+    zip: '85354',
+    city: 'Freising',
     country: 'Deutschland',
   },
   contact: {
-    email: '{KONTAKT_EMAIL}',
-    phone: '{TELEFONNUMMER}',
+    email: 'info@vaydena.de',
+    phone: '0151 24012554',
   },
   /**
    * Vertretungsberechtigte Person(en) — bei GmbH die Geschäftsführung,
    * bei Einzelunternehmen der Inhaber.
    */
-  representative: '{VOR- UND NACHNAME DER VERTRETUNGSBERECHTIGTEN PERSON}',
+  representative: 'Karl-Heinz Bicker',
   /**
    * Handelsregister-Angaben. Bei Einzelunternehmen ohne HR-Eintrag
    * einfach auf `null` setzen — die Sektion entfällt dann automatisch.
    */
-  commercialRegister: {
-    court: '{REGISTERGERICHT}',
-    number: '{HRB/HRA-NUMMER}',
-  } as { court: string; number: string } | null,
+  commercialRegister: null as { court: string; number: string } | null,
   /**
    * Umsatzsteuer-Identifikationsnummer nach §27a UStG. Bei
    * Kleinunternehmen ohne USt-IdNr auf `null` setzen.
    */
-  vatId: '{DE123456789}' as string | null,
+  vatId: null as string | null,
   /**
    * Verantwortlicher iSv §18 MStV (Medienstaatsvertrag) — nur nötig,
    * wenn die App journalistisch-redaktionelle Inhalte veröffentlicht
@@ -81,7 +78,7 @@ export const legalConfig = {
    * Bei B2B-Geschäften ist Gerichtsstands­vereinbarung wirksam;
    * bei B2C-Geschäften greift zwingend §12/13 EGZPO.
    */
-  jurisdiction: '{ORT DES ZUSTÄNDIGEN AMTSGERICHTS}',
+  jurisdiction: 'Freising',
   /**
    * Zeitpunkt der letzten Aktualisierung — wird auf den Seiten
    * angezeigt und muss bei inhaltlichen Änderungen aktualisiert werden.
