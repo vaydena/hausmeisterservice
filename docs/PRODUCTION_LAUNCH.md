@@ -96,7 +96,7 @@ Ohne DSN läuft die App normal weiter — Sentry ist dann komplett aus.
 6. Optional AVV mit Sentry: https://sentry.io/legal/dpa/ (relevant, da Sentry personenbezogene Daten wie IP-Adressen indirekt verarbeiten kann — auch wenn wir `sendDefaultPii: false` gesetzt haben).
 7. Prüfung nach Deploy: In der App bewusst einen Fehler auslösen (z. B. `throw new Error('sentry-smoke-test')` in einer Test-Route) → in Sentry sollte er innerhalb ~30 Sekunden erscheinen.
 
-**DSGVO-Konformität**: Server- und Client-Config setzen `sendDefaultPii: false`, sodass IP-Adressen, User-Agents und Cookies nicht mitgeschickt werden. In `src/app/(legal)/datenschutz/page.tsx` ist Sentry nicht als Prozessor aufgeführt — falls aktiviert, im Datenschutz-Text ergänzen (Rechtsgrundlage Art. 6 Abs. 1 lit. f DSGVO — berechtigtes Interesse an Systemstabilität).
+**DSGVO-Konformität**: Server- und Client-Config setzen `sendDefaultPii: false`, sodass IP-Adressen, User-Agents und Cookies nicht mitgeschickt werden. Der Sentry-Prozessor-Eintrag in `src/app/(legal)/datenschutz/page.tsx` erscheint automatisch, sobald `SENTRY_DSN` bzw. `NEXT_PUBLIC_SENTRY_DSN` gesetzt ist (Rechtsgrundlage Art. 6 Abs. 1 lit. f DSGVO — berechtigtes Interesse an Systemstabilität, USA-Übertragung via EU-Standardvertragsklauseln).
 
 ## 5. Git-Repository anlegen und mit GitHub verknüpfen
 

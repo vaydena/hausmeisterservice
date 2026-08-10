@@ -1,3 +1,5 @@
+import 'server-only';
+
 import type { Metadata } from 'next';
 import { legalConfig, formatAddress } from '@/lib/legal/config';
 
@@ -8,6 +10,7 @@ export const metadata: Metadata = {
 
 export default function DatenschutzPage() {
   const { company, contact, representative, dataProtectionOfficer, supervisoryAuthority, productName } = legalConfig;
+  const sentryEnabled = Boolean(process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN);
 
   return (
     <div className="legal-prose">
@@ -140,6 +143,23 @@ export default function DatenschutzPage() {
           </a>
           .
         </li>
+        {sentryEnabled ? (
+          <li>
+            <strong>Functional Software, Inc. (Sentry)</strong>, 45 Fremont Street, 8th Floor,
+            San Francisco, CA 94105, USA — Erfassung technischer Fehlermeldungen der Anwendung
+            (Runtime-Error-Tracking) auf Grundlage unseres berechtigten Interesses am
+            störungsfreien Betrieb der Plattform (Art. 6 Abs. 1 lit. f DSGVO). Die Übermittlung
+            in die USA erfolgt auf Basis der EU-Standardvertragsklauseln (Art. 46 Abs. 2 lit. c
+            DSGVO). Wir haben Sentry so konfiguriert, dass IP-Adressen, User-Agents und Cookies
+            der betroffenen Personen nicht mitgeschickt werden (Einstellung{' '}
+            <code>sendDefaultPii: false</code>). Mit Sentry besteht ein
+            Auftragsverarbeitungsvertrag. Datenschutzerklärung:{' '}
+            <a href="https://sentry.io/privacy/" target="_blank" rel="noreferrer">
+              https://sentry.io/privacy/
+            </a>
+            .
+          </li>
+        ) : null}
       </ul>
       <p>
         Eine Weitergabe an weitere Dritte findet nur statt, wenn wir rechtlich dazu verpflichtet
