@@ -53,6 +53,30 @@ Toggle einschalten. Aktiviert den Abgleich neuer Passwörter gegen die HaveIBeen
 
 **Prüfung**: Nach dem Umlegen erscheint die Warnung im Advisor `auth_leaked_password_protection` nicht mehr — kurz mit dem MCP-Advisor-Check verifizieren.
 
+## 3.5 Supabase Auth-Redirect-URLs für Self-Signup
+
+Der Self-Signup-Flow (siehe README-Sektion "Self-Signup neuer Mandanten")
+schickt Bestätigungs-E-Mails mit einem Link zurück auf `/auth/callback`.
+Supabase lässt diese Redirects nur zu, wenn die Ziel-Origin in den
+Allowed-URLs eingetragen ist — sonst schlägt der Verify fehl mit
+`redirect_to is not allowed`.
+
+Im Supabase-Dashboard des Projekts `hausmeister-app`:
+
+**Authentication → URL Configuration**
+
+- **Site URL**: `https://hausmeisterservice.vaydena.de`
+- **Redirect URLs** (Additional): Zeile hinzufügen mit
+  `https://hausmeisterservice.vaydena.de/auth/callback`
+
+Für lokale Entwicklung parallel zulassen:
+`http://localhost:3001/auth/callback` (Port ist der lokale Dev-Port).
+
+**Optional aber empfohlen**: Auth → Email Templates → **Confirm signup** — dort
+den deutschen Betreff/Text auf die Marke anpassen, z. B. „Ihr Konto bei
+Hausmeister App bestätigen". Der `{{ .ConfirmationURL }}`-Platzhalter im
+Template bleibt unverändert.
+
 ## 4. Sentry einrichten (Runtime-Error-Tracking)
 
 Sentry fängt unbehandelte Fehler auf Client, Server und Edge ein.

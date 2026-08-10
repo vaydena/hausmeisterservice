@@ -102,6 +102,18 @@ const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
 const INTENTIONALLY_PUBLIC_ROUTES = new Set<string>([
   'src/app/api/push/vapid-key/route.ts',
   'src/app/api/qr/[type]/[id]/route.ts',
+  // src/app/auth/callback/route.ts:
+  //   Supabase-Auth-Callback für den Self-Signup-E-Mail-Verify-Flow. Ist per
+  //   Definition ein Pre-Session-Endpoint: der Handler bekommt einen Code
+  //   aus dem Verify-Link (opaque short-lived token vom Supabase-Auth-Server)
+  //   und ruft selbst supabase.auth.exchangeCodeForSession(code) auf, um die
+  //   Session erst herzustellen. Ein vorgeschalteter requireTenantContext()
+  //   würde jeden Verify-Klick zu /login redirecten und den Signup-Flow
+  //   permanent brechen. Die Antwort ist immer eine 302-Redirect (nach
+  //   /dashboard oder /login mit generischer Fehlermeldung) — kein Body,
+  //   keine sensitiven Daten. Missbrauchsoberfläche = ein einmal-gültiger,
+  //   an eine bereits kontrollierte E-Mail-Adresse gebundener Code.
+  'src/app/auth/callback/route.ts',
 ]);
 
 function findMarkers(source: string): string[] {

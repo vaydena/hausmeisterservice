@@ -1,11 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
-const STAFF_PUBLIC_ROUTES = ['/login', '/reset-password', '/invite'];
+const STAFF_PUBLIC_ROUTES = ['/login', '/signup', '/reset-password', '/invite'];
 const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
 // Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
 // dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
 const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb'];
+// Supabase-Auth-Callbacks (E-Mail-Verify, Magic-Link, Reset). Der Handler
+// führt selbst exchangeCodeForSession aus — kein Session-Redirect davor.
+const AUTH_CALLBACK_ROUTES = ['/auth/callback'];
 // Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
 // selbst geprüft, nicht per Session-Cookie.
 const PUBLIC_API_PREFIXES = ['/api/cron/'];
@@ -36,11 +39,21 @@ function isLegalRoute(pathname: string): boolean {
   );
 }
 
+function isAuthCallback(pathname: string): boolean {
+  return AUTH_CALLBACK_ROUTES.some((route) => pathname === route);
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   // Public API-Routes (Cron, Webhooks) laufen ohne Session-Refresh.
   if (isPublicApi(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Auth-Callback muss immer durchlaufen — der Handler setzt die Session
+  // selbst über exchangeCodeForSession. Kein vorgeschalteter Auth-Check.
+  if (isAuthCallback(pathname)) {
     return NextResponse.next();
   }
 

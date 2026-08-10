@@ -1053,6 +1053,40 @@ Die Deep-URL enthält `?src=qr` — nützlich für spätere Auswertungen, wo Nut
 aus dem Feld auf die App zugreifen. Kein neuer DB-Layer nötig, keine
 Migrationen — QR wird pro Request aus der Entity-ID generiert.
 
+## Self-Signup neuer Mandanten
+
+Neue Unternehmen können sich selbst registrieren — kein manueller Seed nötig.
+
+Ablauf:
+
+1. `/signup` — Interessent trägt Firmenname, Kürzel (Slug), E-Mail, Passwort und
+   AGB-/Datenschutz-Zustimmung ein. Slug wird aus dem Firmennamen vorgeschlagen
+   (`slugify()` in `src/lib/auth/signup-schema.ts`), ist aber überschreibbar.
+2. Server-Action `signupAction` prüft Slug-Verfügbarkeit gegen `tenants.slug`
+   (Service-Role, weil RLS für Anon-User keine Existenz-Auskunft gibt) und
+   ruft `supabase.auth.signUp()` mit dem Anon-Client auf. Kontext (Firmenname,
+   Slug, Zustimmungs-Zeitpunkt) landet in `user_metadata`. Supabase schickt
+   automatisch die Bestätigungs-E-Mail mit `emailRedirectTo=/auth/callback`.
+3. `/auth/callback` (Route-Handler) tauscht den Code gegen eine Session ein
+   und ruft `provision_signup_tenant()` (SECURITY-DEFINER-RPC, Service-Role):
+   - legt `tenants`-Zeile mit Slug an (Kollisionsauflösung `-2`, `-3`, …)
+   - legt Rolle `admin` mit **allen** Permissions aus der Registry an
+   - legt Owner-`membership` (`is_owner=true`, `terms_accepted_at=…`) an
+   - weist die Admin-Rolle via `user_roles` zu
+4. Redirect nach `/dashboard`. Der Handler ist idempotent — hat der User schon
+   eine Membership (Doppel-Klick auf Verify-Link), passiert kein zweiter Insert.
+
+Sicherheit:
+
+- Owner-Consent nach DSGVO Art. 7: `memberships.terms_accepted_at` speichert
+  den Zeitpunkt der Zustimmung im DB-Feld (nicht nur im flüchtigen
+  `user_metadata`).
+- Slugs mit Reservierungen (`admin`, `api`, `portal`, `signup`, …) werden im
+  Zod-Schema blockiert.
+- Passwörter min. 10 Zeichen im App-Schema. Zusätzlich wirkt die
+  Supabase-Passwort-Policy inkl. HaveIBeenPwned-Toggle (siehe
+  `docs/PRODUCTION_LAUNCH.md` §3).
+
 ## Deployment
 
 Ziel: `https://hausmeisterservice.vaydena.de` — Subdomain unter dem bestehenden vaydena-Hostinger-Paket.

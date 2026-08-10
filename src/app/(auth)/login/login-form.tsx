@@ -57,6 +57,9 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
         >
           Passwort vergessen?
         </Link>
+        <Link href="/signup" className="text-[var(--color-primary)] hover:underline">
+          Neu registrieren
+        </Link>
       </div>
     </form>
   );

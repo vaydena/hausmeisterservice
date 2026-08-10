@@ -110,6 +110,18 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   'src/app/(app)/people/employees/actions.ts',
   'src/app/(app)/people/residents/actions.ts',
   'src/app/(app)/settings/automations/actions.ts',
+  // src/app/(auth)/signup/actions.ts:
+  //   Self-Signup läuft pre-session (siehe INTENTIONALLY_UNAUTHENTICATED in
+  //   server-action-auth-coverage.test.ts). Der einzige Service-Role-Aufruf
+  //   ist eine read-only Existenz-Prüfung auf tenants.slug — nötig, weil
+  //   die tenants-SELECT-Policy für anonyme Anrufer immer NULL zurückgibt
+  //   (kein is_tenant_member-Match) und damit den Duplicate-Check ins Leere
+  //   laufen ließe. Kein Write mit Service-Role in dieser Action; die
+  //   eigentliche Tenant-Anlage findet erst nach E-Mail-Verify im
+  //   /auth/callback-Route-Handler statt (dort transaktional via SECURITY-
+  //   DEFINER-RPC). Missbrauchsfläche = ein Slug-Existenz-Oracle, das
+  //   ohnehin über den Public-Signup-Flow einsehbar ist.
+  'src/app/(auth)/signup/actions.ts',
 ]);
 
 describe('Server-Action service-client coverage', () => {

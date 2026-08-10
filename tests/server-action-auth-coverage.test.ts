@@ -72,6 +72,14 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   'src/app/(auth)/login/actions.ts',
   'src/app/(auth)/reset-password/actions.ts',
   'src/app/(portal)/portal/login/actions.ts',
+  // src/app/(auth)/signup/actions.ts:
+  //   Self-Signup für neue Mandanten. Läuft per Definition pre-session:
+  //   der Aufrufer hat noch keinen Account und deshalb keine Membership.
+  //   Ein requireTenantContext() wäre der klassische Chicken-and-egg-Fall.
+  //   Die Action ruft supabase.auth.signUp() (Supabase erzwingt eigenes
+  //   Rate-Limit) und legt bis zur E-Mail-Bestätigung noch keinen Tenant an;
+  //   die Tenant-Anlage passiert erst im /auth/callback via Service-Role.
+  'src/app/(auth)/signup/actions.ts',
 ]);
 
 describe('Server Action auth coverage', () => {
