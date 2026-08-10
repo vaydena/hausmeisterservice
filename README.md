@@ -396,6 +396,23 @@ Aktuell abgedeckt:
   sortiert oder Tooling bricht. Aktuell 29 well-formed Files ohne
   Kollisionen — Test hat keine Whitelist, weil das Format ohne
   Ausnahme gelten soll.
+- `tests/rls-policy-schema-qualification-coverage.test.ts` — jede
+  `create policy ... on <target>` verweist auf eine Table in einem
+  erlaubten Schema: implizit (via search_path resolved zu `public`),
+  `public.` explizit oder `storage.` explizit. Alles andere ist
+  verboten — insbesondere `auth.*` (Supabase-managed, unsere Policies
+  hätten dort keine Autorität) und `pg_catalog.*` /
+  `information_schema.*` (System-Schemas, Policies dort sind meistens
+  Copy-Paste-Bugs). Zusätzlich: kein Target darf 3+ dot-separated
+  Parts haben (`db.schema.table` in einer Migration deutet auf
+  Foreign-Data-Wrapper-Copy-Paste oder Cross-DB-Reference-Bug hin —
+  die Migration läuft nur gegen die lokale DB, ein DB-Prefix ist
+  strukturell falsch). Aktuell 177 Policy-Targets über 3 Schemas
+  (`<implicit>` 28, `public.` 146, `storage.` 3), 52 distinct raw
+  Targets. Guard fängt hauptsächlich Schema-Tippfehler (`publci.foo`,
+  `storaage.objects`) und disallowed-schema-Additions, die Postgres
+  bei Migration-Zeit anstandslos akzeptieren aber später zu subtilen
+  Rechteproblemen führen.
 
 **E2E-Setup (einmalig):**
 
