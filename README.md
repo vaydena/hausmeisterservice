@@ -591,6 +591,36 @@ Aktuell abgedeckt:
   einem `<table>_check1` Auto-Namen, den ein Support-Mitarbeiter beim
   Debuggen einer User-Fehler-Meldung nicht interpretieren kann; der
   Guard blockt das an der Source und zwingt einen sprechenden Namen.
+- `tests/migration-unique-constraint-naming-coverage.test.ts` — jede
+  table-level `unique (...)`, jede `alter table … add unique (...)`
+  und jede `create unique index` MUSS explizit benannt sein. Column-
+  inline uniques (`col type unique`) bleiben out-of-scope, weil
+  Postgres sie mit `<table>_<col>_key` benennt — diagnostisch OK.
+  Bei table-level anon vergibt Postgres zwar `<table>_<col1>_<col2>
+  _key` (immerhin nicht positional wie bei CHECK), aber (a) die
+  Column-Reihenfolge im Tupel ist load-bearing für den Namen —
+  Reorder ändert die Constraint-Identität und bricht jedes daran
+  hängende Monitoring, (b) mit langen Column-Namen kann der
+  Auto-Name das Postgres-63-Zeichen-Identifier-Limit reißen und wird
+  dann TRUNKIERT (namensverwirrend, Kollisionsrisiko), (c) ein
+  Folge-Migration kann das Tupel unbemerkt umbauen und die Constraint
+  bekommt lautlos einen anderen Namen. Extractor: 3-Kategorien-Scan
+  (table-level named/anon, alter-add named/anon, create-unique-index)
+  mit paren-depth-aware Body-Extraktion. Grandfathering-Whitelist mit
+  19 Einträgen (alle vor diesem Guard geschrieben, in applied
+  Migrations — Rewrite würde Supabase-Ledger-Checksum brechen). Neue
+  Einträge dürfen NICHT auf die Whitelist wandern — der `it`-loop
+  scannt anon UND named, für alles außerhalb der Whitelist gilt
+  `expect(name).not.toBeNull()`. Bidirektionaler Stale-Check:
+  Whitelist-Einträge, die inzwischen benannt wurden oder gelöscht
+  sind, werden als orphan geflagt. Zusätzliche Sanity-Checks: jeder
+  Constraint-Name matcht `/^[a-z_][a-z0-9_]*$/` UND hält das
+  63-Zeichen-Postgres-Identifier-Limit ein. Aktuelle Baseline: 2
+  table-level named (offers/invoices, die neuesten), 19 table-level
+  anon (whitelisted), 2 named unique-indexes, 0 alter-add. Failure-
+  Mode: eine neue Migration mit `unique (foo, bar)` als anonymer
+  table-level Constraint würde einen positional-brittle Auto-Namen
+  ziehen; der Guard blockt das an der Source.
 
 **E2E-Setup (einmalig):**
 
