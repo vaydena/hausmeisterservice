@@ -454,6 +454,25 @@ Aktuell abgedeckt:
   z.B. ein `/api/some-thing/route.ts` ohne `requireTenantContext()`
   wäre ein offener Endpoint auf jeder Deploy-URL, RLS würde nichts
   helfen weil ohne Auth-Context kein `auth.uid()` gesetzt ist.
+- `tests/function-security-definer-scope-coverage.test.ts` — jede
+  `create [or replace] function` mit `security definer` muss im
+  `app_auth.*` Schema liegen (der konventionelle Namespace für
+  privileged Helpers: Trigger-Support, Code-Generatoren, Notification-
+  Enqueue etc.) oder auf einer expliziten Whitelist mit dokumentierter
+  Rationale stehen. Extraktor parst 42 Funktionen via dollar-quoted
+  Body-Terminator-Matching (kein simpler Semikolon-Split, weil ein
+  `security definer` innerhalb eines Function-Bodys sonst in die
+  nächste Funktion "spillen" würde). Aktuell 27 definer-Funktionen,
+  alle in `app_auth.*`, Whitelist ist leer. Failure-Mode: eine
+  `security definer` Funktion im `public.*` Schema ist doppelt
+  gefährlich — sie wird von PostgREST automatisch als RPC exposed und
+  ist damit für jeden authentifizierten Caller aufrufbar, UND sie
+  läuft mit den Rechten des Owner-Roles (typischerweise `postgres`,
+  bypasses jede RLS). Ohne eigenen `auth.uid()`-Filter im Body ist
+  das eine cross-tenant read/write primitive. Der Guard fängt den
+  Fall zur PR-Review-Zeit, bevor die Migration deployed wird.
+  Bidirektionaler Stale-Check auf Whitelist-Einträge: sowohl Existenz
+  als auch Schema-Zuordnung werden geprüft.
 
 **E2E-Setup (einmalig):**
 
