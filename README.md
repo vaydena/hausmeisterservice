@@ -497,6 +497,27 @@ Aktuell abgedeckt:
   applied ist und ein Rewrite Ledger-Checksum-Mismatch riskieren
   würde). Bidirektionaler Stale-Check (missing/stale) plus per-
   Entry-Existence-Check.
+- `tests/tenant-column-naming-consistency-coverage.test.ts` — jede
+  Column in einer `create table (...)`-Body, die auf
+  `public.tenants(id)` oder `tenants(id)` (implicit schema) verweist,
+  MUSS exakt `tenant_id` heißen. Zusätzlich (belt-and-suspenders):
+  jede Column, deren Name den Substring "tenant" enthält, muss
+  ebenfalls exakt `tenant_id` sein (kein `tenantid`, kein `tenant`,
+  kein `owner_tenant`, kein `resident_tenant_id`). Extraktor isoliert
+  Table-Bodies vom PL/pgSQL-Body-Kontext (Postgres-Functions
+  deklarieren regelmäßig `v_tenant_id`, `p_tenant_id` als Locals —
+  die dürfen nicht mit dem Column-Guard kollidieren). Aktuell 41
+  Tenant-FK-Columns über 33 distinct Tables, alle kanonisch benannt.
+  Guard ohne Whitelist — der Name ist load-bearing für andere Guards:
+  `rls-policy-tenant-scope-coverage` (Batch 18) grept `tenant_id = ...`
+  in Policy-Bodies, ein abweichender Column-Name würde silent nicht
+  detektiert und cross-tenant RLS könnte kaputt sein während der
+  Scope-Guard trotzdem grün wäre. Bidirektionaler Test: jede
+  tenant-namige Column ist auch tenant-FK, jede tenant-FK ist auch
+  tenant-namig — verhindert einerseits soft-typed `tenant_id uuid`
+  ohne FK (was bei Tenant-Deletion zu dangling references führt),
+  andererseits anonyme FKs auf Tenants unter unrelated Namen (was
+  Grep-basierte Audits umgeht).
 
 **E2E-Setup (einmalig):**
 
