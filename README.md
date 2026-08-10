@@ -677,6 +677,38 @@ Aktuell abgedeckt:
   work_orders ...` würde den `<table>_`-Prefix verletzen und
   gleichzeitig mit einem hypothetischen `audit` auf einer anderen
   Tabelle kollidieren — der Guard blockt beides.
+- `tests/migration-index-naming-coverage.test.ts` — jeder
+  `create [unique] index` MUSS `<shortTable>_<cols>_idx` folgen
+  (z. B. `work_orders_tenant_id_idx`, `defect_reports_status_idx`,
+  `stock_movements_material_time_idx`). Aktuelle Baseline: 174
+  Indexes (172 non-unique + 2 unique), 165 folgen der Konvention,
+  9 grandfathered — 7× `time_corr_*` für `time_entry_corrections`
+  und 2× `billing_line_*` für `billing_line_items` (dokumentierte
+  Table-spezifische Abbreviations, konsistent innerhalb der
+  Tabelle). Warum die Konvention gilt: (a) `\di+ *<table>*` in
+  psql filtert Indexes name-substring — Table-Prefix macht den
+  Filter deterministisch; ein prefix-freies `status_idx` auf
+  `keys` versteckt sich vor jeder table-scoped Inspection.
+  (b) Der `_idx`-Suffix disambiguiert von Postgres-Auto-Namen
+  für Constraints (`<table>_<col>_key` für UNIQUE, `<table>_pkey`
+  für PK, `<table>_<col>_fkey` für FK) — ein grep nach
+  explizit-getunten Indexes bleibt so trennscharf. (c) Beim
+  Drop einer Column surfaced der convention-matching Migration-
+  Diff (`<shortTable>_<removed_col>_idx`) sofort jeden betroffenen
+  Index. (d) Codebase-weite Index-Uniqueness wird trivial wahr,
+  wenn jeder Name sein Table-Prefix trägt. Zusätzliche Sanity:
+  Identifier-Regex, 63-Zeichen-Limit (Max aktuell 40:
+  `message_thread_participants_added_by_idx`, 23 Zeichen
+  Headroom). Aggregate: codebase-weite Namen-Uniqueness. Der
+  Guard scannt UNIQUE wie NON-UNIQUE — die 2 unique Indexes
+  werden separat auch von Batch 34 (`unique-constraint-naming`)
+  abgedeckt, aber die Naming-Konvention gilt für beide.
+  Bidirektionaler Stale-Check auf NAMING_EXCEPTIONS.
+  Failure-Mode: eine neue Migration mit `create index
+  status_idx on work_orders (status)` würde sowohl das
+  Prefix-Requirement verletzen (fehlt `work_orders_`) als
+  auch mit dem existierenden `keys_status_idx` in psql-Filtern
+  kollidieren — der Guard blockt beides.
 
 **E2E-Setup (einmalig):**
 
