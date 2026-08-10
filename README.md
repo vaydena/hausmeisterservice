@@ -537,6 +537,35 @@ Aktuell abgedeckt:
   Integrität — ein neuer Domain-Table ohne diese beiden Constraints
   wäre eine schleichende cross-tenant-Kompromittierung, die weder das
   Type-System noch RLS-Tests fangen.
+- `tests/migration-non-tenant-fk-on-delete-explicit-coverage.test.ts` —
+  jede Non-Tenant-FK-Column (also alles außer `references
+  [public.]tenants(id)`, das Batch 31 abdeckt) MUSS eine explizite
+  `on delete <action>` Clause tragen — eine der fünf gültigen Actions
+  `cascade`, `restrict`, `no action`, `set null`, `set default`. Der
+  Guard sagt NICHT welche — das ist eine semantische Wahl pro Column
+  — sondern nur DASS eine gewählt und deklariert sein muss. Postgres-
+  Default ist `on delete no action` (deferred restrict): stumm
+  blockierend, aber ohne dass irgendetwas in der Column-Definition
+  darauf hinweist. Reader, die aufgrund der umgebenden Tabellen
+  `cascade` erwartet hatten (weil Sibling-Tables kaskadieren) oder
+  `set null` (weil das nach einer Audit-Column aussieht), raten falsch
+  und schleppen subtile Bugs ein — Orphan-Rows die hätten kaskadieren
+  sollen, oder blockierte Löschungen die hätten nullen sollen. Der
+  Regex-Extraktor scannt jede `create table (...)` bodies, skippt
+  Constraint-Zeilen ohne `references`, filtert tenant-FKs heraus und
+  matcht `on delete (cascade|restrict|no action|set null|set default)`
+  case-insensitive im Column-Entry. Aktuell 131 non-tenant FKs
+  gescannt: 85× `set null`, 38× `cascade`, 7× `restrict`, 1× implicit
+  (grandfathered, siehe unten). Grandfathering-Whitelist mit 1 Eintrag
+  (`user_roles.created_by` in der Init-Migration), weil Rewrite bereits
+  applied Migrations die Supabase-Ledger-Checksum invalidieren würde.
+  Bidirektionaler Stale-Check: jeder Allowlist-Eintrag zeigt auf einen
+  existierenden FK UND ist immer noch ohne explizite Action — sonst ist
+  der Eintrag tot und wird als Fehler geflagt. Failure-Mode: eine neue
+  FK ohne on-delete-Clause führt zu einem tacit Postgres-Default, der
+  bei parent-Deletion überraschend blockiert; im schlimmeren Fall
+  entdeckt das Team es erst wenn ein Support-Ticket eine Kunden-
+  Löschung fordert und die Cascade nirgends aufgesetzt ist.
 
 **E2E-Setup (einmalig):**
 
