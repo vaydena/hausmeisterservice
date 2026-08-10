@@ -46,6 +46,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # --prod ignoriert reine devDependencies; --audit-level=moderate lässt
+      # LOW-Findings als Rauschen durch, blockt aber moderate/high/critical.
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=moderate
+
       - name: TypeCheck
         run: pnpm typecheck
 
