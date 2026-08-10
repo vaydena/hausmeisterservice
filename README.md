@@ -361,6 +361,21 @@ Aktuell abgedeckt:
   Bidirektionaler Stale-Sanity-Check: jeder Whitelist-Eintrag muss
   noch existieren, noch `'use server'` haben UND noch den Service-
   Client importieren/aufrufen — sonst bricht der Test.
+- `tests/rls-enable-statement-coverage.test.ts` — jede Table, auf der
+  eine Migration eine Policy erstellt, muss in *irgendeiner* Migration
+  ein `alter table <t> enable row level security` bekommen (oder auf
+  der externen-RLS-Whitelist stehen). Fängt den lautlosesten aller
+  RLS-Bugs: policies werden akzeptiert, es gibt keinen Fehler und
+  keine Warnung, aber ohne ENABLE ist die Table fail-open und jede
+  Predicate wird ignoriert. Whitelist hat 2 Einträge:
+  `storage.objects` (Supabase-Storage-owned, RLS ist per Default vom
+  System aktiviert) und `residents` (per Supabase-MCP-`apply_migration`
+  out-of-band angelegt — die Tabelle existiert nur in der Remote-
+  Migration-Historie, nicht als File; siehe analoges Whitelisting in
+  `migration-table-existence.test.ts`). Bidirektionaler Stale-Check:
+  wenn ein Whitelist-Eintrag doch ein lokales ENABLE bekommt oder
+  seine letzten Policies verliert, bricht der Test und forciert
+  Removal.
 
 **E2E-Setup (einmalig):**
 
