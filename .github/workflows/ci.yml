@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nur den jüngsten Lauf pro Branch/PR: älterer Lauf wird automatisch abgebrochen,
+# spart Runner-Zeit bei schnellen Push-Serien.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: TypeCheck + Test + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Placeholder-Env-Vars auf Job-Ebene, damit `clientEnv.parse()` beim Import
+    # nicht crasht. Werte sind bewusst nicht funktionsfähig — CI baut nur, sie
+    # macht keine echten Supabase-Requests. Echte Werte kommen bei Prod-Deploy
+    # aus dem Hostinger-Panel.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key-for-ci
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_NAME: Hausmeister App
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-service-role-key-for-ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeCheck
+        run: pnpm typecheck
+
+      - name: Unit tests (Vitest)
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm build

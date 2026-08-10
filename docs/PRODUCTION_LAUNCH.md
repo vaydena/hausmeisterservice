@@ -53,7 +53,28 @@ Toggle einschalten. Aktiviert den Abgleich neuer Passwörter gegen die HaveIBeen
 
 **Prüfung**: Nach dem Umlegen erscheint die Warnung im Advisor `auth_leaked_password_protection` nicht mehr — kurz mit dem MCP-Advisor-Check verifizieren.
 
-## 4. Git-Repository anlegen und mit GitHub verknüpfen
+## 4. Sentry einrichten (Runtime-Error-Tracking)
+
+Sentry fängt unbehandelte Fehler auf Client, Server und Edge ein.
+Ohne DSN läuft die App normal weiter — Sentry ist dann komplett aus.
+
+1. Konto auf https://sentry.io anlegen (Free-Tier: 5.000 Errors/Monat, 10k Performance-Events)
+2. Neues Projekt anlegen: **Platform „Next.js"**, Name z. B. `hausmeister-app`
+3. Nach dem Anlegen zeigt Sentry einen DSN — sieht ungefähr so aus:
+   `https://<publicKey>@o<orgId>.ingest.us.sentry.io/<projectId>`
+4. In Hostinger unter **Websites → hausmeisterservice.vaydena.de → Node.js → Environment-Variablen** setzen:
+   - `NEXT_PUBLIC_SENTRY_DSN=<DSN aus Schritt 3>`
+   - `SENTRY_DSN=<gleicher DSN>` *(Server-side)*
+5. Für **Source-Map-Upload beim Build** (optional, aber sehr empfohlen — sonst zeigt Sentry nur minifizierten Code): Sentry-Dashboard → **Settings → Account → API → Auth Tokens** → neues Token `project:releases` + `project:write` erstellen. Dann setzen:
+   - `SENTRY_ORG=<Slug der Sentry-Organisation>`
+   - `SENTRY_PROJECT=hausmeister-app`
+   - `SENTRY_AUTH_TOKEN=<Auth-Token>` *(niemals in Git!)*
+6. Optional AVV mit Sentry: https://sentry.io/legal/dpa/ (relevant, da Sentry personenbezogene Daten wie IP-Adressen indirekt verarbeiten kann — auch wenn wir `sendDefaultPii: false` gesetzt haben).
+7. Prüfung nach Deploy: In der App bewusst einen Fehler auslösen (z. B. `throw new Error('sentry-smoke-test')` in einer Test-Route) → in Sentry sollte er innerhalb ~30 Sekunden erscheinen.
+
+**DSGVO-Konformität**: Server- und Client-Config setzen `sendDefaultPii: false`, sodass IP-Adressen, User-Agents und Cookies nicht mitgeschickt werden. In `src/app/(legal)/datenschutz/page.tsx` ist Sentry nicht als Prozessor aufgeführt — falls aktiviert, im Datenschutz-Text ergänzen (Rechtsgrundlage Art. 6 Abs. 1 lit. f DSGVO — berechtigtes Interesse an Systemstabilität).
+
+## 5. Git-Repository anlegen und mit GitHub verknüpfen
 
 Aktuell hat das lokale Repo keinen Remote. Für den Hostinger-Git-Auto-Deploy braucht es einen Remote (empfohlen: privates GitHub-Repo).
 
@@ -65,16 +86,16 @@ git branch -M main
 git push -u origin main
 ```
 
-Danach in GitHub unter Settings → Secrets and variables → Actions die Deploy-Secrets hinterlegen (falls CI später ergänzt wird).
+Nach dem ersten Push läuft automatisch der CI-Workflow unter `.github/workflows/ci.yml` (TypeCheck + Vitest + Build) auf jedem Push und PR gegen `main` — kein weiteres Setup nötig.
 
-## 5. Hostinger-Deploy einrichten
+## 6. Hostinger-Deploy einrichten
 
 Ziel-Subdomain: `hausmeisterservice.vaydena.de`
 Ziel-Pfad: `/home/u424339903/domains/vaydena.de/public_html/hausmeisterservice`
 
 1. Hostinger-Panel → Domains → vaydena.de → Subdomain `hausmeisterservice` anlegen
 2. Hostinger-Panel → Websites → hausmeisterservice.vaydena.de → **Node.js aktivieren** (Version 22)
-3. Hostinger-Panel → Git → Repository verknüpfen (GitHub-Repo aus Schritt 4, Branch `main`)
+3. Hostinger-Panel → Git → Repository verknüpfen (GitHub-Repo aus Schritt 5, Branch `main`)
 4. Deploy-Skript in Hostinger einstellen:
    ```
    pnpm install --frozen-lockfile
@@ -93,11 +114,12 @@ Ziel-Pfad: `/home/u424339903/domains/vaydena.de/public_html/hausmeisterservice`
    - `RESEND_API_KEY` (falls E-Mail-Versand über Resend)
    - `AUTOMATION_CRON_SECRET`
    - `NODE_ENV=production`
+   - Aus Schritt 4 (Sentry, wenn aktiviert): `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`
 6. SSL/TLS für die Subdomain im Hostinger-Panel aktivieren (Let's Encrypt).
 7. Ersten Deploy auslösen (Push auf `main`), Logs beobachten.
 8. Smoke-Test: `https://hausmeisterservice.vaydena.de/impressum` erreichbar? Login funktioniert?
 
-## 6. Verifikations-Checks nach dem ersten Deploy
+## 7. Verifikations-Checks nach dem ersten Deploy
 
 Nach erfolgreichem Deploy im Browser prüfen:
 
@@ -112,7 +134,8 @@ Nach erfolgreichem Deploy im Browser prüfen:
   - `X-Content-Type-Options: nosniff`
 - [ ] Browser-DevTools-Konsole zeigt keine CSP-Violations
 - [ ] Alle bisherigen Features (Dashboard, Login, Formulare, PDF-Download) funktionieren mit aktivierter CSP
+- [ ] Sentry (wenn aktiviert): Testfehler wird innerhalb 30 s im Sentry-Dashboard sichtbar
 
-## 7. Impressum-Meldung (nur Info)
+## 8. Impressum-Meldung (nur Info)
 
 Nach Live-Gang keine gesonderte Anmeldung nötig. Bei Änderungen am Impressum (Umzug, neuer Geschäftsführer, neue USt-IdNr) → `src/lib/legal/config.ts` aktualisieren, `lastUpdated` hochzählen, Deploy.
