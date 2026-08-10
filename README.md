@@ -343,6 +343,24 @@ Aktuell abgedeckt:
   server-only-Marker haben weil `clientEnv` legitim von
   Client-Komponenten importiert wird). Sekundärer Test: kein
   private-env-File darf `'use client'` haben.
+- `tests/server-action-service-client-coverage.test.ts` — jede
+  Server-Actions-Datei (`'use server'` at file scope) darf
+  `createSupabaseServiceClient` (Service-Role-JWT, umgeht RLS) nur
+  importieren/aufrufen, wenn sie auf einer expliziten Whitelist steht.
+  Fängt genau den Failure-Mode ab, in dem eine an sich gewollte
+  Server-Action als Nebenprodukt Root-DB-Rechte für den Rest ihres
+  Bodies bekommt (Zeile zu viel: `const supabase =
+  createSupabaseServiceClient();` statt `await createSupabaseServerClient();`).
+  Aktuell 3 legitime Whitelist-Einträge: `employees/actions.ts` +
+  `residents/actions.ts` (beide brauchen `auth.admin.inviteUserByEmail`
+  / `listUsers`, die per Supabase-Auth-Admin-Design den Service-Key
+  verlangen) und `settings/automations/actions.ts` (DELETE auf
+  engine-eigener `automation_dispatches`, INSERT in `sent_emails` und
+  manual-trigger `runRule(service, ...)` — jeweils gated durch
+  Permission-Check plus Tenant-ID-Match vor dem Service-Client-Call).
+  Bidirektionaler Stale-Sanity-Check: jeder Whitelist-Eintrag muss
+  noch existieren, noch `'use server'` haben UND noch den Service-
+  Client importieren/aufrufen — sonst bricht der Test.
 
 **E2E-Setup (einmalig):**
 
