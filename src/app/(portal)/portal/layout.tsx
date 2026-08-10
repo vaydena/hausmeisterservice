@@ -36,12 +36,23 @@ export default async function PortalLayout({ children }: { children: ReactNode }
 
       <footer className="border-t border-[var(--color-border)] bg-[var(--color-background)] px-4 py-4 text-center text-xs text-[var(--color-muted-foreground)] md:px-6">
         {ctx?.propertyName && (
-          <>
+          <div className="mb-1">
             Sie sind angemeldet als Bewohner von {ctx.propertyName}
-            {ctx.unitCode ? `, Einheit ${ctx.unitCode}` : ''}. &middot;{' '}
-          </>
+            {ctx.unitCode ? `, Einheit ${ctx.unitCode}` : ''}.
+          </div>
         )}
-        &copy; {new Date().getFullYear()} {clientEnv.NEXT_PUBLIC_APP_NAME}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <span>© {new Date().getFullYear()} {clientEnv.NEXT_PUBLIC_APP_NAME}</span>
+          <Link href="/impressum" className="hover:text-[var(--color-foreground)] hover:underline">
+            Impressum
+          </Link>
+          <Link href="/datenschutz" className="hover:text-[var(--color-foreground)] hover:underline">
+            Datenschutz
+          </Link>
+          <Link href="/agb" className="hover:text-[var(--color-foreground)] hover:underline">
+            AGB
+          </Link>
+        </div>
       </footer>
     </div>
   );

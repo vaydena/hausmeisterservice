@@ -3,6 +3,9 @@ import { updateSession } from '@/lib/supabase/middleware';
 
 const STAFF_PUBLIC_ROUTES = ['/login', '/reset-password', '/invite'];
 const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
+// Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
+// dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
+const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb'];
 // Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
 // selbst geprüft, nicht per Session-Cookie.
 const PUBLIC_API_PREFIXES = ['/api/cron/'];
@@ -27,12 +30,26 @@ function isPortalRoute(pathname: string): boolean {
   return pathname === '/portal' || pathname.startsWith('/portal/');
 }
 
+function isLegalRoute(pathname: string): boolean {
+  return LEGAL_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   // Public API-Routes (Cron, Webhooks) laufen ohne Session-Refresh.
   if (isPublicApi(pathname)) {
     return NextResponse.next();
+  }
+
+  // Rechtspflicht-Seiten sind immer erreichbar — sowohl ohne Session
+  // (Interessenten müssen Impressum/Datenschutz vor Anmeldung lesen können)
+  // als auch mit Session (kein Auth-Redirect ins Dashboard).
+  if (isLegalRoute(pathname)) {
+    const { response } = await updateSession(request);
+    return response;
   }
 
   const { response, user } = await updateSession(request);
