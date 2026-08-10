@@ -376,6 +376,26 @@ Aktuell abgedeckt:
   wenn ein Whitelist-Eintrag doch ein lokales ENABLE bekommt oder
   seine letzten Policies verliert, bricht der Test und forciert
   Removal.
+- `tests/migration-filename-timestamp-order-coverage.test.ts` — jede
+  Datei in `supabase/migrations/` muss dem Format
+  `YYYYMMDDHHMMSS_<lower_snake_slug>.sql` folgen, einen kalendarisch
+  plausiblen Timestamp haben (Monat 01-12, Tag 01-31, Stunde 00-23
+  etc.), und der 14-stellige Prefix muss projektweit unique sein.
+  Zusätzlich: lexikographischer Filename-Sort muss auf jeder Position
+  mit dem numerischen Timestamp-Sort übereinstimmen (invariant, das
+  Supabase-CLI-Order matcht das, was ein Dev beim Betrachten des
+  Directory-Listings erwartet). Fängt drei Klassen von Bugs, die
+  bisher nur beim Deploy sichtbar wurden: (1) zwei parallel entwickelte
+  Migrations mit identischem Timestamp (Order zwischen ihnen undefined,
+  bricht auf Remote nachdem lokales `db reset` grün war); (2) einen
+  Timestamp-Tippfehler wie `20261301...` (Monat 13) oder `20260832...`
+  (Tag 32), der zwar von Postgres akzeptiert wird aber die Migration
+  in einen Bogus-Sort-Slot einordnet; (3) einen abweichenden Filename
+  wie `20260801_foo.sql` (nur 8-stelliger Prefix) oder
+  `20260801000000_MyMig.sql` (uppercase Slug), der entweder falsch
+  sortiert oder Tooling bricht. Aktuell 29 well-formed Files ohne
+  Kollisionen — Test hat keine Whitelist, weil das Format ohne
+  Ausnahme gelten soll.
 
 **E2E-Setup (einmalig):**
 
