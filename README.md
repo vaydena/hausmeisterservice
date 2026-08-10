@@ -621,6 +621,33 @@ Aktuell abgedeckt:
   Mode: eine neue Migration mit `unique (foo, bar)` als anonymer
   table-level Constraint würde einen positional-brittle Auto-Namen
   ziehen; der Guard blockt das an der Source.
+- `tests/migration-foreign-key-naming-coverage.test.ts` — Convention-
+  Lock für Foreign-Keys. Der Codebase-weite Konsens ist column-inline
+  (`col type ... references other(id)`), Postgres benennt diese als
+  `<shortTable>_<col>_fkey` — semantisch aussagekräftig. Der Guard
+  verankert das dreifach: (a) jeder der aktuell 172 column-inline
+  FKs bekommt einen `it`-Test, der prüft ob `<shortTable>_<col>_fkey`
+  ≤ 63 Zeichen bleibt — Postgres TRUNKIERT längere Namen lautlos,
+  wodurch die FK-Identität in Logs verloren geht und im Extremfall
+  zwei FKs auf denselben truncated Namen kollidieren; aktueller Max
+  ist 50 Zeichen (`time_entry_corrections_proposed_work_order_id_fkey`),
+  13 Zeichen Headroom. (b) Aggregate-Invariant: zero anonymous
+  table-level FKs (`foreign key (col) references ...`) — falls je
+  jemand eine multi-column FK hinzufügt, muss sie `constraint <n>
+  foreign key (...)` sein, sonst zieht Postgres den positional-
+  brittleren `<table>_fkey<N>` Auto-Namen der bei Reorder oder
+  Schema-Modifikation umnummeriert. (c) Aggregate-Invariant: zero
+  anonymous ALTER-TABLE-ADD FKs — hier wäre der Auto-Name sogar
+  apply-order-abhängig (staging vs. prod können divergieren). Da
+  aktuell 0 table-level und 0 alter-add existieren, laufen die
+  Baseline-Marker-Tests „nothing here yet" statt einem per-item
+  Loop; die Loops aktivieren sich automatisch sobald jemand den
+  ersten Vertreter dieser Kategorien hinzufügt. Sanity: alle
+  explizit benannten FKs matchen `/^[a-z_][a-z0-9_]*$/` UND halten
+  63 Zeichen. Failure-Mode: eine neue column-inline FK mit
+  überlangem Table+Column-Namen (`this_is_a_very_long_table_name.
+  another_very_long_reference_column_id`) würde einen truncated
+  Auto-Namen erzeugen; der Guard blockt vor Migration-Apply.
 
 **E2E-Setup (einmalig):**
 
