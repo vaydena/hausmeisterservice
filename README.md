@@ -566,6 +566,31 @@ Aktuell abgedeckt:
   bei parent-Deletion überraschend blockiert; im schlimmeren Fall
   entdeckt das Team es erst wenn ein Support-Ticket eine Kunden-
   Löschung fordert und die Cascade nirgends aufgesetzt ist.
+- `tests/migration-check-constraint-naming-coverage.test.ts` — jeder
+  `CHECK`-Constraint auf **Table-Ebene** (`check (...)` als eigener
+  Top-Level-Eintrag im `create table` body) und jeder **ALTER TABLE
+  ADD CHECK** MUSS via `constraint <snake_case_name> check (...)`
+  benannt sein. Column-inline anonyme Checks (`col text check (col in
+  (...))`) sind absichtlich out-of-scope — Postgres nennt sie
+  `<table>_<col>_check`, was in Error-Toasts noch diagnostizierbar
+  bleibt. Die zwei geschützten Kontexte sind gefährlicher: Postgres
+  vergibt bei anonymen table-level und alter-add Checks positionale
+  Namen (`<table>_check1`, `<table>_check2` …), die den Reader eines
+  Fehlermessages null Information über die verletzte Invariante geben
+  und beim Reorder von Migrationen mutieren — dieselbe Regel kann in
+  Staging und Prod unterschiedliche Auto-Namen bekommen (weil die
+  Numerierung apply-Reihenfolge-abhängig ist), was Monitoring-Regeln
+  bricht. Extractor: 3-Kategorien-Scan (table-level named, table-level
+  anon, alter-add named/anon) mit paren-depth-aware Body-Extraktion und
+  string-literal-skip. Aktuelle Baseline: 36 named table-level Checks
+  (z. B. `time_entries_end_after_start`,
+  `notifications_entity_pair_ck`, `stock_movements_signed_by_kind`) +
+  3 named alter-add + 0 anon in beiden Kategorien — grüne Baseline,
+  keine Whitelist. Failure-Mode: eine neue Migration mit
+  `check (start_at < end_at)` als eigenständigem Body-Entry führt zu
+  einem `<table>_check1` Auto-Namen, den ein Support-Mitarbeiter beim
+  Debuggen einer User-Fehler-Meldung nicht interpretieren kann; der
+  Guard blockt das an der Source und zwingt einen sprechenden Namen.
 
 **E2E-Setup (einmalig):**
 
