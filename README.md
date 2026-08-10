@@ -518,6 +518,25 @@ Aktuell abgedeckt:
   ohne FK (was bei Tenant-Deletion zu dangling references führt),
   andererseits anonyme FKs auf Tenants unter unrelated Namen (was
   Grep-basierte Audits umgeht).
+- `tests/tenant-column-integrity-coverage.test.ts` — jede Tenant-FK-
+  Column (identifiziert via `references [public.]tenants(id)`)
+  MUSS zwei Constraints tragen: (a) `not null` (oder Teil eines
+  PRIMARY KEY, was implizit NOT NULL bedeutet) und (b)
+  `on delete cascade`. Extraktor erkennt sowohl inline `primary key`
+  auf Column-Ebene als auch composite `primary key (col1, col2)` auf
+  Table-Ebene (letzteres deckt `tenant_modules(tenant_id, module_key)`
+  ab). Aktuell 41/41 Columns explizit `not null` + `on delete cascade`
+  — grüne Baseline, keine Whitelist. Failure-Modi: (1) nullable
+  `tenant_id` ist RLS-Bypass-Primitive via SQL-Three-Valued-Logic
+  (`NULL = current_tenant_id()` evaluiert zu NULL, nicht TRUE oder
+  FALSE — die Row ist damit für keinen Tenant sichtbar, existiert aber
+  und kann via service-role oder cross-tenant-Admin-Views leaken); (2)
+  fehlende Cascade blockiert Tenant-Löschung permanent (child rows
+  existieren immer sofort nach Onboarding) oder erzeugt bei `set null`
+  genau das Nullable-Problem aus (1). Load-bearing für Data-Lifecycle-
+  Integrität — ein neuer Domain-Table ohne diese beiden Constraints
+  wäre eine schleichende cross-tenant-Kompromittierung, die weder das
+  Type-System noch RLS-Tests fangen.
 
 **E2E-Setup (einmalig):**
 
