@@ -102,12 +102,28 @@ for (const { file, sql } of MIGRATIONS) {
  *    remote table. Do NOT add a `create table residents (...)` here without
  *    coordinating with the remote schema — the migration would fail on a
  *    fresh `supabase db reset`.
+ *  - `owners`, `checklist_run_items`, `checklist_runs`, `checklist_templates`,
+ *    `maintenance_plans`: gleiche Ursache wie residents — beim initialen
+ *    Domain-Bootstrap wurden diese Tabellen per Supabase MCP direkt gegen
+ *    die Remote-DB erzeugt und nicht in `supabase/migrations/` gespiegelt.
+ *    Erst als Sprint 4 (`20260810000600_perf_index_foreign_keys.sql`) FK-
+ *    Indizes darauf anlegte, wurden sie hier sichtbar. Bevor ein
+ *    `create table` gebackportet werden kann, müsste das komplette Schema
+ *    (Spalten, Constraints, RLS-Policies) aus der Prod-DB extrahiert und
+ *    versioniert werden — separates Aufräum-Ticket, kein Perf-Sprint-Scope.
  *
  * The test asserts entries are still stale-relevant: once a `create table X`
  * appears in the SQL folder, the allowlist entry becomes an error, forcing
  * removal.
  */
-const INTENTIONALLY_EXTERNAL = new Set<string>(['residents']);
+const INTENTIONALLY_EXTERNAL = new Set<string>([
+  'residents',
+  'owners',
+  'checklist_run_items',
+  'checklist_runs',
+  'checklist_templates',
+  'maintenance_plans',
+]);
 
 describe('Migration table existence coverage', () => {
   describe('sanity: extractors found something', () => {
