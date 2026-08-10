@@ -413,6 +413,26 @@ Aktuell abgedeckt:
   `storaage.objects`) und disallowed-schema-Additions, die Postgres
   bei Migration-Zeit anstandslos akzeptieren aber später zu subtilen
   Rechteproblemen führen.
+- `tests/rls-policy-non-trivial-clause-coverage.test.ts` — jede
+  `create policy` muss (a) mindestens eine explizite Clause haben
+  (USING oder WITH CHECK, kein Verlass auf Postgres-Defaults, die per
+  FOR-Op variieren) und (b) darf keine trivial-true Clause haben
+  (`USING (true)` / `WITH CHECK (true)`), außer sie steht auf einer
+  expliziten Whitelist mit dokumentierter Rationale. Fängt den
+  schwersten aller RLS-Fehler: eine Policy ist "da", sie steht im
+  Migration-File, sie greift auch — aber `USING (true)` legt keine
+  per-Row-Restriction fest, kombiniert mit dem üblichen Grant an
+  `authenticated` sieht jeder eingeloggte Caller jede Row jeder
+  Tenant-Instanz. In Supabase Studio als Admin nicht sichtbar (weil
+  Admin ohnehin alles sieht), im normalen App-Traffic auch nicht (weil
+  eigener Tenant sowieso den Erwartungswert liefert), aber ein
+  cross-tenant-Test würde alles retournieren. Aktuell 177 Policies, 0
+  ohne Clause, 1 einziger legitimer Trivial-Fall auf Whitelist:
+  `permissions_select` auf `public.permissions` (statischer
+  Permission-Katalog, global lesbar für alle authentifizierten Caller,
+  kein Tenant-Scope). Bidirektionaler Stale-Check: wird die Whitelist-
+  Policy jemals tightend oder umbenannt, forciert der Test Removal
+  bzw. Update des Eintrags.
 
 **E2E-Setup (einmalig):**
 
