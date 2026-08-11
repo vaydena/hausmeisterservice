@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { NavGroup } from './nav-config';
+import { NavIcon } from './nav-icons';
 import { cn } from '@/lib/utils/cn';
 
 export function Sidebar({ groups, appName }: { groups: NavGroup[]; appName: string }) {
@@ -27,7 +28,6 @@ export function Sidebar({ groups, appName }: { groups: NavGroup[]; appName: stri
                 const active =
                   pathname === item.href.split('?')[0] ||
                   pathname.startsWith(`${item.href.split('?')[0]}/`);
-                const Icon = item.icon;
                 return (
                   <li key={item.href}>
                     <Link
@@ -39,7 +39,7 @@ export function Sidebar({ groups, appName }: { groups: NavGroup[]; appName: stri
                           : 'text-[var(--color-foreground)] hover:bg-[var(--color-muted)]',
                       )}
                     >
-                      <Icon className="size-4" aria-hidden />
+                      <NavIcon name={item.icon} className="size-4" />
                       <span>{item.labelDe}</span>
                     </Link>
                   </li>

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { NavItem } from './nav-config';
+import { NavIcon } from './nav-icons';
 import { cn } from '@/lib/utils/cn';
 
 export function MobileNav({ items }: { items: NavItem[] }) {
@@ -19,7 +20,6 @@ export function MobileNav({ items }: { items: NavItem[] }) {
         {items.map((item) => {
           const base = item.href.split('?')[0];
           const active = pathname === base || pathname.startsWith(`${base}/`);
-          const Icon = item.icon;
           return (
             <li key={item.href}>
               <Link
@@ -31,7 +31,7 @@ export function MobileNav({ items }: { items: NavItem[] }) {
                     : 'text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]',
                 )}
               >
-                <Icon className="size-5" aria-hidden />
+                <NavIcon name={item.icon} className="size-5" />
                 <span>{item.labelDe}</span>
               </Link>
             </li>

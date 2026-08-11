@@ -1,5 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
+import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export interface TenantContext {
@@ -56,7 +57,10 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
 export async function requireTenantContext(): Promise<TenantContext> {
   const ctx = await getTenantContext();
   if (!ctx) {
-    throw new Error('NOT_AUTHENTICATED');
+    // Kein throw — sonst 500 statt sauberer Redirect. Ein Bewohner ohne
+    // Staff-Membership landet über das App-Layout ohnehin im Portal;
+    // wer gar nicht eingeloggt ist, wird hier zur Login-Seite geschickt.
+    redirect('/login');
   }
   return ctx;
 }
