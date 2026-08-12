@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { ensureTenantForUser } from '@/lib/auth/ensure-tenant';
 
 const loginSchema = z.object({
   email: z.string().email('Bitte geben Sie eine gültige E-Mail-Adresse ein.'),
@@ -30,12 +31,16 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   });
 
   if (error || !signInData.user) {
-    // Freundliche, generische Meldung (keine Auskunft ob E-Mail existiert).
     return { error: 'Anmeldung fehlgeschlagen. Bitte prüfen Sie E-Mail und Passwort.' };
   }
 
-  // Post-Login-Router: Staff → next (default /dashboard), reiner Resident → /portal/dashboard
-  const { data: membership } = await supabase
+  // Post-Login-Router:
+  //   Staff-Membership vorhanden → next (default /dashboard)
+  //   sonst Resident → /portal/dashboard
+  //   sonst kein Zugriff → /no-access (bricht den Redirect-Loop
+  //   zwischen /dashboard und /login, wenn der User zwar authentifiziert
+  //   ist, aber weder Mitarbeiter- noch Portal-Rechte hat)
+  let { data: membership } = await supabase
     .from('memberships')
     .select('id')
     .eq('user_id', signInData.user.id)
@@ -43,16 +48,37 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
     .limit(1)
     .maybeSingle();
 
+  // Fallback für Self-Signup, dessen /auth/callback nicht durchgelaufen ist
+  // (z. B. weil die Confirm-URL nicht an /auth/callback zurückführt oder
+  // das RPC beim ersten Aufruf einen transienten Fehler hatte). Der Helper
+  // ist idempotent: hat die Membership zwischenzeitlich existiert, macht
+  // er nichts.
   if (!membership) {
-    const { data: resident } = await supabase
-      .from('residents')
-      .select('id')
-      .eq('user_id', signInData.user.id)
-      .is('deleted_at', null)
-      .limit(1)
-      .maybeSingle();
-    if (resident) redirect('/portal/dashboard');
+    const provisioned = await ensureTenantForUser(signInData.user);
+    if (provisioned === 'provisioned' || provisioned === 'existing') {
+      const { data: fresh } = await supabase
+        .from('memberships')
+        .select('id')
+        .eq('user_id', signInData.user.id)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+      membership = fresh;
+    }
   }
 
-  redirect(parsed.data.next);
+  if (membership) {
+    redirect(parsed.data.next);
+  }
+
+  const { data: resident } = await supabase
+    .from('residents')
+    .select('id')
+    .eq('user_id', signInData.user.id)
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle();
+  if (resident) redirect('/portal/dashboard');
+
+  redirect('/no-access');
 }
