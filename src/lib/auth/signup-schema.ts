@@ -89,6 +89,8 @@ export const signupSchema = z
     privacyAccepted: z.literal('on', {
       errorMap: () => ({ message: 'Bitte Datenschutzerklärung zustimmen, um fortzufahren.' }),
     }),
+    planCode: z.enum(['starter', 'business', 'enterprise']).default('starter'),
+    planInterval: z.enum(['monthly', 'yearly']).default('monthly'),
   })
   .refine((v) => v.password === v.passwordConfirm, {
     path: ['passwordConfirm'],

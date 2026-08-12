@@ -28,6 +28,7 @@ import {
   Settings,
   Zap,
   ShieldCheck,
+  CreditCard,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -59,6 +60,7 @@ export const NAV_ICONS = {
   settings: Settings,
   zap: Zap,
   'shield-check': ShieldCheck,
+  'credit-card': CreditCard,
 } as const satisfies Record<string, LucideIcon>;
 
 export type NavIconKey = keyof typeof NAV_ICONS;

@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { SignupForm } from './signup-form';
 
@@ -15,7 +16,9 @@ export default function SignupPage() {
           Bestätigung Ihrer E-Mail-Adresse können Sie sofort loslegen.
         </p>
       </div>
-      <SignupForm />
+      <Suspense fallback={<div className="text-sm text-[var(--color-muted-foreground)]">Lädt …</div>}>
+        <SignupForm />
+      </Suspense>
     </div>
   );
 }

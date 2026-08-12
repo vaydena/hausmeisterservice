@@ -2,8 +2,18 @@
 
 import { useActionState, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { signupAction, type SignupState } from './actions';
 import { slugify } from '@/lib/auth/signup-schema';
+
+type PlanCode = 'starter' | 'business' | 'enterprise';
+type PlanInterval = 'monthly' | 'yearly';
+
+const PLANS: Array<{ code: PlanCode; name: string; monthly: number; yearly: number; hint: string }> = [
+  { code: 'starter',    name: 'Starter',    monthly: 49,  yearly: 490,  hint: 'bis 5 Mitarbeiter · 20 Objekte' },
+  { code: 'business',   name: 'Business',   monthly: 149, yearly: 1490, hint: 'bis 25 MA · GPS · Portale · Fuhrpark' },
+  { code: 'enterprise', name: 'Enterprise', monthly: 349, yearly: 3490, hint: 'unlimitiert · Automatisierungen · API' },
+];
 
 const INITIAL: SignupState = {};
 
@@ -20,10 +30,22 @@ function FieldError({ msg }: { msg?: string }) {
 }
 
 export function SignupForm() {
+  const searchParams = useSearchParams();
+  const initialPlan =
+    ((searchParams.get('plan') as PlanCode) ?? 'starter');
+  const initialInterval =
+    ((searchParams.get('interval') as PlanInterval) ?? 'monthly');
+
   const [state, formAction, pending] = useActionState(signupAction, INITIAL);
   const [companyName, setCompanyName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
+  const [planCode, setPlanCode] = useState<PlanCode>(
+    PLANS.some((p) => p.code === initialPlan) ? initialPlan : 'starter',
+  );
+  const [planInterval, setPlanInterval] = useState<PlanInterval>(
+    initialInterval === 'yearly' ? 'yearly' : 'monthly',
+  );
 
   // Solange der User das Slug-Feld nicht selbst editiert hat, wird es aus dem
   // Firmennamen generiert. Sobald er es anfässt, respektieren wir seine Eingabe.
@@ -56,6 +78,57 @@ export function SignupForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      <input type="hidden" name="planCode" value={planCode} />
+      <input type="hidden" name="planInterval" value={planInterval} />
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium">Plan wählen</legend>
+        <div className="grid gap-2 md:grid-cols-3">
+          {PLANS.map((plan) => {
+            const active = plan.code === planCode;
+            const price = planInterval === 'yearly' ? plan.yearly : plan.monthly;
+            const suffix = planInterval === 'yearly' ? '/Jahr' : '/Monat';
+            return (
+              <button
+                key={plan.code}
+                type="button"
+                onClick={() => setPlanCode(plan.code)}
+                className={`rounded-lg border p-3 text-left text-sm transition ${
+                  active
+                    ? 'border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]'
+                    : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/40'
+                }`}
+              >
+                <div className="font-medium">{plan.name}</div>
+                <div className="mt-1 text-lg font-semibold">
+                  {price} €<span className="text-xs font-normal text-[var(--color-muted-foreground)]">{suffix}</span>
+                </div>
+                <div className="text-xs text-[var(--color-muted-foreground)]">{plan.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-3 text-xs text-[var(--color-muted-foreground)]">
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={planInterval === 'monthly'}
+              onChange={() => setPlanInterval('monthly')}
+            />
+            monatlich
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={planInterval === 'yearly'}
+              onChange={() => setPlanInterval('yearly')}
+            />
+            jährlich (2 Monate gespart)
+          </label>
+          <span className="ml-auto">14 Tage kostenlos testen — keine Vorab-Zahlung</span>
+        </div>
+      </fieldset>
+
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">Firmenname</span>
         <input

@@ -29,6 +29,8 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
     passwordConfirm: formData.get('passwordConfirm'),
     termsAccepted: formData.get('termsAccepted'),
     privacyAccepted: formData.get('privacyAccepted'),
+    planCode: formData.get('planCode') ?? 'starter',
+    planInterval: formData.get('planInterval') ?? 'monthly',
   });
 
   if (!parsed.success) {
@@ -42,7 +44,7 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
     return { fieldErrors };
   }
 
-  const { companyName, slug, email, password } = parsed.data;
+  const { companyName, slug, email, password, planCode, planInterval } = parsed.data;
 
   // Slug-Verfügbarkeit prüfen — braucht Service-Role, weil RLS für Anon-User
   // sowohl bei existierendem als auch bei fehlendem Datensatz `null` liefert
@@ -76,6 +78,8 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
         signup_company_name: companyName,
         signup_slug: slug,
         signup_terms_accepted_at: new Date().toISOString(),
+        signup_plan_code: planCode,
+        signup_plan_interval: planInterval,
       },
     },
   });

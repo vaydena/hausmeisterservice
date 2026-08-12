@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
-const STAFF_PUBLIC_ROUTES = ['/login', '/signup', '/reset-password', '/invite'];
+const STAFF_PUBLIC_ROUTES = ['/login', '/signup', '/reset-password', '/invite', '/preise'];
 const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
 // Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
 // dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
@@ -96,6 +96,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Expose the current pathname to Server Components (subscription guard reads it
+  // to whitelist /settings/subscription while the rest of the app is blocked).
+  response.headers.set('x-pathname', pathname);
   return response;
 }
 

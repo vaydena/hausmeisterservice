@@ -85,6 +85,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     labelDe: 'Einstellungen',
     items: [
+      { href: '/settings/subscription', labelDe: 'Abo & Rechnungen', icon: 'credit-card', module: null, permission: null },
       { href: '/settings/tenant', labelDe: 'Mandant', icon: 'settings', module: 'core.tenants', permission: 'core.tenants.view' },
       { href: '/settings/users', labelDe: 'Benutzer & Rollen', icon: 'users', module: 'core.users_roles', permission: 'core.users_roles.view' },
       { href: '/settings/automations', labelDe: 'Automatisierungen', icon: 'zap', module: 'automations', permission: 'automations.view' },

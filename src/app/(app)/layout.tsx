@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getTenantContext } from '@/lib/tenant/current';
 import { getResidentContext } from '@/lib/portal/current';
 import { getEnabledModules } from '@/lib/modules/enabled';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { evaluateSubscriptionAccess, isPathAllowedWhenBlocked } from '@/lib/tenant/subscription-guard';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { MobileNav } from '@/components/layout/mobile-nav';
@@ -21,6 +23,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     // bricht den Loop.
     const resident = await getResidentContext();
     redirect(resident ? '/portal/dashboard' : '/no-access');
+  }
+
+  // Subscription-Gate: geblockte Tenants dürfen nur /settings/subscription + Legal
+  // erreichen, damit der Inhaber selbst freischalten kann.
+  const pathname = (await headers()).get('x-pathname') ?? '';
+  const access = await evaluateSubscriptionAccess(ctx.tenantId);
+  if (access.access === 'blocked' && !isPathAllowedWhenBlocked(pathname)) {
+    redirect('/zahlung-erforderlich');
   }
 
   const [enabledModules, permissions] = await Promise.all([

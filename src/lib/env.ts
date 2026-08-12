@@ -18,6 +18,9 @@ const serverSchema = z.object({
   EMAIL_FROM_NAME: z.string().optional(),
   EMAIL_REPLY_TO: z.string().email().optional(),
   AUTOMATION_CRON_SECRET: z.string().min(16).optional(),
+  PAYMENT_BANK_HOLDER: z.string().optional(),
+  PAYMENT_BANK_IBAN: z.string().optional(),
+  PAYMENT_BANK_BIC: z.string().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -43,6 +46,9 @@ export function serverEnv() {
     EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME,
     EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
     AUTOMATION_CRON_SECRET: process.env.AUTOMATION_CRON_SECRET,
+    PAYMENT_BANK_HOLDER: process.env.PAYMENT_BANK_HOLDER,
+    PAYMENT_BANK_IBAN: process.env.PAYMENT_BANK_IBAN,
+    PAYMENT_BANK_BIC: process.env.PAYMENT_BANK_BIC,
     NODE_ENV: process.env.NODE_ENV,
   });
 }
