@@ -58,9 +58,13 @@ export async function requireTenantContext(): Promise<TenantContext> {
   const ctx = await getTenantContext();
   if (!ctx) {
     // Kein throw — sonst 500 statt sauberer Redirect. Ein Bewohner ohne
-    // Staff-Membership landet über das App-Layout ohnehin im Portal;
-    // wer gar nicht eingeloggt ist, wird hier zur Login-Seite geschickt.
-    redirect('/login');
+    // Staff-Membership landet über das App-Layout ohnehin im Portal.
+    // Ein eingeloggter User ohne jede Rolle darf NICHT nach /login, weil
+    // der Proxy ihn dort sofort wieder auf /dashboard schickt
+    // (ERR_TOO_MANY_REDIRECTS). Wer gar nicht eingeloggt ist, wird vom
+    // Proxy schon vorher abgefangen; /no-access rendert dann trotzdem
+    // sauber (die Seite prüft die Session erneut).
+    redirect('/no-access');
   }
   return ctx;
 }

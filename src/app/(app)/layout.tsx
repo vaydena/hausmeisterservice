@@ -15,8 +15,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getTenantContext();
   if (!ctx) {
     // Ein Bewohner ohne Staff-Membership landet hier — weiter ins Portal.
+    // Ein User ganz ohne Zugriff (keine Membership + kein Resident) darf
+    // NICHT zu /login: der Proxy schickt eingeloggte Sessions von /login
+    // sofort wieder auf /dashboard → ERR_TOO_MANY_REDIRECTS. /no-access
+    // bricht den Loop.
     const resident = await getResidentContext();
-    redirect(resident ? '/portal/dashboard' : '/login');
+    redirect(resident ? '/portal/dashboard' : '/no-access');
   }
 
   const [enabledModules, permissions] = await Promise.all([
