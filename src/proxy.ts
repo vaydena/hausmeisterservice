@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
-const STAFF_PUBLIC_ROUTES = ['/login', '/signup', '/reset-password', '/invite', '/preise'];
+const STAFF_PUBLIC_ROUTES = ['/', '/login', '/signup', '/reset-password', '/invite', '/preise'];
 const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
 // Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
 // dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
