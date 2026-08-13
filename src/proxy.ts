@@ -8,7 +8,12 @@ const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
 const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb', '/avv'];
 // Supabase-Auth-Callbacks (E-Mail-Verify, Magic-Link, Reset). Der Handler
 // führt selbst exchangeCodeForSession aus — kein Session-Redirect davor.
-const AUTH_CALLBACK_ROUTES = ['/auth/callback'];
+const AUTH_CALLBACK_ROUTES = ['/auth/callback', '/reset-password/confirm'];
+// Password-Recovery-Flow: nach erfolgreichem Code-Exchange in
+// /reset-password/confirm hat der User eine gueltige Recovery-Session.
+// Ohne Ausnahme wuerde der "eingeloggt → dashboard"-Redirect unten
+// den Recovery-Flow abwuergen, bevor er sein neues Passwort setzen kann.
+const PASSWORD_RECOVERY_ROUTES = ['/reset-password/new'];
 // Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
 // selbst geprüft, nicht per Session-Cookie. Health-Endpoint ist bewusst
 // unauthenticated: Uptime-Monitore rufen es ohne Credentials auf.
@@ -42,6 +47,10 @@ function isLegalRoute(pathname: string): boolean {
 
 function isAuthCallback(pathname: string): boolean {
   return AUTH_CALLBACK_ROUTES.some((route) => pathname === route);
+}
+
+function isPasswordRecovery(pathname: string): boolean {
+  return PASSWORD_RECOVERY_ROUTES.some((route) => pathname === route);
 }
 
 export async function proxy(request: NextRequest) {
@@ -90,6 +99,10 @@ export async function proxy(request: NextRequest) {
 
   // Authenticated user hitting a public login/reset route → send to their app
   if (isStaffPublic(pathname) || isPortalPublic(pathname)) {
+    // Ausnahme: /reset-password/new muss auch mit aktiver Recovery-
+    // Session erreichbar bleiben, sonst wuerfe der Redirect den User
+    // aus dem Reset-Flow und er koennte sein Passwort nicht setzen.
+    if (isPasswordRecovery(pathname)) return response;
     // Let dashboards decide via Server Component redirect based on ctx (Staff→/dashboard, Resident→/portal/dashboard)
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';

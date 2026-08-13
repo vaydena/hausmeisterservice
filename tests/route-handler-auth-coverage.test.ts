@@ -115,6 +115,18 @@ const INTENTIONALLY_PUBLIC_ROUTES = new Set<string>([
   //   keine sensitiven Daten. Missbrauchsoberfläche = ein einmal-gültiger,
   //   an eine bereits kontrollierte E-Mail-Adresse gebundener Code.
   'src/app/auth/callback/route.ts',
+  // src/app/(auth)/reset-password/confirm/route.ts:
+  //   Callback-Endpoint fuer Supabase-Reset-Password-E-Mail-Links.
+  //   Muss per Definition Pre-Session sein: der User hat sein Passwort
+  //   verloren und kann sich nicht einloggen — ein vorgeschaltetes
+  //   requireTenantContext() wuerde ihn zu /login redirecten und den
+  //   gesamten Reset-Flow permanent brechen. Der Handler tauscht den
+  //   opaque PKCE-Code aus dem Verify-Link gegen eine Recovery-Session
+  //   (Supabase exchangeCodeForSession) und redirected dann auf
+  //   /reset-password/new; er liest oder schreibt keinerlei
+  //   User-Daten. Missbrauchsoberflaeche = ein einmal-gueltiger, an
+  //   die bereits kontrollierte E-Mail-Adresse gebundener Code.
+  'src/app/(auth)/reset-password/confirm/route.ts',
   // src/app/api/health/route.ts:
   //   Health-Check-Endpoint fuer Uptime-Monitoring (UptimeRobot, StatusCake).
   //   Antwort ist ein statisches {status:'ok', timestamp, service} — kein

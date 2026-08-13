@@ -86,6 +86,19 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   //   Rate-Limit) und legt bis zur E-Mail-Bestätigung noch keinen Tenant an;
   //   die Tenant-Anlage passiert erst im /auth/callback via Service-Role.
   'src/app/(auth)/signup/actions.ts',
+  // src/app/(auth)/reset-password/new/actions.ts:
+  //   Passwort-Update nach Klick auf Reset-Link. Laeuft in einer Recovery-
+  //   Session, die vom /reset-password/confirm-Callback via
+  //   exchangeCodeForSession angelegt wurde — der User hat noch keinen
+  //   Tenant-Context im ueblichen Sinn, deshalb waere requireTenantContext()
+  //   hier falsch (wuerde bei residents ohne Tenant-Membership fehlschlagen,
+  //   obwohl der Reset legitim ist). Die Action ist nicht ungeschuetzt: der
+  //   updateUser()-Call verlangt eine gueltige Recovery-Session — ohne die
+  //   antwortet Supabase mit "Auth session missing" und die Action gibt
+  //   einen freundlichen Fehler zurueck. Nach erfolgreichem Update ruft die
+  //   Action signOut() und redirected auf /login, damit sich der User
+  //   bewusst mit dem neuen Passwort neu anmeldet.
+  'src/app/(auth)/reset-password/new/actions.ts',
 ]);
 
 describe('Server Action auth coverage', () => {

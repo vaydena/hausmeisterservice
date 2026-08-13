@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Anmelden',
 };
 
-type LoginSearchParams = { next?: string; error?: string };
+type LoginSearchParams = { next?: string; error?: string; info?: string };
 
 export default function LoginPage({
   searchParams,
@@ -25,6 +25,14 @@ async function LoginContent({ searchParams }: { searchParams: Promise<LoginSearc
           Melden Sie sich mit Ihrer E-Mail-Adresse an.
         </p>
       </div>
+      {params.info && (
+        <p
+          role="status"
+          className="rounded-md border border-[var(--color-success)]/40 bg-[var(--color-success)]/5 p-3 text-sm text-[var(--color-success)]"
+        >
+          {params.info}
+        </p>
+      )}
       {params.error && (
         <p
           role="alert"
