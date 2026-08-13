@@ -1,9 +1,11 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
+import { changeDisplayNameSchema } from '@/lib/auth/change-display-name-schema';
 
 export type AccountActionState = { error?: string; success?: string };
 
@@ -66,6 +68,40 @@ export async function changePasswordAction(
   }
 
   return { success: 'Passwort erfolgreich geaendert.' };
+}
+
+export async function changeDisplayNameAction(
+  _prev: AccountActionState,
+  formData: FormData,
+): Promise<AccountActionState> {
+  const ctx = await requireTenantContext();
+
+  const parsed = changeDisplayNameSchema.safeParse({
+    displayName: formData.get('displayName'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  if (parsed.data.displayName === ctx.displayName) {
+    return { success: 'Anzeigename ist bereits aktuell.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('users')
+    .update({ display_name: parsed.data.displayName })
+    .eq('id', ctx.userId);
+  if (error) {
+    return { error: 'Anzeigename konnte nicht gespeichert werden. Bitte spaeter erneut.' };
+  }
+
+  // TenantContext ist per Request gecacht — Layout/Header + Konto-Seite ziehen
+  // den neuen Namen erst nach einer Revalidierung. '/' revalidiert alle
+  // gecachten Server-Routen; billiger als jede einzelne Seite aufzuzaehlen.
+  revalidatePath('/', 'layout');
+
+  return { success: 'Anzeigename aktualisiert.' };
 }
 
 export async function signOutOtherSessionsAction(
