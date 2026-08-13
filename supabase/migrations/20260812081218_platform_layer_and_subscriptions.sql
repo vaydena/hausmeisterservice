@@ -61,7 +61,7 @@ comment on column platform.subscription_plans.features is
 comment on column platform.subscription_plans.max_employees is 'NULL = unlimitiert';
 comment on column platform.subscription_plans.max_properties is 'NULL = unlimitiert';
 
-create trigger set_updated_at
+create trigger subscription_plans_set_updated_at
   before update on platform.subscription_plans
   for each row execute function app_auth.set_updated_at();
 
@@ -109,7 +109,7 @@ grant execute on function platform.generate_invoice_number() to service_role;
 create table platform.invoices (
   id                uuid primary key default gen_random_uuid(),
   invoice_number    text not null unique default platform.generate_invoice_number(),
-  tenant_id         uuid not null references public.tenants(id) on delete restrict,
+  tenant_id         uuid not null references public.tenants(id) on delete cascade,
   plan_id           uuid not null references platform.subscription_plans(id) on delete restrict,
   plan_interval     platform.plan_interval not null,
   period_start      timestamptz not null,
@@ -137,7 +137,7 @@ create index platform_invoices_tenant_idx on platform.invoices (tenant_id);
 create index platform_invoices_status_idx on platform.invoices (status);
 create index platform_invoices_open_idx   on platform.invoices (paid_at) where paid_at is null;
 
-create trigger set_updated_at
+create trigger platform_invoices_set_updated_at
   before update on platform.invoices
   for each row execute function app_auth.set_updated_at();
 

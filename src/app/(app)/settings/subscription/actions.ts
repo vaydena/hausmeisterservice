@@ -17,16 +17,17 @@ const selectPlanSchema = z.object({
 export async function selectPlanAction(formData: FormData) {
   const ctx = await requireTenantContext();
   if (!ctx.isOwner) throw new Error('Nur der Inhaber kann das Abo verwalten.');
-  const parsed = selectPlanSchema.parse({
+  const parsed = selectPlanSchema.safeParse({
     planId: formData.get('planId'),
     interval: formData.get('interval'),
   });
+  if (!parsed.success) throw new Error('Ungültige Auswahl.');
   const service = createSupabaseServiceClient();
   const { error } = await service
     .from('tenants')
     .update({
-      subscription_plan_id: parsed.planId,
-      subscription_interval: parsed.interval,
+      subscription_plan_id: parsed.data.planId,
+      subscription_interval: parsed.data.interval,
     })
     .eq('id', ctx.tenantId);
   if (error) throw error;
@@ -40,11 +41,12 @@ const switchMethodSchema = z.object({
 export async function switchPaymentMethodAction(formData: FormData) {
   const ctx = await requireTenantContext();
   if (!ctx.isOwner) throw new Error('Nur der Inhaber kann die Zahlungsart ändern.');
-  const parsed = switchMethodSchema.parse({ method: formData.get('method') });
+  const parsed = switchMethodSchema.safeParse({ method: formData.get('method') });
+  if (!parsed.success) throw new Error('Ungültige Zahlungsart.');
   const service = createSupabaseServiceClient();
   const { error } = await service
     .from('tenants')
-    .update({ payment_method: parsed.method })
+    .update({ payment_method: parsed.data.method })
     .eq('id', ctx.tenantId);
   if (error) throw error;
   revalidatePath('/settings/subscription');

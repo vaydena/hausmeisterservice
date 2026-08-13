@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -6,21 +7,23 @@ export const dynamic = 'force-dynamic';
 
 // DSGVO Art. 15 Auskunftsrecht — sammelt alle personenbezogenen Daten des
 // angemeldeten Users aus allen relevanten Tabellen und liefert sie als JSON.
-// RLS im Server-Client garantiert, dass nur Daten mitkommen, die der User
-// laut Policy sehen darf; wir filtern zusaetzlich explizit nach user_id /
-// created_by / etc., damit der Export den User selbst umkreist und nicht
-// den kompletten Tenant-Scope zieht.
+// requireTenantContext gated auf einen authentifizierten User mit aktiver
+// Mitgliedschaft; RLS im Server-Client garantiert, dass nur Daten mitkommen,
+// die der User laut Policy sehen darf; wir filtern zusaetzlich explizit nach
+// user_id / created_by / etc., damit der Export den User selbst umkreist und
+// nicht den kompletten Tenant-Scope zieht.
 export async function GET() {
+  const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
+  const uid = ctx.userId;
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
+  // Nach requireTenantContext ist user zwangslaeufig gesetzt — Narrowing
+  // fuer die auth_user-Felder unten.
   if (!user) {
     return new NextResponse('Nicht angemeldet.', { status: 401 });
   }
-
-  const uid = user.id;
 
   const [
     profile,

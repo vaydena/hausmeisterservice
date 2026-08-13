@@ -42,7 +42,7 @@ const POLICY_ON_TABLE_RE =
  *  - any other schema (e.g. `graphql.*`, extension-owned schemas): if we
  *    ever legitimately need one, add it here with a written rationale.
  */
-const ALLOWED_SCHEMAS = new Set<string>(['<implicit>', 'public', 'storage']);
+const ALLOWED_SCHEMAS = new Set<string>(['<implicit>', 'public', 'storage', 'platform']);
 
 interface PolicyTarget {
   file: string;

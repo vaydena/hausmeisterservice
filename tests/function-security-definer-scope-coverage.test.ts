@@ -108,7 +108,31 @@ const ALLOWED_DEFINER_SCHEMAS = new Set<string>(['app_auth']);
  * `auth.uid()` or a similar caller-derived predicate, it is a
  * cross-tenant data exposure primitive.
  */
-const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([]);
+const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([
+  // public.provision_signup_tenant:
+  //   PostgREST-callable RPC-Wrapper zum Selfsignup. Muss im Schema `public`
+  //   liegen, damit PostgREST ihn ueber die service_role finden kann;
+  //   `app_auth` ist fuer service_role nicht per USAGE freigegeben, dorthin
+  //   verschieben wuerde den Callback-Flow permanent brechen (siehe Sprint
+  //   9, Migration 20260812063727 fuer den Root-Cause). Der Body ist ein
+  //   reiner Delegations-Aufruf mit typisierten Parametern an die
+  //   app_auth.provision_signup_tenant-Kernfunktion; keine SQL-Interpolation,
+  //   kein Zugriff auf caller-abhaengige Werte. Ausfuehrungsrechte wurden
+  //   explizit von public/anon/authenticated zurueckgezogen — nur service_role
+  //   darf den Wrapper ueberhaupt aufrufen. Damit ist der Wrapper kein
+  //   Cross-Tenant-Read-Primitive: der Aufrufer muss ohnehin service_role
+  //   sein, um ihn zu erreichen.
+  'public.provision_signup_tenant',
+  // platform.generate_invoice_number:
+  //   Interner Trigger-Helper (DEFAULT-Wert fuer platform.invoices.invoice_number).
+  //   Wird nur beim INSERT durch service_role-Aufrufe ausgeloest und ruft nur
+  //   nextval('platform.invoice_number_seq') plus String-Formatting auf. Kein
+  //   Argument, kein caller-abhaengiger Zweig, kein Zugriff auf Tenant-Daten.
+  //   Muss in `platform.*` bleiben, damit die Default-Expression zur
+  //   Tabellen-Erzeugungs-Zeit resolvbar ist; execute-Right ist ausschliesslich
+  //   an service_role gegrantet.
+  'platform.generate_invoice_number',
+]);
 
 describe('Function security-definer scope coverage', () => {
   describe('sanity: extractor found something', () => {

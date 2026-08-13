@@ -83,6 +83,18 @@ const NAME_PREFIX_EXCEPTIONS = new Set<string>([
   // in the auth schema which is outside our normal `public.*`
   // convention, so we grandfather it explicitly.
   '20260801000000_init.sql::on_auth_user_created',
+  // `platform.invoices` shares its short name with `public.invoices`
+  // (public.invoices = agency-to-customer, platform.invoices =
+  // operator-to-tenant). The bare `<shortTable>_<verb>` convention
+  // would produce `invoices_set_updated_at` on BOTH tables and
+  // collide the codebase-wide uniqueness check below. The trigger
+  // therefore carries the `platform_invoices_*` prefix (same
+  // rationale as the platform_invoices_* indexes grandfathered in
+  // migration-index-naming-coverage). Fixup-migration
+  // `20260813140000_platform_trigger_rename.sql` renames the same
+  // trigger on already-deployed DBs via ALTER TRIGGER (not CREATE),
+  // so it is invisible to this scanner and needs no separate entry.
+  '20260812081218_platform_layer_and_subscriptions.sql::platform_invoices_set_updated_at',
 ]);
 
 describe('Migration trigger naming coverage', () => {

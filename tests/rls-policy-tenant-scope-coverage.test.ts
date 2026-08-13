@@ -25,6 +25,11 @@ const POLICY_RE = /create\s+policy\s+["']?([^"'\s]+)["']?\s+on\s+([a-zA-Z_.]+)([
  *  - app_auth.has_permission(...): permission gate (implicitly tenant-scoped).
  *  - app_auth.is_resident_of_tenant / is_resident_of_tenant: portal-side
  *    resident membership check.
+ *  - app_auth.is_platform_admin(): caller has a row in platform.admins;
+ *    strictly narrower than "any authenticated" and cannot be obtained via
+ *    the self-signup flow, so a policy gated on it is not tenant-scoped in
+ *    the usual sense but is auth-scoped to a small, hand-maintained set of
+ *    operator accounts — which is the point (cross-tenant admin tooling).
  *  - auth.uid(): the caller's user id — used as an ownership fallback when
  *    the row is user-scoped rather than tenant-scoped (e.g. push_subscriptions).
  *
@@ -34,7 +39,7 @@ const POLICY_RE = /create\s+policy\s+["']?([^"'\s]+)["']?\s+on\s+([a-zA-Z_.]+)([
  * to the entire authenticated surface, defeating tenant isolation.
  */
 const AUTH_FN_RE =
-  /app_auth\.current_tenant_id|app_auth\.is_tenant_member|app_auth\.has_permission|app_auth\.is_resident_of_tenant|is_resident_of_tenant|auth\.uid/i;
+  /app_auth\.current_tenant_id|app_auth\.is_tenant_member|app_auth\.has_permission|app_auth\.is_resident_of_tenant|app_auth\.is_platform_admin|is_resident_of_tenant|auth\.uid/i;
 
 interface Policy {
   file: string; // migration filename

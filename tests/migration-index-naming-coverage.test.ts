@@ -90,6 +90,15 @@ const NAMING_EXCEPTIONS = new Set<string>([
   // `billing_line_items` uses the `billing_line_*` short prefix
   '20260803001300_billing.sql::billing_line_offer_idx',
   '20260803001300_billing.sql::billing_line_invoice_idx',
+  // `platform.invoices` uses `platform_invoices_*` als Praefix, weil auch
+  // eine `public.invoices` existiert (Agentur-Rechnungen an Endkunden) und
+  // Postgres-Index-Namen zwar Schema-scoped sind, es aber im Log-/Tooling-
+  // Output haeufig um Verwechslung zu vermeiden hilft, wenn Namen im ganzen
+  // Cluster eindeutig lesbar sind. Der Test zieht "invoices" als shortTable
+  // ab; wir halten die volle Herkunft im Namen.
+  '20260812081218_platform_layer_and_subscriptions.sql::platform_invoices_tenant_idx',
+  '20260812081218_platform_layer_and_subscriptions.sql::platform_invoices_status_idx',
+  '20260812081218_platform_layer_and_subscriptions.sql::platform_invoices_open_idx',
 ]);
 
 describe('Migration index naming coverage', () => {

@@ -13,10 +13,11 @@ const confirmSchema = z.object({
 
 export async function confirmBankTransferAction(formData: FormData) {
   await requirePlatformAdmin();
-  const parsed = confirmSchema.parse({
+  const parsed = confirmSchema.safeParse({
     invoiceId: formData.get('invoiceId'),
     paymentReference: formData.get('paymentReference')?.toString() || undefined,
   });
+  if (!parsed.success) throw new Error('Ungültige Rechnungs-ID.');
   const service = createSupabaseServiceClient();
 
   const paidAt = new Date();
@@ -25,9 +26,9 @@ export async function confirmBankTransferAction(formData: FormData) {
     .update({
       paid_at: paidAt.toISOString(),
       status: 'paid',
-      payment_reference: parsed.paymentReference ?? null,
+      payment_reference: parsed.data.paymentReference ?? null,
     })
-    .eq('id', parsed.invoiceId)
+    .eq('id', parsed.data.invoiceId)
     .select('tenant_id, period_start, period_end, plan_id, plan_interval')
     .single();
   if (invErr) throw invErr;

@@ -99,6 +99,19 @@ const INTENTIONALLY_FOR_ALL_POLICIES = new Set<string>([
   '20260801000000_init.sql::user_roles_write::public.user_roles',
   '20260801000000_init.sql::user_groups_write::public.user_groups',
   '20260801000000_init.sql::user_group_members_write::public.user_group_members',
+  // 20260812081218_platform_layer_and_subscriptions.sql::plans_admin_all::platform.subscription_plans
+  //   Nur Plattform-Admins (app_auth.is_platform_admin()) duerfen Plaene
+  //   anlegen/aendern/loeschen. Der SELECT-Weg fuer Nicht-Admins laeuft
+  //   ueber die separate plans_public_select-Policy (is_public=true). Das
+  //   `for all` deckt hier bewusst INSERT+UPDATE+DELETE ab, weil der
+  //   Admin-Gate fuer alle drei identisch ist.
+  '20260812081218_platform_layer_and_subscriptions.sql::plans_admin_all::platform.subscription_plans',
+  // 20260812081218_platform_layer_and_subscriptions.sql::invoices_admin_all::platform.invoices
+  //   Analog: Plattform-Admins duerfen alles auf Betreiber-Rechnungen. Der
+  //   Tenant-Owner-SELECT/INSERT-Weg laeuft ueber separate Policies
+  //   (invoices_tenant_or_admin_select + invoices_tenant_insert). Das
+  //   `for all` deckt hier den Admin-Weg fuer alle vier Operationen ab.
+  '20260812081218_platform_layer_and_subscriptions.sql::invoices_admin_all::platform.invoices',
 ]);
 
 describe('RLS policy explicit FOR-op coverage', () => {

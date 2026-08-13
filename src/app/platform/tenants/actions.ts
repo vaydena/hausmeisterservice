@@ -15,17 +15,18 @@ const setStatusSchema = z.object({
 
 export async function setTenantStatusAction(formData: FormData) {
   await requirePlatformAdmin();
-  const parsed = setStatusSchema.parse({
+  const parsed = setStatusSchema.safeParse({
     tenantId: formData.get('tenantId'),
     status: formData.get('status'),
   });
+  if (!parsed.success) throw new Error('Ungültige Eingabe.');
   const service = createSupabaseServiceClient();
   const { error } = await service
     .from('tenants')
-    .update({ subscription_status: parsed.status })
-    .eq('id', parsed.tenantId);
+    .update({ subscription_status: parsed.data.status })
+    .eq('id', parsed.data.tenantId);
   if (error) throw error;
-  revalidatePath(`/platform/tenants/${parsed.tenantId}`);
+  revalidatePath(`/platform/tenants/${parsed.data.tenantId}`);
   revalidatePath('/platform/tenants');
   revalidatePath('/platform');
 }
@@ -37,21 +38,22 @@ const extendTrialSchema = z.object({
 
 export async function extendTrialAction(formData: FormData) {
   await requirePlatformAdmin();
-  const parsed = extendTrialSchema.parse({
+  const parsed = extendTrialSchema.safeParse({
     tenantId: formData.get('tenantId'),
     days: formData.get('days'),
   });
+  if (!parsed.success) throw new Error('Ungültige Eingabe.');
   const service = createSupabaseServiceClient();
   const { data: tenant, error: readErr } = await service
     .from('tenants')
     .select('trial_ends_at')
-    .eq('id', parsed.tenantId)
+    .eq('id', parsed.data.tenantId)
     .single();
   if (readErr) throw readErr;
 
   const base = tenant?.trial_ends_at ? new Date(tenant.trial_ends_at) : new Date();
   if (base.getTime() < Date.now()) base.setTime(Date.now());
-  base.setDate(base.getDate() + parsed.days);
+  base.setDate(base.getDate() + parsed.data.days);
 
   const { error } = await service
     .from('tenants')
@@ -59,9 +61,9 @@ export async function extendTrialAction(formData: FormData) {
       trial_ends_at: base.toISOString(),
       subscription_status: 'trial',
     })
-    .eq('id', parsed.tenantId);
+    .eq('id', parsed.data.tenantId);
   if (error) throw error;
-  revalidatePath(`/platform/tenants/${parsed.tenantId}`);
+  revalidatePath(`/platform/tenants/${parsed.data.tenantId}`);
   revalidatePath('/platform/tenants');
 }
 
@@ -73,21 +75,22 @@ const changePlanSchema = z.object({
 
 export async function changeTenantPlanAction(formData: FormData) {
   await requirePlatformAdmin();
-  const parsed = changePlanSchema.parse({
+  const parsed = changePlanSchema.safeParse({
     tenantId: formData.get('tenantId'),
     planId: formData.get('planId'),
     interval: formData.get('interval'),
   });
+  if (!parsed.success) throw new Error('Ungültige Eingabe.');
   const service = createSupabaseServiceClient();
   const { error } = await service
     .from('tenants')
     .update({
-      subscription_plan_id: parsed.planId,
-      subscription_interval: parsed.interval,
+      subscription_plan_id: parsed.data.planId,
+      subscription_interval: parsed.data.interval,
     })
-    .eq('id', parsed.tenantId);
+    .eq('id', parsed.data.tenantId);
   if (error) throw error;
-  revalidatePath(`/platform/tenants/${parsed.tenantId}`);
+  revalidatePath(`/platform/tenants/${parsed.data.tenantId}`);
   revalidatePath('/platform/tenants');
 }
 
@@ -98,32 +101,33 @@ const deleteSchema = z.object({
 
 export async function deleteTenantAction(formData: FormData) {
   await requirePlatformAdmin();
-  const parsed = deleteSchema.parse({
+  const parsed = deleteSchema.safeParse({
     tenantId: formData.get('tenantId'),
     confirmName: formData.get('confirmName'),
   });
+  if (!parsed.success) throw new Error('Ungültige Eingabe.');
   const service = createSupabaseServiceClient();
 
   const { data: tenant, error: readErr } = await service
     .from('tenants')
     .select('id, name')
-    .eq('id', parsed.tenantId)
+    .eq('id', parsed.data.tenantId)
     .single();
   if (readErr) throw readErr;
-  if (tenant.name !== parsed.confirmName) {
-    throw new Error(`Bestätigungsname stimmt nicht ("${parsed.confirmName}" vs "${tenant.name}")`);
+  if (tenant.name !== parsed.data.confirmName) {
+    throw new Error(`Bestätigungsname stimmt nicht ("${parsed.data.confirmName}" vs "${tenant.name}")`);
   }
 
   // Storage-Cascade händisch — Postgres-Trigger können storage.objects nicht anfassen.
   const { data: objects } = await service.storage
     .from('employee-documents')
-    .list(parsed.tenantId, { limit: 1000 });
+    .list(parsed.data.tenantId, { limit: 1000 });
   if (objects && objects.length > 0) {
-    const paths = objects.map((o) => `${parsed.tenantId}/${o.name}`);
+    const paths = objects.map((o) => `${parsed.data.tenantId}/${o.name}`);
     await service.storage.from('employee-documents').remove(paths);
   }
 
-  const { error: delErr } = await service.from('tenants').delete().eq('id', parsed.tenantId);
+  const { error: delErr } = await service.from('tenants').delete().eq('id', parsed.data.tenantId);
   if (delErr) throw delErr;
 
   redirect('/platform/tenants');

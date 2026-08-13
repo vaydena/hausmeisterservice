@@ -212,16 +212,59 @@ const ALTER_ADD = FOREIGN_KEYS.filter((f) => f.origin === 'alter-add');
 // Postgres truncates identifiers longer than 63 chars silently.
 const PG_MAX_IDENT = 63;
 
+/**
+ * Named, intentional `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY (...)`
+ * clauses. Every entry MUST use `constraint <name>` — the ALTER-ADD-named-FK
+ * per-item test below still enforces that. This allowlist ONLY exempts the
+ * entries from the codebase-wide "column-inline is the only FK style"
+ * baseline, so that fixup-migrations which have no choice but to alter an
+ * existing constraint (e.g. changing `on delete restrict` → `on delete
+ * cascade` after the table already exists in prod) can ship without
+ * pretending the FK could still be expressed column-inline.
+ *
+ * Key format: `${file}::${table}::${name}`.
+ *
+ *  - 20260813130000_platform_invoices_tenant_cascade.sql
+ *    ::platform.invoices::invoices_tenant_id_fkey
+ *      The original migration (20260812081218_platform_layer_and_subscriptions)
+ *      declared `tenant_id ... references public.tenants(id) on delete restrict`.
+ *      `restrict` is wrong for tenant-rooted data (tenants can't be deleted
+ *      once they have platform invoices). The corrective migration must
+ *      drop-and-re-add the existing constraint on already-deployed prod DBs,
+ *      which mandates ALTER TABLE syntax. Constraint is named
+ *      `invoices_tenant_id_fkey` to match the Postgres auto-name the fresh-DB
+ *      column-inline declaration produces, so `\d+ platform.invoices` shows the
+ *      same constraint name regardless of migration path.
+ */
+const INTENTIONAL_ALTER_ADD_FKS = new Set<string>([
+  '20260813130000_platform_invoices_tenant_cascade.sql::platform.invoices::invoices_tenant_id_fkey',
+]);
+
 describe('Migration foreign-key naming coverage', () => {
   describe('sanity: extractor found something', () => {
     it('scanner discovered many foreign keys (>= 150)', () => {
       expect(FOREIGN_KEYS.length).toBeGreaterThanOrEqual(150);
     });
 
-    it('column-inline is the only FK style currently in use', () => {
-      // If this fires, someone added the first table-level or alter-add FK.
-      // The per-item baseline tests below will tell you whether it's named.
-      expect(COLUMN_INLINE.length).toBe(FOREIGN_KEYS.length);
+    it('column-inline is the only FK style currently in use (except for entries on INTENTIONAL_ALTER_ADD_FKS)', () => {
+      // If this fires, someone added the first table-level FK, or an ALTER-ADD
+      // FK that isn't on the intentional allowlist. The per-item baseline
+      // tests below will tell you whether the offending FK is named; if it's
+      // a legitimate fixup-migration (e.g. changing `on delete` semantics on
+      // an already-deployed constraint), add it to INTENTIONAL_ALTER_ADD_FKS
+      // with a written rationale.
+      const unintendedAlterAdd = ALTER_ADD.filter(
+        (f) => !INTENTIONAL_ALTER_ADD_FKS.has(`${f.file}::${f.table}::${f.name}`),
+      );
+      const unexplainedNonColumnInline = TABLE_LEVEL.length + unintendedAlterAdd.length;
+      expect(
+        unexplainedNonColumnInline,
+        unexplainedNonColumnInline > 0
+          ? `Non-column-inline FKs without an INTENTIONAL_ALTER_ADD_FKS entry: table-level=${TABLE_LEVEL.length}, alter-add=${unintendedAlterAdd
+              .map((f) => `${f.file}::${f.table}::${f.name}`)
+              .join(', ')}. Column-inline (\`col type references other(id)\`) is preferred because the FK auto-name mirrors the column name and stays stable across environments. If this is a genuine fixup-migration that must ALTER an existing constraint, add the key to INTENTIONAL_ALTER_ADD_FKS.`
+          : 'unexpected — non-column-inline reported but list empty',
+      ).toBe(0);
     });
 
     it('every explicitly-named FK follows Postgres identifier rules', () => {
@@ -371,6 +414,23 @@ describe('Migration foreign-key naming coverage', () => {
    * shouldn't happen), the aggregate view catches it with a compact
    * failure message listing every offender.
    */
+  describe('INTENTIONAL_ALTER_ADD_FKS entries stay stale-relevant', () => {
+    it('every entry still matches a named alter-add FK in the migrations', () => {
+      const errors: string[] = [];
+      const seen = new Set(
+        ALTER_ADD.filter((f) => f.name !== null).map((f) => `${f.file}::${f.table}::${f.name}`),
+      );
+      for (const key of INTENTIONAL_ALTER_ADD_FKS) {
+        if (!seen.has(key)) {
+          errors.push(
+            `INTENTIONAL_ALTER_ADD_FKS contains "${key}" but no named ALTER TABLE ADD FOREIGN KEY with that file/table/name exists in supabase/migrations/. Either the fixup was removed, or the constraint was renamed. Delete the allowlist entry.`,
+          );
+        }
+      }
+      expect(errors, errors.join('\n')).toEqual([]);
+    });
+  });
+
   describe('aggregate baseline', () => {
     it('has zero anonymous table-level FKs across all migrations', () => {
       const anon = TABLE_LEVEL.filter((f) => f.name === null);

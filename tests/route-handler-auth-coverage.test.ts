@@ -65,6 +65,7 @@ const ALL_ROUTE_HANDLERS: RouteHandlerFile[] = walkRouteHandlers(APP_DIR)
 const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /\brequireTenantContext\s*\(/, name: 'requireTenantContext(' },
   { pattern: /\brequireResidentContext\s*\(/, name: 'requireResidentContext(' },
+  { pattern: /\brequirePlatformAdmin\s*\(/, name: 'requirePlatformAdmin(' },
   { pattern: /\bloadBillingDocumentData\s*\(/, name: 'loadBillingDocumentData(' },
   { pattern: /\.auth\.signOut\s*\(/, name: '.auth.signOut(' },
   { pattern: /\bAUTOMATION_CRON_SECRET\b/, name: 'AUTOMATION_CRON_SECRET (Bearer-token shared secret)' },
@@ -114,6 +115,24 @@ const INTENTIONALLY_PUBLIC_ROUTES = new Set<string>([
   //   keine sensitiven Daten. Missbrauchsoberfläche = ein einmal-gültiger,
   //   an eine bereits kontrollierte E-Mail-Adresse gebundener Code.
   'src/app/auth/callback/route.ts',
+  // src/app/api/health/route.ts:
+  //   Health-Check-Endpoint fuer Uptime-Monitoring (UptimeRobot, StatusCake).
+  //   Antwort ist ein statisches {status:'ok', timestamp, service} — kein
+  //   User-Bezug, kein DB-Zugriff, keine Nebeneffekte. Ein Auth-Gate wuerde
+  //   den Zweck brechen, weil Monitore keine Credentials fuehren; die
+  //   Response enthaelt nichts, was nicht ohnehin aus dem HTTP-Statuscode
+  //   ablesbar waere.
+  'src/app/api/health/route.ts',
+  // src/app/api/platform/invoices/[id]/pdf/route.tsx:
+  //   Plattform-Rechnungs-PDF. Erlaubt zwei Zugriffsklassen (Plattform-Admin
+  //   oder Owner der Ziel-Agentur), was requirePlatformAdmin() allein zu eng
+  //   waere und requireTenantContext() zu falsch-scoped. Die Auth-Logik ist
+  //   inline: (1) supabase.auth.getUser() -> 401 wenn ungueltig, dann (2)
+  //   Admin-Lookup in platform.admins, sonst (3) Owner-Membership-Match auf
+  //   invoice.tenant_id. Nur wenn eine der beiden Bedingungen greift, wird
+  //   das PDF ausgeliefert; sonst 403. Damit ist der Endpoint tatsaechlich
+  //   auth-gated, nur ohne einen Aufruf eines der AUTH_MARKERS-Helper.
+  'src/app/api/platform/invoices/[id]/pdf/route.tsx',
 ]);
 
 function findMarkers(source: string): string[] {

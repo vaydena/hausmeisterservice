@@ -122,6 +122,49 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   DEFINER-RPC). Missbrauchsfläche = ein Slug-Existenz-Oracle, das
   //   ohnehin über den Public-Signup-Flow einsehbar ist.
   'src/app/(auth)/signup/actions.ts',
+  // src/app/(app)/dashboard/onboarding-actions.ts:
+  //   Onboarding-Overlay-Dismiss durch den Mandanten-Inhaber. Setzt
+  //   tenants.onboarding_completed_at auf now() und nur, wenn das Feld
+  //   noch NULL ist (Idempotenz). Tenant-Owner haben in der aktuellen
+  //   RLS auf public.tenants zwar SELECT, aber kein UPDATE — der Owner
+  //   soll seinen eigenen Mandanten nicht direkt mutieren koennen, das
+  //   ganze Tenant-Setting-UI laeuft ueber Server-Actions mit
+  //   Permission-Gates. Diese Action ist gegated durch requireTenantContext
+  //   + ctx.isOwner-Check VOR dem Service-Client-Aufruf; die Update-Clause
+  //   ist auf ctx.tenantId + is null gescopt und aendert genau ein Feld.
+  'src/app/(app)/dashboard/onboarding-actions.ts',
+  // src/app/(app)/settings/subscription/actions.ts:
+  //   Abo-Verwaltung durch den Mandanten-Inhaber (Plan waehlen, Zahlungsart
+  //   umstellen, Rechnung anfordern). Schreibt public.tenants
+  //   (subscription_plan_id, subscription_interval, payment_method) und
+  //   platform.invoices (INSERT). Beide Ziele haben keine user-facing
+  //   UPDATE/INSERT-Policy fuer Tenant-Owner: tenants darf ein Owner nicht
+  //   direkt mutieren (siehe onboarding-actions oben), und platform.invoices
+  //   ist Betreiber-eigen (nur Plattform-Admins duerfen INSERT). Alle drei
+  //   Actions sind gegated durch requireTenantContext + ctx.isOwner-Check
+  //   VOR dem Service-Client-Aufruf; jede Update-Clause ist auf ctx.tenantId
+  //   gescopt, und Cross-Tenant-Zugriffe sind unmoeglich, weil ctx.tenantId
+  //   die einzige tenantId-Quelle in der Action ist.
+  'src/app/(app)/settings/subscription/actions.ts',
+  // src/app/platform/payments/actions.ts:
+  //   Plattform-Admin bestaetigt eingegangene Banküberweisungen und aktiviert
+  //   den Ziel-Mandanten. Muss zwangslaeufig cross-tenant arbeiten (bearbeitet
+  //   fremde public.tenants und Betreiber-eigene platform.invoices), was der
+  //   RLS-basierte Server-Client per Design nicht kann. Gegated durch
+  //   requirePlatformAdmin VOR dem Service-Client-Aufruf; die admin-Membership
+  //   wird in platform.admins gefuehrt, ist kein normaler Membership-Typ und
+  //   kann per Signup nicht erlangt werden.
+  'src/app/platform/payments/actions.ts',
+  // src/app/platform/tenants/actions.ts:
+  //   Plattform-Admin-Werkzeuge: Tenant-Status setzen, Trial verlaengern,
+  //   Plan wechseln, Tenant loeschen inkl. Storage-Cascade. Muss zwangslaeufig
+  //   cross-tenant arbeiten (schreibt beliebige public.tenants und ruft
+  //   storage.objects.remove auf fremden Bucket-Prefixes auf), was der
+  //   RLS-basierte Server-Client per Design nicht kann. Gegated durch
+  //   requirePlatformAdmin VOR jedem Service-Client-Aufruf; die
+  //   deleteTenantAction erzwingt zusaetzlich einen Text-Vergleich mit dem
+  //   Tenant-Namen als "sind Sie sicher"-Bestaetigung.
+  'src/app/platform/tenants/actions.ts',
 ]);
 
 describe('Server-Action service-client coverage', () => {

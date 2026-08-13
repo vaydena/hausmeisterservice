@@ -26,14 +26,20 @@ function walkTs(dir: string): string[] {
 const USE_SERVER_RE = /^\s*['"]use server['"];?\s*$/m;
 
 /**
- * Recognized authentication gates. Both throw NOT_AUTHENTICATED if no user
- * session is present and load the current tenant/resident membership.
- *  - requireTenantContext (src/lib/tenant/current.ts) — app-side (staff/admin)
- *  - requireResidentContext (src/lib/portal/current.ts) — portal-side (residents)
+ * Recognized authentication gates. All three redirect to a safe page if no
+ * matching membership exists, so calling any of them in an action's body
+ * proves the anonymous case cannot slip past.
+ *  - requireTenantContext   (src/lib/tenant/current.ts)   — app-side (staff/admin)
+ *  - requireResidentContext (src/lib/portal/current.ts)   — portal-side (residents)
+ *  - requirePlatformAdmin   (src/lib/platform/require-admin.ts)
+ *      — /platform-side; even stricter than requireTenantContext because it
+ *        additionally verifies platform.admins membership and redirects to
+ *        /no-access when the current user is not a platform admin.
  * Once at least one is called anywhere in the file, we consider the file
  * "auth-guarded"; the guard is a floor, not a per-function proof (see below).
  */
-const AUTH_CALL_RE = /\b(requireTenantContext|requireResidentContext)\s*\(/;
+const AUTH_CALL_RE =
+  /\b(requireTenantContext|requireResidentContext|requirePlatformAdmin)\s*\(/;
 
 interface ActionFile {
   file: string; // repo-relative, forward slashes
