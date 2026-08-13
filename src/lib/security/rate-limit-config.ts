@@ -20,17 +20,27 @@
  *     zumindest indirekt, Reset schickt Mail nur an bestehende Konten).
  *     Bei 3/Stunde kann ein Angreifer maximal 72 E-Mails/Tag durchprobieren
  *     — praktisch unbrauchbar fuer Enumeration.
+ *   - password-change: 5 Fehlversuche in 15 Minuten, 15 Minuten Sperre.
+ *     Sprint 22: Passwort-Aenderung im Konto-Bereich verlangt Re-Auth mit
+ *     dem aktuellen Passwort. Zaehler ist auf die E-Mail des eingeloggten
+ *     Users bezogen, damit ein Angreifer mit gestohlener Session nicht per
+ *     Brute-Force das aktuelle Passwort erraten kann (was ihn dann in die
+ *     Lage versetzen wuerde, es zu aendern und den Account zu uebernehmen).
+ *     KEIN Reset auf Erfolg — die 15 Minuten Sperre nach 5 Fehlversuchen
+ *     bleiben Sicherheitsnetz auch bei einer legitimen Aenderung.
  *
  * Zaehler wird bei erfolgreichem Login/Portal-Login geloescht (siehe
  * `resetAuthRateLimit` in ./rate-limit.ts), damit ein legitimes Passwort
- * das Rate-Limit befreit. Fuer Signup/Reset-Password KEIN Reset auf
- * Erfolg — sonst waere die E-Mail-Enumeration-Schutzwirkung weg.
+ * das Rate-Limit befreit. Fuer Signup/Reset-Password/Password-Change KEIN
+ * Reset auf Erfolg — sonst waere die E-Mail-Enumeration- bzw. die
+ * Session-Hijack-Schutzwirkung weg.
  */
 export const AUTH_RATE_LIMITS = {
   login: { limit: 5, windowSec: 900, blockSec: 900 },
   'portal-login': { limit: 5, windowSec: 900, blockSec: 900 },
   signup: { limit: 3, windowSec: 3600, blockSec: 3600 },
   'reset-password': { limit: 3, windowSec: 3600, blockSec: 3600 },
+  'password-change': { limit: 5, windowSec: 900, blockSec: 900 },
 } as const;
 
 export type AuthEndpoint = keyof typeof AUTH_RATE_LIMITS;

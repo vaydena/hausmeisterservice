@@ -58,11 +58,11 @@ export function UserMenu({
             role="menuitem"
             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-[var(--color-muted)]"
             onClick={() => {
-              window.location.href = '/settings/tenant';
+              window.location.href = '/settings/account';
             }}
           >
             <User className="size-4" aria-hidden />
-            Profil & Einstellungen
+            Konto & Einstellungen
           </button>
           <form action="/logout" method="post">
             <button

@@ -31,6 +31,7 @@ import {
   CreditCard,
   LifeBuoy,
   Lock,
+  User,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -65,6 +66,7 @@ export const NAV_ICONS = {
   'credit-card': CreditCard,
   'life-buoy': LifeBuoy,
   lock: Lock,
+  user: User,
 } as const satisfies Record<string, LucideIcon>;
 
 export type NavIconKey = keyof typeof NAV_ICONS;
