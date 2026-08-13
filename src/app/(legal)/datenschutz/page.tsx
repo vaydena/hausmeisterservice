@@ -227,6 +227,14 @@ export default function DatenschutzPage() {
         Zur Ausübung dieser Rechte wenden Sie sich bitte an{' '}
         <a href={`mailto:${contact.email}`}>{contact.email}</a>.
       </p>
+      <p>
+        <strong>Selbstbedienung für angemeldete Nutzer:</strong> Sobald Sie ein Konto in {productName}
+        haben, können Sie unter <code>/settings/privacy</code> jederzeit eine vollständige{' '}
+        <em>Datenauskunft nach Art. 15 DSGVO</em> als JSON-Datei herunterladen und einen{' '}
+        <em>Löschantrag nach Art. 17 DSGVO</em> mit vorausgefüllter E-Mail stellen. Für die übrigen
+        Rechte (Berichtigung, Einschränkung, Datenübertragbarkeit, Widerspruch, Widerruf) ist der
+        oben genannte Kontaktweg vorgesehen.
+      </p>
 
       <h2>{dataProtectionOfficer ? '9' : '8'}. Beschwerderecht bei der Aufsichtsbehörde</h2>
       <p>

@@ -91,6 +91,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/settings/automations', labelDe: 'Automatisierungen', icon: 'zap', module: 'automations', permission: 'automations.view' },
       { href: '/settings/emails', labelDe: 'E-Mail-Log', icon: 'mail', module: null, permission: 'billing.view' },
       { href: '/settings/notifications', labelDe: 'Benachrichtigungen', icon: 'bell', module: null, permission: null },
+      { href: '/settings/privacy', labelDe: 'Datenschutz', icon: 'lock', module: null, permission: null },
       { href: '/settings/audit', labelDe: 'Audit-Log', icon: 'shield-check', module: 'core.audit_log', permission: 'core.audit_log.view' },
     ],
   },

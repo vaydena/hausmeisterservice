@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   CreditCard,
   LifeBuoy,
+  Lock,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -63,6 +64,7 @@ export const NAV_ICONS = {
   'shield-check': ShieldCheck,
   'credit-card': CreditCard,
   'life-buoy': LifeBuoy,
+  lock: Lock,
 } as const satisfies Record<string, LucideIcon>;
 
 export type NavIconKey = keyof typeof NAV_ICONS;

@@ -48,6 +48,8 @@ export async function evaluateSubscriptionAccess(tenantId: string): Promise<Subs
 
 const ALLOW_WHEN_BLOCKED = [
   '/settings/subscription',
+  '/settings/privacy',
+  '/api/privacy/',
   '/logout',
   '/api/platform/invoices/',
   '/api/auth/',
