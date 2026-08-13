@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { AUTH_RATE_LIMITS, formatRateLimitError } from '@/lib/security/rate-limit-config';
 
 describe('AUTH_RATE_LIMITS config', () => {
-  it('covers exactly the five expected auth endpoints', () => {
+  it('covers exactly the six expected auth endpoints', () => {
     expect(Object.keys(AUTH_RATE_LIMITS).sort()).toEqual([
       'login',
+      'mfa-verify',
       'password-change',
       'portal-login',
       'reset-password',
@@ -38,6 +39,10 @@ describe('AUTH_RATE_LIMITS config', () => {
 
   it('password-change matches login policy (5 attempts per 15 min, 15 min block) — same brute-force surface, applied per-account instead of per-IP', () => {
     expect(AUTH_RATE_LIMITS['password-change']).toEqual(AUTH_RATE_LIMITS.login);
+  });
+
+  it('mfa-verify matches login policy (5 attempts per 15 min, 15 min block) — 6-digit TOTP would be trivially brute-forceable without a rate limit', () => {
+    expect(AUTH_RATE_LIMITS['mfa-verify']).toEqual(AUTH_RATE_LIMITS.login);
   });
 
   it('all configs use positive integers', () => {

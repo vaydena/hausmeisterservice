@@ -6,8 +6,27 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
 import { changeDisplayNameSchema } from '@/lib/auth/change-display-name-schema';
+import {
+  mfaEnrollSchema,
+  mfaUnenrollSchema,
+  mfaVerifySchema,
+} from '@/lib/auth/mfa-verify-schema';
 
 export type AccountActionState = { error?: string; success?: string };
+
+/**
+ * Ergebnis von enrollMfaFactorAction. Der Faktor ist nach Enroll noch
+ * `unverified` — die UI muss dem User Secret/QR-Code zeigen und ihn dann
+ * durch verifyMfaEnrollmentAction schleusen, damit der Faktor auf
+ * `verified` wechselt und dem Konto tatsaechlich MFA-Schutz gibt.
+ */
+export type MfaEnrollState = AccountActionState & {
+  enrollment?: {
+    factorId: string;
+    qrCodeDataUri: string;
+    secret: string;
+  };
+};
 
 export async function changePasswordAction(
   _prev: AccountActionState,
@@ -121,3 +140,140 @@ export async function signOutOtherSessionsAction(
 
   return { success: 'Alle anderen Sitzungen wurden abgemeldet.' };
 }
+
+// ============================================================================
+// MFA / TOTP (Sprint 25)
+// ============================================================================
+//
+// Supabase Auth speichert TOTP-Faktoren in auth.mfa_factors. Ein neuer
+// Faktor wird per enroll angelegt (status 'unverified'), muss dann per
+// challenge+verify aktiviert werden (status 'verified'). Nur verified
+// Faktoren zaehlen fuer aal2. Unverified Faktoren sammeln sich sonst an,
+// wenn ein User den Enroll-Flow abbricht — wir loeschen deswegen vor
+// jedem neuen Enroll alle unverified Faktoren dieses Users.
+
+export async function enrollMfaFactorAction(
+  _prev: MfaEnrollState,
+  formData: FormData,
+): Promise<MfaEnrollState> {
+  await requireTenantContext();
+  const parsed = mfaEnrollSchema.safeParse({
+    friendlyName: formData.get('friendlyName'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // Verwaiste unverified Faktoren einsammeln — sonst laeuft der User
+  // beim wiederholten Abbruch/Neustart in Supabases Faktor-Limit.
+  const { data: factorsData } = await supabase.auth.mfa.listFactors();
+  const stale = factorsData?.all?.filter((f) => f.status === 'unverified') ?? [];
+  for (const f of stale) {
+    await supabase.auth.mfa.unenroll({ factorId: f.id });
+  }
+
+  // friendlyName muss pro User unique sein — bei Kollision mit einem
+  // existierenden verified Faktor bricht enroll ab. Wir haengen einen
+  // Zeitstempel-Suffix an, falls das passiert.
+  const primaryName = parsed.data.friendlyName;
+  const { data, error } = await supabase.auth.mfa.enroll({
+    factorType: 'totp',
+    friendlyName: primaryName,
+  });
+
+  if (error || !data) {
+    if (error?.message.toLowerCase().includes('already exists')) {
+      const suffixed = `${primaryName} (${new Date().toISOString().slice(0, 10)})`;
+      const retry = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: suffixed,
+      });
+      if (retry.error || !retry.data) {
+        return { error: 'MFA-Faktor konnte nicht angelegt werden. Bitte spaeter erneut.' };
+      }
+      return {
+        enrollment: {
+          factorId: retry.data.id,
+          qrCodeDataUri: retry.data.totp.qr_code,
+          secret: retry.data.totp.secret,
+        },
+      };
+    }
+    return { error: 'MFA-Faktor konnte nicht angelegt werden. Bitte spaeter erneut.' };
+  }
+
+  return {
+    enrollment: {
+      factorId: data.id,
+      qrCodeDataUri: data.totp.qr_code,
+      secret: data.totp.secret,
+    },
+  };
+}
+
+export async function verifyMfaEnrollmentAction(
+  _prev: AccountActionState,
+  formData: FormData,
+): Promise<AccountActionState> {
+  const ctx = await requireTenantContext();
+
+  // Rate-Limit auf User-ID: TOTP-Codes haben 10^6 Kombinationen, ohne
+  // Sperre koennte ein Angreifer nach 4-5 Sekunden bei 1000 Codes/s
+  // treffen. Zaehler laeuft ueber user_id, damit mehrere IPs den
+  // Limit nicht parallel umgehen koennen.
+  const rl = await checkAuthRateLimit(`user:${ctx.userId}`, 'mfa-verify');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
+  const parsed = mfaVerifySchema.safeParse({
+    factorId: formData.get('factorId'),
+    code: formData.get('code'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  // challengeAndVerify bundlet die zwei Supabase-Calls (challenge +
+  // verify) in einem Aufruf. Bei falschem Code bleibt der Faktor weiter
+  // unverified; der User kann direkt einen neuen Code eingeben (die
+  // naechste Aktion legt automatisch eine frische Challenge an).
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.mfa.challengeAndVerify({
+    factorId: parsed.data.factorId,
+    code: parsed.data.code,
+  });
+  if (error) {
+    return {
+      error: 'Der Code ist nicht gueltig. Bitte einen frischen Code aus der App eingeben.',
+    };
+  }
+
+  revalidatePath('/', 'layout');
+  return { success: 'Zwei-Faktor-Authentifizierung ist aktiv.' };
+}
+
+export async function unenrollMfaFactorAction(
+  _prev: AccountActionState,
+  formData: FormData,
+): Promise<AccountActionState> {
+  await requireTenantContext();
+  const parsed = mfaUnenrollSchema.safeParse({
+    factorId: formData.get('factorId'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.mfa.unenroll({ factorId: parsed.data.factorId });
+  if (error) {
+    return { error: 'Faktor konnte nicht entfernt werden. Bitte spaeter erneut.' };
+  }
+
+  revalidatePath('/', 'layout');
+  return { success: 'Faktor entfernt.' };
+}
+

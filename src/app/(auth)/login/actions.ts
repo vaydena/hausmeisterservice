@@ -56,6 +56,19 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   // vergangene Tippfehler die naechste Session nicht mehr blockieren.
   await resetAuthRateLimit(ip, 'login');
 
+  // MFA-Gate (Sprint 25): Wenn der User verified TOTP-Faktoren hat, hebt
+  // Supabase das AAL-Ziel auf aal2 an. Wir schicken ihn dann durch den
+  // TOTP-Verify-Schritt, BEVOR er ins Dashboard oder Portal kommt. Der
+  // Post-Login-Router unten laeuft NACH erfolgreichem aal2-Upgrade
+  // (via /login/mfa) — bis dahin darf der User trotz gueltiger aal1-
+  // Session keine App-Routen erreichen.
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.currentLevel === 'aal1' && aal.nextLevel === 'aal2') {
+    const mfaUrl = new URL('/login/mfa', 'http://placeholder');
+    mfaUrl.searchParams.set('next', parsed.data.next);
+    redirect(`${mfaUrl.pathname}${mfaUrl.search}`);
+  }
+
   // Post-Login-Router:
   //   Staff-Membership vorhanden → next (default /dashboard)
   //   sonst Resident → /portal/dashboard

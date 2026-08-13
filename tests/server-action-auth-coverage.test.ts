@@ -99,6 +99,18 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   //   Action signOut() und redirected auf /login, damit sich der User
   //   bewusst mit dem neuen Passwort neu anmeldet.
   'src/app/(auth)/reset-password/new/actions.ts',
+  // src/app/(auth)/login/mfa/actions.ts:
+  //   TOTP-Verify zwischen Passwort-Login (aal1) und dem Erreichen des
+  //   Dashboards (aal2). Sprint 25. Der User hat eine aal1-Session, aber
+  //   noch KEINEN vollen Tenant-Context im Sinne von requireTenantContext
+  //   — Membership-Lookup kann auf Portal-User (residents) fehlschlagen,
+  //   die ebenfalls MFA aktivieren duerfen (Follow-up-Sprint). Die Action
+  //   ist trotzdem nicht ungeschuetzt: supabase.auth.mfa.challengeAndVerify
+  //   verlangt eine aal1-Session — ohne die antwortet Supabase mit einem
+  //   Auth-Fehler und die Action gibt eine generische Fehlermeldung zurueck.
+  //   Der IP-basierte mfa-verify Rate-Limit schuetzt zusaetzlich vor
+  //   Brute-Force auf den 6-stelligen TOTP-Code.
+  'src/app/(auth)/login/mfa/actions.ts',
 ]);
 
 describe('Server Action auth coverage', () => {

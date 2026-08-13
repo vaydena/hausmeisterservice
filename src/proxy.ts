@@ -14,6 +14,11 @@ const AUTH_CALLBACK_ROUTES = ['/auth/callback', '/reset-password/confirm'];
 // Ohne Ausnahme wuerde der "eingeloggt → dashboard"-Redirect unten
 // den Recovery-Flow abwuergen, bevor er sein neues Passwort setzen kann.
 const PASSWORD_RECOVERY_ROUTES = ['/reset-password/new'];
+// MFA-Verify-Zwischenschritt (Sprint 25): Nach Passwort-Login hat der
+// User eine aal1-Session, muss aber vor Weiterleitung ins Dashboard
+// einen TOTP-Code eingeben. Ohne Ausnahme wuerde der authenticated→
+// dashboard-Redirect unten den MFA-Prompt umgehen.
+const MFA_PENDING_ROUTES = ['/login/mfa'];
 // Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
 // selbst geprüft, nicht per Session-Cookie. Health-Endpoint ist bewusst
 // unauthenticated: Uptime-Monitore rufen es ohne Credentials auf.
@@ -51,6 +56,10 @@ function isAuthCallback(pathname: string): boolean {
 
 function isPasswordRecovery(pathname: string): boolean {
   return PASSWORD_RECOVERY_ROUTES.some((route) => pathname === route);
+}
+
+function isMfaPending(pathname: string): boolean {
+  return MFA_PENDING_ROUTES.some((route) => pathname === route);
 }
 
 export async function proxy(request: NextRequest) {
@@ -103,6 +112,11 @@ export async function proxy(request: NextRequest) {
     // Session erreichbar bleiben, sonst wuerfe der Redirect den User
     // aus dem Reset-Flow und er koennte sein Passwort nicht setzen.
     if (isPasswordRecovery(pathname)) return response;
+    // Ausnahme: /login/mfa ist der TOTP-Prompt nach Passwort-Login.
+    // User hat aal1 (also eine gueltige Session), aber MUSS erst durch
+    // den zweiten Faktor bevor er die App sieht. Die Page selbst
+    // redirected auf next, falls der User schon aal2 hat.
+    if (isMfaPending(pathname)) return response;
     // Let dashboards decide via Server Component redirect based on ctx (Staff→/dashboard, Resident→/portal/dashboard)
     const url = request.nextUrl.clone();
     url.pathname = '/dashboard';
