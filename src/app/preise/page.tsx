@@ -101,7 +101,9 @@ export default async function PreisePage() {
           <div>
             <dt className="font-medium">Wie zahle ich?</dt>
             <dd className="mt-1 text-[var(--color-muted-foreground)]">
-              Aktuell per Banküberweisung. Zahlung per Kreditkarte/SEPA-Lastschrift ist in Vorbereitung.
+              Per Banküberweisung. Du bekommst nach Ablauf der Testphase eine
+              Rechnung mit IBAN und Verwendungszweck — kein automatischer Bankeinzug,
+              keine Kreditkarten-Daten nötig.
             </dd>
           </div>
           <div>

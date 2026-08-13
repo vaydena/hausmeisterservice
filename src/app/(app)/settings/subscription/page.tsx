@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
 import {
   selectPlanAction,
-  switchPaymentMethodAction,
   requestBankTransferInvoiceAction,
 } from './actions';
 
@@ -150,19 +149,9 @@ export default async function SubscriptionPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]">
             Zahlungsart
           </h2>
-          <form action={switchPaymentMethodAction}>
-            <select
-              name="method"
-              defaultValue={billing.paymentMethod}
-              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-sm"
-            >
-              <option value="bank_transfer">Überweisung</option>
-              <option value="stripe" disabled>Kreditkarte/SEPA (bald)</option>
-            </select>
-            <Button variant="secondary" size="sm" type="submit" className="ml-2">
-              Speichern
-            </Button>
-          </form>
+          <div className="text-sm">
+            Per <span className="font-medium">Banküberweisung</span>
+          </div>
         </div>
 
         {billing.paymentMethod === 'bank_transfer' && (
