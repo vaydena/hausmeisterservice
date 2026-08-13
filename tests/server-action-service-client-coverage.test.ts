@@ -165,6 +165,31 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   deleteTenantAction erzwingt zusaetzlich einen Text-Vergleich mit dem
   //   Tenant-Namen als "sind Sie sicher"-Bestaetigung.
   'src/app/platform/tenants/actions.ts',
+  // src/app/(app)/settings/account/actions.ts:
+  //   Sprint 26. Enthaelt generateMfaRecoveryCodesAction, die die drei
+  //   Recovery-Codes-Functions (generate/consume/count) aufruft. Diese sind
+  //   SECURITY DEFINER mit REVOKE EXECUTE FROM anon/authenticated und GRANT
+  //   nur an service_role (Sprint 21 Lockdown-Muster). Der anon+cookie
+  //   Server-Client kann sie also nicht aufrufen, egal welche RLS-Regel man
+  //   auf die auth_mfa_recovery_codes-Tabelle setzen wuerde (die ist
+  //   ohnehin deny-all). Die Action ist gegated durch requireTenantContext
+  //   VOR dem Service-Client-Aufruf; p_user_id wird ausschliesslich aus
+  //   ctx.userId gesetzt (nie aus der Formular-Payload) — ein Angreifer
+  //   kann keine Codes fuer fremde User erzeugen.
+  'src/app/(app)/settings/account/actions.ts',
+  // src/app/(auth)/login/mfa/recovery/actions.ts:
+  //   Sprint 26. Loest einen Recovery-Code beim MFA-Login-Prompt ein und
+  //   entfernt danach alle MFA-Faktoren des Users via
+  //   auth.admin.mfa.deleteFactor (Auth-Admin API benoetigt service_role).
+  //   Zusaetzlich ruft die Action consume_mfa_recovery_code, dessen
+  //   execute-Grant nur an service_role vergeben ist (Sprint 21 Lockdown).
+  //   Gegated durch (a) IP-basierter Rate-Limit mfa-recovery, (b) explizite
+  //   getUser()-Session-Pruefung VOR dem Service-Client-Aufruf, (c)
+  //   userId kommt aus getUser() — nicht aus der Formular-Payload, ein
+  //   Angreifer kann also keine Fremd-Codes einloesen. Der Anon-Client kann
+  //   die RPC nicht aufrufen (Grant fehlt) und die Auth-Admin-API nicht
+  //   nutzen (service_role only).
+  'src/app/(auth)/login/mfa/recovery/actions.ts',
 ]);
 
 describe('Server-Action service-client coverage', () => {

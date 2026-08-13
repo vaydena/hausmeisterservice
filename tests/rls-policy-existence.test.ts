@@ -116,6 +116,16 @@ const INTENTIONALLY_DENY_ALL = new Set<string>([
   //   in die Lage versetzen, den eigenen Zaehler zu resetten und damit
   //   das Rate-Limit zu umgehen.
   'auth_rate_limits',
+  // public.auth_mfa_recovery_codes:
+  //   MFA-Recovery-Codes (Sprint 26). RLS deny-all aus demselben Grund
+  //   wie auth_rate_limits: der User darf nicht mal die eigenen Hashes
+  //   sehen, sonst koennte er per Bruteforce offline vermeintlich
+  //   invalidierte Codes zurueckrechnen. Zugriff ausschliesslich ueber
+  //   die drei SECURITY DEFINER Functions (generate_mfa_recovery_codes_
+  //   for_user, consume_mfa_recovery_code, count_unused_mfa_recovery_codes)
+  //   mit execute-Grant nur an service_role. Eine Policy waere ein
+  //   Sicherheitsrisiko.
+  'auth_mfa_recovery_codes',
 ]);
 
 describe('RLS policy existence for every RLS-enabled public.* table', () => {

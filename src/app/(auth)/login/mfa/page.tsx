@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { LoginMfaVerifyForm } from './verify-form';
@@ -46,6 +47,14 @@ export default async function LoginMfaPage({
         </p>
       </header>
       <LoginMfaVerifyForm factors={factors} next={next} />
+      <p className="text-sm">
+        <Link
+          href="/login/mfa/recovery"
+          className="text-[var(--color-primary)] underline underline-offset-4 hover:opacity-80"
+        >
+          Handy verloren? Recovery-Code verwenden
+        </Link>
+      </p>
     </div>
   );
 }

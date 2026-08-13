@@ -37,12 +37,19 @@
  *     Erfolg — das rotierende 30-Sekunden-Fenster von TOTP haelt den
  *     naechsten legitimen Code sowieso frei; der Rate-Limit-Zaehler
  *     laeuft ueber `windowSec` von selbst aus.
+ *   - mfa-recovery: 5 Fehlversuche in 15 Minuten, 15 Minuten Sperre.
+ *     Sprint 26: Recovery-Code-Einloesen beim Login. Codes sind 10 chars
+ *     aus Base32-Alphabet (32^10 ~= 1.1e15 Moeglichkeiten). Rate-Limit
+ *     ist per User + IP-basiert im Login-Kontext (User-ID kennen wir
+ *     erst nach Passwort-Login, IP schon vorher — sicherheitshalber
+ *     beides). KEIN Reset auf Erfolg — verwendete Codes sind sowieso
+ *     verbrannt, Rate-Limit-Zaehler laeuft von selbst aus.
  *
  * Zaehler wird bei erfolgreichem Login/Portal-Login geloescht (siehe
  * `resetAuthRateLimit` in ./rate-limit.ts), damit ein legitimes Passwort
  * das Rate-Limit befreit. Fuer Signup/Reset-Password/Password-Change/
- * MFA-Verify KEIN Reset auf Erfolg — sonst waere die E-Mail-Enumeration-
- * bzw. die Session-Hijack-Schutzwirkung weg.
+ * MFA-Verify/MFA-Recovery KEIN Reset auf Erfolg — sonst waere die
+ * E-Mail-Enumeration- bzw. die Session-Hijack-Schutzwirkung weg.
  */
 export const AUTH_RATE_LIMITS = {
   login: { limit: 5, windowSec: 900, blockSec: 900 },
@@ -51,6 +58,7 @@ export const AUTH_RATE_LIMITS = {
   'reset-password': { limit: 3, windowSec: 3600, blockSec: 3600 },
   'password-change': { limit: 5, windowSec: 900, blockSec: 900 },
   'mfa-verify': { limit: 5, windowSec: 900, blockSec: 900 },
+  'mfa-recovery': { limit: 5, windowSec: 900, blockSec: 900 },
 } as const;
 
 export type AuthEndpoint = keyof typeof AUTH_RATE_LIMITS;

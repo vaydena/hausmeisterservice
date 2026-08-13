@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
@@ -11,8 +12,20 @@ import {
   mfaUnenrollSchema,
   mfaVerifySchema,
 } from '@/lib/auth/mfa-verify-schema';
+import { generateRecoveryCodePlaintexts } from '@/lib/auth/mfa-recovery';
 
 export type AccountActionState = { error?: string; success?: string };
+
+/**
+ * Ergebnis von generateMfaRecoveryCodesAction. Bei Erfolg enthaelt `codes`
+ * die 10 frisch generierten Klartext-Codes; sie werden dem User EIN MAL
+ * angezeigt und sind danach nur noch als bcrypt-Hash in der DB. Bei
+ * erneutem Aufruf werden alle bisherigen Codes (used oder unused)
+ * gelöscht und ersetzt.
+ */
+export type RecoveryCodesState = AccountActionState & {
+  codes?: string[];
+};
 
 /**
  * Ergebnis von enrollMfaFactorAction. Der Faktor ist nach Enroll noch
@@ -275,5 +288,40 @@ export async function unenrollMfaFactorAction(
 
   revalidatePath('/', 'layout');
   return { success: 'Faktor entfernt.' };
+}
+
+// ============================================================================
+// MFA Recovery-Codes (Sprint 26)
+// ============================================================================
+
+/**
+ * Generiert 10 neue Recovery-Codes fuer den eingeloggten User. Loescht
+ * dabei alle vorherigen (used und unused) Codes — Regenerierung ist der
+ * einzige Weg, alte Codes zu invalidieren. Die Klartext-Codes werden dem
+ * User EINMAL im ResponseState zurueckgegeben und sind danach nur noch
+ * als bcrypt-Hash in der DB.
+ */
+export async function generateMfaRecoveryCodesAction(
+  _prev: RecoveryCodesState,
+  _formData: FormData,
+): Promise<RecoveryCodesState> {
+  const ctx = await requireTenantContext();
+
+  const plaintexts = generateRecoveryCodePlaintexts();
+  // Die RPC erwartet die Codes ohne Bindestrich (bcrypt-Hash geht ueber
+  // den Rohtext); wir speichern nur die 8 Alphabet-Zeichen.
+  const rawForHash = plaintexts.map((c) => c.replace(/-/g, ''));
+
+  const service = createSupabaseServiceClient();
+  const { error } = await service.rpc('generate_mfa_recovery_codes_for_user', {
+    p_user_id: ctx.userId,
+    p_plaintext_codes: rawForHash,
+  });
+  if (error) {
+    return { error: 'Recovery-Codes konnten nicht erstellt werden. Bitte spaeter erneut.' };
+  }
+
+  revalidatePath('/', 'layout');
+  return { codes: plaintexts, success: '10 neue Recovery-Codes generiert.' };
 }
 

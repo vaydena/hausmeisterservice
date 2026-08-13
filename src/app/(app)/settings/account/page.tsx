@@ -1,15 +1,22 @@
 import type { Metadata } from 'next';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { ChangeDisplayNameForm } from './change-display-name-form';
 import { ChangePasswordForm } from './change-password-form';
 import { MfaForm } from './mfa-form';
+import { RecoveryCodesForm } from './recovery-codes-form';
 import { RevokeSessionsForm } from './revoke-sessions-form';
 
 export const metadata: Metadata = { title: 'Konto' };
 
-export default async function AccountSettingsPage() {
+export default async function AccountSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ info?: string }>;
+}) {
   const ctx = await requireTenantContext();
+  const { info } = await searchParams;
 
   // Nur verified TOTP-Faktoren interessieren die UI. Unverified sind
   // Ueberbleibsel von abgebrochenen Enroll-Flows — enrollMfaFactorAction
@@ -24,6 +31,15 @@ export default async function AccountSettingsPage() {
       createdAt: f.created_at,
     }));
 
+  // Anzahl unbenutzter Recovery-Codes. Function ist SECURITY DEFINER mit
+  // execute-Grant nur auf service_role (Sprint 21 Lockdown-Muster).
+  const service = createSupabaseServiceClient();
+  const { data: unusedCountData } = await service.rpc(
+    'count_unused_mfa_recovery_codes',
+    { p_user_id: ctx.userId },
+  );
+  const unusedCount = typeof unusedCountData === 'number' ? unusedCountData : 0;
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <header>
@@ -32,6 +48,20 @@ export default async function AccountSettingsPage() {
           Persoenliche Anmeldedaten und aktive Sitzungen verwalten.
         </p>
       </header>
+
+      {info === 'mfa-lost' && (
+        <div
+          role="status"
+          className="rounded-md border border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5 p-4 text-sm"
+        >
+          <p className="font-medium">Recovery-Code eingeloest.</p>
+          <p className="mt-1 text-[var(--color-muted-foreground)]">
+            Alle bisherigen MFA-Faktoren wurden entfernt. Bitte richten Sie die
+            Zwei-Faktor-Authentifizierung jetzt direkt neu ein und generieren
+            Sie anschliessend einen frischen Batch Recovery-Codes.
+          </p>
+        </div>
+      )}
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
         <div className="mb-4">
@@ -71,6 +101,21 @@ export default async function AccountSettingsPage() {
           </p>
         </div>
         <MfaForm factors={factors} />
+
+        {factors.length > 0 && (
+          <div className="mt-6 border-t border-[var(--color-border)] pt-5">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold">Recovery-Codes</h3>
+              <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+                Einmalige Ersatz-Codes fuer den Fall, dass Sie Ihr Authenticator-
+                Geraet verlieren. Jeder Code kann genau einmal beim Login
+                verwendet werden und entfernt danach den TOTP-Faktor —
+                anschliessend richten Sie MFA direkt neu ein.
+              </p>
+            </div>
+            <RecoveryCodesForm unusedCount={unusedCount} />
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">

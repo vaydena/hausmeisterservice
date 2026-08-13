@@ -156,6 +156,31 @@ const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([
   //   Zweig, laeuft nur auf public.auth_rate_limits. Dieselbe RPC-Rationale;
   //   execute nur an service_role.
   'public.cleanup_expired_auth_rate_limits',
+  // public.generate_mfa_recovery_codes_for_user:
+  //   Loescht alle MFA-Recovery-Codes eines Users und legt einen frischen
+  //   Batch bcrypt-gehashter Codes an (Sprint 26). Muss in `public` liegen
+  //   fuer PostgREST-RPC vom Service-Client (src/lib/auth/mfa-recovery.ts).
+  //   Body arbeitet nur auf public.auth_mfa_recovery_codes (RLS deny-all)
+  //   und nutzt keine caller-abhaengigen Werte. Execute-Right ausschliesslich
+  //   an service_role — anon/authenticated bekommt `permission denied for
+  //   function`. Die aufrufende Server-Action gated auf auth.getUser() und
+  //   uebergibt nur die eigene user_id, sodass ein Angreifer selbst mit
+  //   service_role-Kompromittierung nicht fremde Recovery-Codes ueberschreiben
+  //   koennte ohne direkten DB-Zugang.
+  'public.generate_mfa_recovery_codes_for_user',
+  // public.consume_mfa_recovery_code:
+  //   Verifiziert einen Klartext-Code gegen die bcrypt-Hashes des Users und
+  //   markiert ihn bei Match als used. Muss in `public` fuer PostgREST-RPC.
+  //   Body arbeitet nur auf public.auth_mfa_recovery_codes (RLS deny-all).
+  //   Execute nur an service_role. Sicherheitseigenschaft: der Aufrufer
+  //   (src/app/(auth)/login/mfa/recovery/actions.ts) rate-limitet zusaetzlich
+  //   IP-basiert (mfa-recovery, 5/15min).
+  'public.consume_mfa_recovery_code',
+  // public.count_unused_mfa_recovery_codes:
+  //   Read-Only-Zaehler. Rueckgabe: Anzahl unbenutzter Codes eines Users
+  //   fuer die Konto-UI. Same-shape wie oben — PostgREST-RPC, service_role-
+  //   only, keine caller-abhaengige Interpolation.
+  'public.count_unused_mfa_recovery_codes',
 ]);
 
 describe('Function security-definer scope coverage', () => {

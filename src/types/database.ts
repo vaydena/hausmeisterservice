@@ -159,6 +159,33 @@ export type Database = {
           },
         ]
       }
+      auth_mfa_recovery_codes: {
+        Row: {
+          code_hash: string
+          generated_at: string
+          id: string
+          used_at: string | null
+          used_ip: string | null
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          generated_at?: string
+          id?: string
+          used_at?: string | null
+          used_ip?: string | null
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          generated_at?: string
+          id?: string
+          used_at?: string | null
+          used_ip?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       auth_rate_limits: {
         Row: {
           attempts: number
@@ -3688,6 +3715,25 @@ export type Database = {
         }[]
       }
       cleanup_expired_auth_rate_limits: { Args: never; Returns: number }
+      consume_mfa_recovery_code: {
+        Args: {
+          p_plaintext: string
+          p_used_ip: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      count_unused_mfa_recovery_codes: {
+        Args: { p_user_id: string }
+        Returns: number
+      }
+      generate_mfa_recovery_codes_for_user: {
+        Args: {
+          p_plaintext_codes: string[]
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       enqueue_notification: {
         Args: {
           p_body?: string

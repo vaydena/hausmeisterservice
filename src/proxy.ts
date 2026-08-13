@@ -14,11 +14,12 @@ const AUTH_CALLBACK_ROUTES = ['/auth/callback', '/reset-password/confirm'];
 // Ohne Ausnahme wuerde der "eingeloggt → dashboard"-Redirect unten
 // den Recovery-Flow abwuergen, bevor er sein neues Passwort setzen kann.
 const PASSWORD_RECOVERY_ROUTES = ['/reset-password/new'];
-// MFA-Verify-Zwischenschritt (Sprint 25): Nach Passwort-Login hat der
-// User eine aal1-Session, muss aber vor Weiterleitung ins Dashboard
-// einen TOTP-Code eingeben. Ohne Ausnahme wuerde der authenticated→
-// dashboard-Redirect unten den MFA-Prompt umgehen.
-const MFA_PENDING_ROUTES = ['/login/mfa'];
+// MFA-Verify-Zwischenschritt (Sprint 25) + Recovery-Code-Einloesung
+// (Sprint 26): Nach Passwort-Login hat der User eine aal1-Session, muss
+// aber vor Weiterleitung ins Dashboard einen TOTP-Code oder einen
+// Recovery-Code eingeben. Ohne Ausnahme wuerde der authenticated→
+// dashboard-Redirect unten beide Prompts umgehen.
+const MFA_PENDING_ROUTES = ['/login/mfa', '/login/mfa/recovery'];
 // Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
 // selbst geprüft, nicht per Session-Cookie. Health-Endpoint ist bewusst
 // unauthenticated: Uptime-Monitore rufen es ohne Credentials auf.

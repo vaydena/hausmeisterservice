@@ -111,6 +111,19 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   //   Der IP-basierte mfa-verify Rate-Limit schuetzt zusaetzlich vor
   //   Brute-Force auf den 6-stelligen TOTP-Code.
   'src/app/(auth)/login/mfa/actions.ts',
+  // src/app/(auth)/login/mfa/recovery/actions.ts:
+  //   MFA-Recovery-Code einloesen (Sprint 26). Selber Kontext wie
+  //   /login/mfa/actions.ts: aal1-Session vorhanden, aber requireTenant-
+  //   Context() waere hier ebenfalls falsch (Portal-User + MFA-losigkeit
+  //   koennten fehlschlagen). Statt requireTenantContext prueft die
+  //   Action selbst supabase.auth.getUser() als Session-Gate und bricht
+  //   bei kein-User mit einer generischen Fehlermeldung ab. Zwei
+  //   Sicherheitsnetze bleiben aktiv: IP-basierter mfa-recovery Rate-
+  //   Limit (5/15min) und bcrypt-Hash-Match gegen die zu diesem User
+  //   gespeicherten Codes — ein Angreifer ohne aktive Session kann
+  //   nichts ausrichten, weil userId von getUser() kommt (nicht aus
+  //   der Formular-Payload).
+  'src/app/(auth)/login/mfa/recovery/actions.ts',
 ]);
 
 describe('Server Action auth coverage', () => {
