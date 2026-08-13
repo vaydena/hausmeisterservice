@@ -10,8 +10,9 @@ const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb', '/avv'];
 // führt selbst exchangeCodeForSession aus — kein Session-Redirect davor.
 const AUTH_CALLBACK_ROUTES = ['/auth/callback'];
 // Externe Aufrufer (Cron / Webhooks) — Auth wird per Bearer-Token in der Route
-// selbst geprüft, nicht per Session-Cookie.
-const PUBLIC_API_PREFIXES = ['/api/cron/'];
+// selbst geprüft, nicht per Session-Cookie. Health-Endpoint ist bewusst
+// unauthenticated: Uptime-Monitore rufen es ohne Credentials auf.
+const PUBLIC_API_PREFIXES = ['/api/cron/', '/api/health'];
 
 function isPublicApi(pathname: string): boolean {
   return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
