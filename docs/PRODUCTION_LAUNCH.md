@@ -46,7 +46,7 @@ Falls **Hostinger** für Hosting genutzt wird (siehe unten Schritt 5): Hostinger
 
 ## 3. Supabase Auth-Härtung
 
-Im Supabase Dashboard des Projekts `hausmeister-app`:
+Im Supabase Dashboard des Projekts `hausmeisterservice`:
 
 **Auth → Password Protection → Enabled Password Protection**
 Toggle einschalten. Aktiviert den Abgleich neuer Passwörter gegen die HaveIBeenPwned-Datenbank kompromittierter Zugangsdaten. Nutzer bekommen bei Registrierung/Änderung eine Fehlermeldung, wenn sie ein bekanntes kompromittiertes Passwort verwenden.
@@ -61,7 +61,7 @@ Supabase lässt diese Redirects nur zu, wenn die Ziel-Origin in den
 Allowed-URLs eingetragen ist — sonst schlägt der Verify fehl mit
 `redirect_to is not allowed`.
 
-Im Supabase-Dashboard des Projekts `hausmeister-app`:
+Im Supabase-Dashboard des Projekts `hausmeisterservice`:
 
 **Authentication → URL Configuration**
 
@@ -74,7 +74,7 @@ Für lokale Entwicklung parallel zulassen:
 
 **Optional aber empfohlen**: Auth → Email Templates → **Confirm signup** — dort
 den deutschen Betreff/Text auf die Marke anpassen, z. B. „Ihr Konto bei
-Hausmeister App bestätigen". Der `{{ .ConfirmationURL }}`-Platzhalter im
+Hausmeisterservice bestätigen". Der `{{ .ConfirmationURL }}`-Platzhalter im
 Template bleibt unverändert.
 
 ## 4. Sentry einrichten (Runtime-Error-Tracking)
@@ -83,7 +83,7 @@ Sentry fängt unbehandelte Fehler auf Client, Server und Edge ein.
 Ohne DSN läuft die App normal weiter — Sentry ist dann komplett aus.
 
 1. Konto auf https://sentry.io anlegen (Free-Tier: 5.000 Errors/Monat, 10k Performance-Events)
-2. Neues Projekt anlegen: **Platform „Next.js"**, Name z. B. `hausmeister-app`
+2. Neues Projekt anlegen: **Platform „Next.js"**, Name z. B. `hausmeisterservice`
 3. Nach dem Anlegen zeigt Sentry einen DSN — sieht ungefähr so aus:
    `https://<publicKey>@o<orgId>.ingest.us.sentry.io/<projectId>`
 4. In Hostinger unter **Websites → hausmeisterservice.vaydena.de → Node.js → Environment-Variablen** setzen:
@@ -91,7 +91,7 @@ Ohne DSN läuft die App normal weiter — Sentry ist dann komplett aus.
    - `SENTRY_DSN=<gleicher DSN>` *(Server-side)*
 5. Für **Source-Map-Upload beim Build** (optional, aber sehr empfohlen — sonst zeigt Sentry nur minifizierten Code): Sentry-Dashboard → **Settings → Account → API → Auth Tokens** → neues Token `project:releases` + `project:write` erstellen. Dann setzen:
    - `SENTRY_ORG=<Slug der Sentry-Organisation>`
-   - `SENTRY_PROJECT=hausmeister-app`
+   - `SENTRY_PROJECT=hausmeisterservice`
    - `SENTRY_AUTH_TOKEN=<Auth-Token>` *(niemals in Git!)*
 6. Optional AVV mit Sentry: https://sentry.io/legal/dpa/ (relevant, da Sentry personenbezogene Daten wie IP-Adressen indirekt verarbeiten kann — auch wenn wir `sendDefaultPii: false` gesetzt haben).
 7. Prüfung nach Deploy: In der App bewusst einen Fehler auslösen (z. B. `throw new Error('sentry-smoke-test')` in einer Test-Route) → in Sentry sollte er innerhalb ~30 Sekunden erscheinen.
@@ -103,9 +103,9 @@ Ohne DSN läuft die App normal weiter — Sentry ist dann komplett aus.
 Aktuell hat das lokale Repo keinen Remote. Für den Hostinger-Git-Auto-Deploy braucht es einen Remote (empfohlen: privates GitHub-Repo).
 
 ```bash
-# Im GitHub-UI ein privates Repo "hausmeister-app" anlegen (leer, kein README).
+# Im GitHub-UI ein privates Repo "hausmeisterservice" anlegen (leer, kein README).
 # Dann lokal:
-git remote add origin git@github.com:<GITHUB-USERNAME>/hausmeister-app.git
+git remote add origin git@github.com:<GITHUB-USERNAME>/hausmeisterservice.git
 git branch -M main
 git push -u origin main
 ```

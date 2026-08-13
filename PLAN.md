@@ -1,4 +1,4 @@
-# Implementierungsplan — Hausmeister App
+# Implementierungsplan — Hausmeisterservice
 
 Dieses Dokument fasst **Phase 1 (Analyse)** und **Phase 2 (Architektur & Datenmodell)** zusammen, wie in `MASTER_PROMPT.md` §47 verlangt.
 
@@ -98,7 +98,7 @@ Jede der 15 Stationen muss durch das Datenmodell und die Berechtigungen abgedeck
 ### 2.1 Ordnerstruktur (Next.js App Router)
 
 ```
-hausmeister-app/
+hausmeisterservice/
 ├── src/
 │   ├── app/
 │   │   ├── (auth)/               login, register, reset-password, invite
@@ -470,6 +470,6 @@ Ende von Phase 3 = ein Admin kann Tenant einrichten, Rollen konfigurieren, Objek
 
 1. **Demo-Tenant-Name & Branding** — Vorschlag: „Muster Objektservice GmbH", einfaches Farbschema (Primär: Slate/Blue). Kann später ersetzt werden.
 2. **Hostinger-Paket** — nutzen wir den bestehenden Account (wo auch vaydena läuft) oder ein neues Paket? Entscheidet Ressourcen-Isolation und Domain-Verwaltung.
-3. **Zieldomain** — z.B. `hausmeister-app.de`, Sub-Domain oder erst später? Beeinflusst Auth-Callback-URLs und Cookie-Domain früh im Setup.
+3. **Zieldomain** — z.B. `hausmeisterservice.de`, Sub-Domain oder erst später? Beeinflusst Auth-Callback-URLs und Cookie-Domain früh im Setup.
 
 Diese drei Antworten reichen, um Phase 3 zu starten. Alles Weitere (Farbfeinschliff, Logo, konkrete Rollen-Presets) wird während Phase 3 iteriert.

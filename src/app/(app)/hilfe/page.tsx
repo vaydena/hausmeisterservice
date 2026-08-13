@@ -80,7 +80,7 @@ const FAQ: FaqItem[] = [
     ),
   },
   {
-    q: 'Wo finde ich meine Rechnungen von Hausmeister App?',
+    q: 'Wo finde ich meine Rechnungen von Hausmeisterservice?',
     a: (
       <>
         Unter{' '}

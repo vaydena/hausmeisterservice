@@ -1,5 +1,5 @@
 {
-  "name": "hausmeister-app",
+  "name": "hausmeisterservice",
   "version": "0.1.0",
   "private": true,
   "engines": {

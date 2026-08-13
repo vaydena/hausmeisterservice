@@ -9,7 +9,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           <div className="flex size-12 items-center justify-center rounded-2xl bg-[var(--color-primary)] text-[var(--color-primary-foreground)] font-semibold text-lg">
             HS
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Hausmeister App</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Hausmeisterservice</h1>
           <p className="text-sm text-[var(--color-muted-foreground)]">
             Objekt- und Hausmeisterservice-Verwaltung
           </p>

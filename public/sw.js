@@ -1,4 +1,4 @@
-/* Hausmeister App — Service Worker fuer Web Push */
+/* Hausmeisterservice — Service Worker fuer Web Push */
 /* eslint-disable no-restricted-globals */
 
 self.addEventListener('install', (event) => {
@@ -10,7 +10,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'Hausmeister App', body: '', url: '/' };
+  let payload = { title: 'Hausmeisterservice', body: '', url: '/' };
   if (event.data) {
     try {
       payload = Object.assign({}, payload, event.data.json());
@@ -29,7 +29,7 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || undefined,
     data: { url: payload.url || '/', ...(payload.data || {}) },
   };
-  event.waitUntil(self.registration.showNotification(payload.title || 'Hausmeister App', opts));
+  event.waitUntil(self.registration.showNotification(payload.title || 'Hausmeisterservice', opts));
 });
 
 self.addEventListener('notificationclick', (event) => {

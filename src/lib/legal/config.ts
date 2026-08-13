@@ -88,7 +88,7 @@ export const legalConfig = {
    * Produktname für die AGB — wird in Vertragsgegenstand-Klauseln
    * verwendet.
    */
-  productName: 'Hausmeister App',
+  productName: 'Hausmeisterservice',
 } as const;
 
 /**

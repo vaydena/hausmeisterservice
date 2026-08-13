@@ -1,4 +1,4 @@
-# Hausmeister App
+# Hausmeisterservice
 
 Multi-Tenant-SaaS für Hausmeisterservice- und Objektmanagement.
 
@@ -36,7 +36,7 @@ pnpm install
 
 Neues, eigenständiges Projekt in Region **Frankfurt** (nicht mit vaydena teilen). Per Supabase MCP oder Dashboard:
 
-- Projekt-Name: `hausmeister-app` (oder analog)
+- Projekt-Name: `hausmeisterservice` (oder analog)
 - Region: `eu-central-1`
 - Postgres-Passwort sicher ablegen
 

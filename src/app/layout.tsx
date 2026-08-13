@@ -4,11 +4,11 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Hausmeister App',
-    template: '%s · Hausmeister App',
+    default: 'Hausmeisterservice',
+    template: '%s · Hausmeisterservice',
   },
   description: 'Objekt- und Hausmeisterservice-Verwaltung',
-  applicationName: 'Hausmeister App',
+  applicationName: 'Hausmeisterservice',
 };
 
 export const viewport: Viewport = {

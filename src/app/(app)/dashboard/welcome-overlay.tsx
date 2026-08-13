@@ -67,7 +67,7 @@ export function WelcomeOverlay({ tenantName }: { tenantName: string }) {
         <header className="flex items-start justify-between gap-4">
           <div>
             <h2 id="welcome-title" className="text-2xl font-semibold tracking-tight">
-              Willkommen bei Hausmeister App, {tenantName}.
+              Willkommen bei Hausmeisterservice, {tenantName}.
             </h2>
             <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
               Sie haben 14 Tage kostenlos Zeit, alles auszuprobieren. Diese kurze Liste

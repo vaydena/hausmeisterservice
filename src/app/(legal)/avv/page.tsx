@@ -6,7 +6,7 @@ import { legalConfig, formatAddress } from '@/lib/legal/config';
 export const metadata: Metadata = {
   title: 'Auftragsverarbeitungsvertrag (AVV)',
   description:
-    'Muster-Auftragsverarbeitungsvertrag nach Art. 28 DSGVO für Firmenkunden der Hausmeister App',
+    'Muster-Auftragsverarbeitungsvertrag nach Art. 28 DSGVO für Firmenkunden der Hausmeisterservice',
 };
 
 export default function AvvPage() {

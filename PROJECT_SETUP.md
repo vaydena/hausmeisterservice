@@ -1,4 +1,4 @@
-# Projekt-Setup — Hausmeister App
+# Projekt-Setup — Hausmeisterservice
 
 Ergänzung zu `MASTER_PROMPT.md`. Regelt Tech-Stack und Infrastruktur-Entscheidungen, damit die Umsetzung nicht bei Grundsatzfragen ins Stocken gerät.
 

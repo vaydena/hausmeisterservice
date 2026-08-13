@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export const revalidate = 3600;
 
-const APP_NAME = 'Hausmeister App';
+const APP_NAME = 'Hausmeisterservice';
 
 const FEATURES: Array<{ title: string; body: string }> = [
   {

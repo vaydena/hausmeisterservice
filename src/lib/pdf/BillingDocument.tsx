@@ -255,8 +255,8 @@ export function BillingDocument({ data }: { data: BillingDocumentData }) {
     <Document
       title={`${label} ${data.code}`}
       author={senderName}
-      creator="Hausmeister App"
-      producer="Hausmeister App"
+      creator="Hausmeisterservice"
+      producer="Hausmeisterservice"
     >
       <Page size="A4" style={styles.page}>
         {/* Kopfzeile: Absender links, Meta rechts */}
