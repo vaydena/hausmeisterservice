@@ -13,6 +13,7 @@ import {
   mfaVerifySchema,
 } from '@/lib/auth/mfa-verify-schema';
 import { generateRecoveryCodePlaintexts } from '@/lib/auth/mfa-recovery';
+import { requireAal2WhenEnrolled } from '@/lib/auth/require-aal2';
 
 export type AccountActionState = { error?: string; success?: string };
 
@@ -50,6 +51,14 @@ export async function changePasswordAction(
     return { error: 'Fuer dieses Konto ist keine E-Mail hinterlegt. Bitte Support kontaktieren.' };
   }
 
+  // Sprint 27: aal2 verlangen, sobald der User MFA aktiv hat. Passwort-
+  // Aenderung mit einer erbeuteten aal1-Session waere sonst der Persistenz-
+  // Vektor: Angreifer setzt neues Passwort, User wird beim naechsten Login
+  // ausgesperrt. Der Re-Auth-Check unten ist strikt zusaetzlich (er
+  // schuetzt auch aal2-Sessions vor "Passwort im offenen Browser gesetzt").
+  const supabase = await createSupabaseServerClient();
+  await requireAal2WhenEnrolled(supabase, '/settings/account');
+
   // Rate-Limit auf E-Mail-Basis: schuetzt einen konkreten Account gegen
   // Brute-Force auf das aktuelle Passwort, falls jemand eine noch gueltige
   // Session-Cookie erbeutet hat und nur noch die Re-Auth aushebeln muesste,
@@ -67,8 +76,6 @@ export async function changePasswordAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
   }
-
-  const supabase = await createSupabaseServerClient();
 
   // Re-Auth: aktuelles Passwort verifizieren, indem wir mit der bekannten
   // E-Mail + aktuellem Passwort einen Sign-In versuchen. Bei Erfolg
@@ -142,6 +149,10 @@ export async function signOutOtherSessionsAction(
 ): Promise<AccountActionState> {
   await requireTenantContext();
   const supabase = await createSupabaseServerClient();
+
+  // Sprint 27: aal2 verlangen — ohne den Guard koennte ein Angreifer mit
+  // erbeuteter aal1-Session die legitime aal2-Session des Owners killen.
+  await requireAal2WhenEnrolled(supabase, '/settings/account');
 
   // scope:'others' invalidiert alle Refresh-Tokens des Users AUSSER dem
   // der aktuellen Session — der User bleibt hier eingeloggt, auf allen
@@ -281,6 +292,15 @@ export async function unenrollMfaFactorAction(
   }
 
   const supabase = await createSupabaseServerClient();
+
+  // Sprint 27: aal2 verlangen, sobald der User MFA aktiv hat. Ohne den
+  // Guard koennte ein Angreifer mit erbeuteter aal1-Session den MFA-
+  // Schutz einfach abschalten und den Account danach beliebig uebernehmen.
+  // Die Enroll-Kaskade "unverified-Faktoren wegraeumen vor neuem enroll"
+  // im enrollMfaFactorAction umgeht diesen Guard bewusst — dort ist ein
+  // aal2-Prompt unmoeglich (der User hat gerade erst enroll begonnen).
+  await requireAal2WhenEnrolled(supabase, '/settings/account');
+
   const { error } = await supabase.auth.mfa.unenroll({ factorId: parsed.data.factorId });
   if (error) {
     return { error: 'Faktor konnte nicht entfernt werden. Bitte spaeter erneut.' };
@@ -306,6 +326,13 @@ export async function generateMfaRecoveryCodesAction(
   _formData: FormData,
 ): Promise<RecoveryCodesState> {
   const ctx = await requireTenantContext();
+
+  // Sprint 27: aal2 verlangen. Ein Angreifer mit erbeuteter aal1-Session
+  // koennte sonst 10 gueltige Recovery-Codes fuer sich generieren, sie
+  // aufheben und Wochen spaeter fuer die vollstaendige Account-Uebernahme
+  // einloesen — auch nachdem der Owner sein Passwort neu gesetzt hat.
+  const supabase = await createSupabaseServerClient();
+  await requireAal2WhenEnrolled(supabase, '/settings/account');
 
   const plaintexts = generateRecoveryCodePlaintexts();
   // Die RPC erwartet die Codes ohne Bindestrich (bcrypt-Hash geht ueber
