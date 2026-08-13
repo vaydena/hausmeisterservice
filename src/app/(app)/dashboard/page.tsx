@@ -1,10 +1,18 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { getEnabledModules } from '@/lib/modules/enabled';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
 import { WelcomeOverlay } from './welcome-overlay';
+import { MfaReminderBanner } from './mfa-reminder-banner';
+
+// 7 Tage — nach dem Dismiss bleibt der Banner solange stumm. Danach kommt
+// er wieder, weil Owner-Konten das sensibelste Ziel eines Angreifers sind
+// und dauerhaftes "abgehakt"-Verhalten hier nicht sinnvoll ist.
+const MFA_REMINDER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -37,6 +45,24 @@ export default async function DashboardPage() {
 
   const tenantName = tenant.data?.name ?? 'Ihr Mandant';
   const showWelcome = ctx.isOwner && !tenant.data?.onboarding_completed_at;
+
+  // MFA-Reminder nur fuer Owner (nur sie koennen dem Tenant Schaden
+  // zufuegen), nur ohne verifizierten Faktor, und nur wenn der letzte
+  // Dismiss ausserhalb des Cooldowns liegt.
+  let showMfaReminder = false;
+  if (ctx.isOwner) {
+    const enrolled = await hasVerifiedMfaFactor(supabase);
+    if (!enrolled) {
+      const dismissed = (await cookies()).get('mfa_reminder_dismissed_at')?.value;
+      const dismissedAt = dismissed ? Number(dismissed) : 0;
+      const cooldownActive =
+        Number.isFinite(dismissedAt) &&
+        dismissedAt > 0 &&
+        Date.now() - dismissedAt < MFA_REMINDER_COOLDOWN_MS;
+      showMfaReminder = !cooldownActive;
+    }
+  }
+
   const roleNames =
     (roles.data ?? [])
       .map((r) => r.roles?.name)
@@ -63,6 +89,8 @@ export default async function DashboardPage() {
           )}
         </p>
       </section>
+
+      {showMfaReminder && <MfaReminderBanner />}
 
       <StatsGrid
         moduleCount={activeToggleable.length}
