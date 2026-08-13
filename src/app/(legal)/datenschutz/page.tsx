@@ -105,7 +105,34 @@ export default function DatenschutzPage() {
         Geräteinformationen, automatisch entfernt.
       </p>
 
-      <h2>{dataProtectionOfficer ? '5' : '4'}. Empfänger und Auftragsverarbeiter</h2>
+      <h2>{dataProtectionOfficer ? '5' : '4'}. Sonderkonstellation: unsere Rolle als Auftragsverarbeiter für B2B-Kunden</h2>
+      <p>
+        {productName} wird als Software-as-a-Service an Hausmeister- und Facility-Betriebe
+        (im Folgenden „Firmenkunden") vermietet. Diese Firmenkunden nutzen die App, um Daten
+        ihrer eigenen Mitarbeiter, Bewohner, Eigentümer, Auftraggeber und Objekte zu
+        verwalten.
+      </p>
+      <p>
+        In dieser Konstellation ist der jeweilige Firmenkunde datenschutzrechtlich
+        Verantwortlicher (Art. 4 Nr. 7 DSGVO) für die von ihm eingegebenen Daten. Wir
+        verarbeiten diese Daten ausschließlich in seinem Auftrag und nach seiner Weisung
+        als Auftragsverarbeiter im Sinne des Art. 28 DSGVO. Für Betroffenenrechte
+        (Auskunft, Löschung etc.) hinsichtlich dieser Daten ist der jeweilige Firmenkunde
+        der Ansprechpartner — wir dürfen Auskünfte an Betroffene nur nach Freigabe durch
+        den Firmenkunden erteilen.
+      </p>
+      <p>
+        Für den Abschluss eines Auftragsverarbeitungsvertrages nach Art. 28 DSGVO stellen
+        wir eine Vertragsvorlage zur Verfügung. Details, Prozess und Sub-Prozessor-Liste
+        finden Sie unter <a href="/avv">Auftragsverarbeitungsvertrag (AVV)</a>.
+      </p>
+      <p>
+        Diese Datenschutzerklärung beschreibt darüber hinaus die Verarbeitung, für die wir
+        selbst Verantwortlicher sind — insbesondere Konto-, Rechnungs- und Nutzungsdaten
+        der Firmenkunden gegenüber uns als Anbieter.
+      </p>
+
+      <h2>{dataProtectionOfficer ? '6' : '5'}. Empfänger und Auftragsverarbeiter</h2>
       <p>
         Wir setzen sorgfältig ausgewählte technische Dienstleister ein, die für uns
         personenbezogene Daten im Rahmen einer Auftragsverarbeitung nach Art. 28 DSGVO
@@ -166,7 +193,7 @@ export default function DatenschutzPage() {
         sind (z. B. gegenüber Steuerbehörden oder Strafverfolgungsbehörden).
       </p>
 
-      <h2>{dataProtectionOfficer ? '6' : '5'}. Speicherdauer</h2>
+      <h2>{dataProtectionOfficer ? '7' : '6'}. Speicherdauer</h2>
       <ul>
         <li>Konto- und Stammdaten: bis zur Löschung des Nutzerkontos.</li>
         <li>
@@ -179,7 +206,7 @@ export default function DatenschutzPage() {
         <li>Sonstige Betriebsdaten: für die Dauer der Vertragsbeziehung + 30 Tage Karenzzeit.</li>
       </ul>
 
-      <h2>{dataProtectionOfficer ? '7' : '6'}. Ihre Rechte als betroffene Person</h2>
+      <h2>{dataProtectionOfficer ? '8' : '7'}. Ihre Rechte als betroffene Person</h2>
       <p>Sie haben nach der DSGVO folgende Rechte uns gegenüber:</p>
       <ul>
         <li>Recht auf Auskunft über die zu Ihrer Person gespeicherten Daten (Art. 15 DSGVO)</li>
@@ -201,7 +228,7 @@ export default function DatenschutzPage() {
         <a href={`mailto:${contact.email}`}>{contact.email}</a>.
       </p>
 
-      <h2>{dataProtectionOfficer ? '8' : '7'}. Beschwerderecht bei der Aufsichtsbehörde</h2>
+      <h2>{dataProtectionOfficer ? '9' : '8'}. Beschwerderecht bei der Aufsichtsbehörde</h2>
       <p>
         Sie haben nach Art. 77 DSGVO das Recht, sich bei einer Aufsichtsbehörde zu beschweren.
         Zuständig ist:
@@ -216,7 +243,7 @@ export default function DatenschutzPage() {
         </a>
       </p>
 
-      <h2>{dataProtectionOfficer ? '9' : '8'}. Cookies und lokale Speicherung</h2>
+      <h2>{dataProtectionOfficer ? '10' : '9'}. Cookies und lokale Speicherung</h2>
       <p>
         {productName} setzt ausschließlich technisch notwendige Cookies zur Aufrechterhaltung
         der Anmelde-Session ein. Diese Cookies sind für den Betrieb der Anwendung zwingend
@@ -230,7 +257,7 @@ export default function DatenschutzPage() {
         an Dritte statt.
       </p>
 
-      <h2>{dataProtectionOfficer ? '10' : '9'}. Push-Benachrichtigungen</h2>
+      <h2>{dataProtectionOfficer ? '11' : '10'}. Push-Benachrichtigungen</h2>
       <p>
         Nach Aktivierung durch den Nutzer sendet die Anwendung Push-Benachrichtigungen über den
         Push-Dienst des jeweiligen Browsers (Web Push mit VAPID). Dabei wird ein
@@ -238,7 +265,7 @@ export default function DatenschutzPage() {
         über die Einstellungen der Anwendung oder ihres Browsers deaktivieren.
       </p>
 
-      <h2>{dataProtectionOfficer ? '11' : '10'}. Datensicherheit</h2>
+      <h2>{dataProtectionOfficer ? '12' : '11'}. Datensicherheit</h2>
       <p>
         Wir setzen technische und organisatorische Maßnahmen ein, um Ihre Daten gegen Verlust,
         unberechtigten Zugriff und Manipulation zu schützen. Dazu gehören insbesondere:
@@ -247,7 +274,7 @@ export default function DatenschutzPage() {
         Rechteverwaltung mit dem Prinzip minimaler Berechtigungen.
       </p>
 
-      <h2>{dataProtectionOfficer ? '12' : '11'}. Änderungen dieser Datenschutzerklärung</h2>
+      <h2>{dataProtectionOfficer ? '13' : '12'}. Änderungen dieser Datenschutzerklärung</h2>
       <p>
         Wir behalten uns vor, diese Datenschutzerklärung anzupassen, wenn dies aufgrund
         gesetzlicher Änderungen oder Änderungen unserer Leistungen erforderlich wird. Über

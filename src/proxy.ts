@@ -5,7 +5,7 @@ const STAFF_PUBLIC_ROUTES = ['/', '/login', '/signup', '/reset-password', '/invi
 const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
 // Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
 // dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
-const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb'];
+const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb', '/avv'];
 // Supabase-Auth-Callbacks (E-Mail-Verify, Magic-Link, Reset). Der Handler
 // führt selbst exchangeCodeForSession aus — kein Session-Redirect davor.
 const AUTH_CALLBACK_ROUTES = ['/auth/callback'];

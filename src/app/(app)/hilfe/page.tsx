@@ -141,6 +141,21 @@ const FAQ: FaqItem[] = [
     ),
   },
   {
+    q: 'Brauche ich einen Auftragsverarbeitungsvertrag (AVV) mit euch?',
+    a: (
+      <>
+        Ja — sobald Sie personenbezogene Daten Ihrer Mitarbeiter, Bewohner oder
+        Eigentümer in der App speichern, sind Sie nach Art. 28 DSGVO verpflichtet,
+        einen AVV mit uns abzuschließen. Details, Ablauf und einen vorbereiteten
+        E-Mail-Entwurf zum Anfordern finden Sie unter{' '}
+        <Link href="/avv" className="text-[var(--color-primary)] underline">
+          Auftragsverarbeitungsvertrag (AVV)
+        </Link>
+        .
+      </>
+    ),
+  },
+  {
     q: 'Meine Frage steht hier nicht — was jetzt?',
     a: (
       <>
@@ -248,6 +263,12 @@ export default function HilfePage() {
             className="rounded-md border border-[var(--color-border)] px-3 py-1.5 hover:bg-[var(--color-muted)]/50"
           >
             AGB
+          </Link>
+          <Link
+            href="/avv"
+            className="rounded-md border border-[var(--color-border)] px-3 py-1.5 hover:bg-[var(--color-muted)]/50"
+          >
+            Auftragsverarbeitung (AVV)
           </Link>
         </CardBody>
       </Card>

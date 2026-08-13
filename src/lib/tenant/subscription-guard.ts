@@ -54,6 +54,7 @@ const ALLOW_WHEN_BLOCKED = [
   '/impressum',
   '/datenschutz',
   '/agb',
+  '/avv',
   '/hilfe',
 ];
 

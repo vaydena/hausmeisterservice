@@ -55,6 +55,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <Link href="/impressum" className="hover:text-[var(--color-foreground)] hover:underline">Impressum</Link>
             <Link href="/datenschutz" className="hover:text-[var(--color-foreground)] hover:underline">Datenschutz</Link>
             <Link href="/agb" className="hover:text-[var(--color-foreground)] hover:underline">AGB</Link>
+            <Link href="/avv" className="hover:text-[var(--color-foreground)] hover:underline">AVV</Link>
           </nav>
         </footer>
       </div>

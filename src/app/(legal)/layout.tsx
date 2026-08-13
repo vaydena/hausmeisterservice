@@ -26,6 +26,9 @@ export default function LegalLayout({ children }: { children: ReactNode }) {
             <Link href="/agb" className="hover:text-[var(--color-foreground)] hover:underline">
               AGB
             </Link>
+            <Link href="/avv" className="hover:text-[var(--color-foreground)] hover:underline">
+              AVV
+            </Link>
           </nav>
         </div>
       </header>
@@ -44,6 +47,7 @@ export default function LegalLayout({ children }: { children: ReactNode }) {
             <Link href="/impressum" className="hover:underline">Impressum</Link>
             <Link href="/datenschutz" className="hover:underline">Datenschutz</Link>
             <Link href="/agb" className="hover:underline">AGB</Link>
+            <Link href="/avv" className="hover:underline">AVV</Link>
           </nav>
         </div>
       </footer>
