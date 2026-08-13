@@ -1,0 +1,46 @@
+/**
+ * Pure Konstanten und Formatierung fuer Auth-Rate-Limits. Bewusst OHNE
+ * `server-only` und ohne DB-Client-Import, damit die Config in Tests
+ * (Vitest laeuft im Node-Env) und in Client-Rendering-Kontexten (falls
+ * jemals noetig) referenziert werden kann. Die tatsaechlichen RPC-Calls
+ * sitzen in `./rate-limit.ts` (server-only).
+ */
+
+/**
+ * Sprint 20: Rate-Limits fuer Auth-Endpoints.
+ *
+ * Die Werte sind bewusst konservativ:
+ *   - login / portal-login: 5 Fehlversuche in 15 Minuten, dann 15 Minuten
+ *     gesperrt. Ein legitimer User, der Passwort und Layout korrekt hat,
+ *     braucht selten mehr als 2 Versuche; 5 laesst Tippfehler zu, ohne
+ *     Brute-Force zu erlauben (max. 20 Passwortversuche/Stunde bei 1
+ *     Sperre alle 15 min).
+ *   - signup / reset-password: 3 Aktionen pro Stunde. Beide Endpoints sind
+ *     E-Mail-Enumeration-Vektoren (Signup revealed "E-Mail schon vergeben"
+ *     zumindest indirekt, Reset schickt Mail nur an bestehende Konten).
+ *     Bei 3/Stunde kann ein Angreifer maximal 72 E-Mails/Tag durchprobieren
+ *     — praktisch unbrauchbar fuer Enumeration.
+ *
+ * Zaehler wird bei erfolgreichem Login/Portal-Login geloescht (siehe
+ * `resetAuthRateLimit` in ./rate-limit.ts), damit ein legitimes Passwort
+ * das Rate-Limit befreit. Fuer Signup/Reset-Password KEIN Reset auf
+ * Erfolg — sonst waere die E-Mail-Enumeration-Schutzwirkung weg.
+ */
+export const AUTH_RATE_LIMITS = {
+  login: { limit: 5, windowSec: 900, blockSec: 900 },
+  'portal-login': { limit: 5, windowSec: 900, blockSec: 900 },
+  signup: { limit: 3, windowSec: 3600, blockSec: 3600 },
+  'reset-password': { limit: 3, windowSec: 3600, blockSec: 3600 },
+} as const;
+
+export type AuthEndpoint = keyof typeof AUTH_RATE_LIMITS;
+
+/**
+ * Formatiert die Retry-After-Sekunden als benutzerfreundliche deutsche
+ * Fehlermeldung. Rundet auf Minuten (aber min. 1 Minute), damit der
+ * Text nicht "Bitte in 903 Sekunden erneut versuchen" heisst.
+ */
+export function formatRateLimitError(retryAfterSec: number): string {
+  const minutes = Math.max(1, Math.ceil(retryAfterSec / 60));
+  return `Zu viele Versuche. Bitte in ${minutes} Minute${minutes === 1 ? '' : 'n'} erneut versuchen.`;
+}

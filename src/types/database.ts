@@ -159,6 +159,36 @@ export type Database = {
           },
         ]
       }
+      auth_rate_limits: {
+        Row: {
+          attempts: number
+          blocked_until: string | null
+          endpoint: string
+          id: string
+          identifier: string
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          attempts?: number
+          blocked_until?: string | null
+          endpoint: string
+          id?: string
+          identifier: string
+          updated_at?: string
+          window_start?: string
+        }
+        Update: {
+          attempts?: number
+          blocked_until?: string | null
+          endpoint?: string
+          id?: string
+          identifier?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       automation_dispatches: {
         Row: {
           dispatch_key: string
@@ -3644,6 +3674,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_and_consume_auth_rate_limit: {
+        Args: {
+          p_block_sec: number
+          p_endpoint: string
+          p_identifier: string
+          p_limit: number
+          p_window_sec: number
+        }
+        Returns: {
+          allowed: boolean
+          retry_after_sec: number
+        }[]
+      }
+      cleanup_expired_auth_rate_limits: { Args: never; Returns: number }
       enqueue_notification: {
         Args: {
           p_body?: string
@@ -3665,6 +3709,13 @@ export type Database = {
           p_user_id: string
         }
         Returns: Json
+      }
+      reset_auth_rate_limit: {
+        Args: {
+          p_endpoint: string
+          p_identifier: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

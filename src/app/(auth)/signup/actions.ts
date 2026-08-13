@@ -1,9 +1,12 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { clientEnv } from '@/lib/env';
 import { signupSchema } from '@/lib/auth/signup-schema';
+import { getClientIp } from '@/lib/security/client-ip';
+import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 
 type SignupField =
   | 'companyName'
@@ -21,6 +24,17 @@ export type SignupState = {
 };
 
 export async function signupAction(_prev: SignupState, formData: FormData): Promise<SignupState> {
+  // Rate-Limit vor Zod-Validierung: verhindert per-IP-Missbrauch als
+  // E-Mail-Enumeration-Vektor (Signup revealed indirekt "E-Mail bereits
+  // vergeben" durch Fehlermeldung). 3 Versuche/Stunde reichen fuer
+  // legitime Nutzer aus, blockieren aber Massen-Enumeration.
+  // KEIN Reset auf Erfolg — sonst waere der Enumeration-Schutz weg.
+  const ip = getClientIp(await headers());
+  const rl = await checkAuthRateLimit(ip, 'signup');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
   const parsed = signupSchema.safeParse({
     companyName: formData.get('companyName'),
     slug: formData.get('slug'),

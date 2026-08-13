@@ -103,7 +103,20 @@ for (const p of POLICIES) {
  * here only when there is a written rationale — the test also asserts stale
  * entries (once a policy appears the allowlist entry becomes an error).
  */
-const INTENTIONALLY_DENY_ALL = new Set<string>([]);
+const INTENTIONALLY_DENY_ALL = new Set<string>([
+  // public.auth_rate_limits:
+  //   Rate-Limit-Zaehler fuer Auth-Endpoints (Sprint 20). Die Tabelle hat
+  //   RLS enabled aber keine Policy — das ist Absicht: kein authenticated
+  //   oder anon User darf jemals lesen oder schreiben, weder auf eigene
+  //   noch fremde Zaehler. Der Zugriff laeuft ausschliesslich ueber die
+  //   drei SECURITY DEFINER Functions (check_and_consume_auth_rate_limit,
+  //   reset_auth_rate_limit, cleanup_expired_auth_rate_limits) mit
+  //   execute-Grant nur an service_role. Eine Policy waere daher nicht nur
+  //   ueberfluessig, sondern eine Schwachstelle — sie wuerde einen Angreifer
+  //   in die Lage versetzen, den eigenen Zaehler zu resetten und damit
+  //   das Rate-Limit zu umgehen.
+  'auth_rate_limits',
+]);
 
 describe('RLS policy existence for every RLS-enabled public.* table', () => {
   describe('sanity: extractors found something', () => {

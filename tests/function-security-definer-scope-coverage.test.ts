@@ -132,6 +132,30 @@ const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([
   //   Tabellen-Erzeugungs-Zeit resolvbar ist; execute-Right ist ausschliesslich
   //   an service_role gegrantet.
   'platform.generate_invoice_number',
+  // public.check_and_consume_auth_rate_limit:
+  //   Rate-Limit-Kern-Function fuer Auth-Endpoints (Sprint 20). Muss im
+  //   Schema `public` liegen, weil sie ueber PostgREST-RPC vom Service-
+  //   Client (src/lib/security/rate-limit.ts) aufgerufen wird — `app_auth`
+  //   ist fuer service_role nicht per USAGE freigegeben. Der Body operiert
+  //   nur auf public.auth_rate_limits (deren RLS auf deny-all steht) und
+  //   liest/schreibt ausschliesslich Zaehler-Metadaten, keine Tenant-Daten.
+  //   Ausfuehrungsrechte sind explizit von anon/authenticated zurueckgezogen;
+  //   nur service_role kann sie ueberhaupt aufrufen — damit ist der
+  //   `p_limit`/`p_window_sec`-Missbrauchsvektor geschlossen (ein Angreifer
+  //   mit anon/authenticated bekommt `permission denied for function`).
+  'public.check_and_consume_auth_rate_limit',
+  // public.reset_auth_rate_limit:
+  //   Loescht den Rate-Limit-Zaehler nach erfolgreichem Login. Zwei-Zeilen-
+  //   Function ohne Parameter-Interpolation. Dieselbe Rationale wie
+  //   check_and_consume_auth_rate_limit — muss in `public` fuer PostgREST-
+  //   RPC, execute nur an service_role. Keine Tenant-Daten im Body.
+  'public.reset_auth_rate_limit',
+  // public.cleanup_expired_auth_rate_limits:
+  //   Optionaler Wartungs-Job. Loescht Rate-Limit-Eintraege deren Fenster
+  //   laenger als 1 Tag zurueckliegen. Kein Argument, kein caller-abhaengiger
+  //   Zweig, laeuft nur auf public.auth_rate_limits. Dieselbe RPC-Rationale;
+  //   execute nur an service_role.
+  'public.cleanup_expired_auth_rate_limits',
 ]);
 
 describe('Function security-definer scope coverage', () => {

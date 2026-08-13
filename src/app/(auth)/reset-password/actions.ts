@@ -1,8 +1,11 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { clientEnv } from '@/lib/env';
+import { getClientIp } from '@/lib/security/client-ip';
+import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 
 const schema = z.object({
   email: z.string().email('Bitte geben Sie eine gültige E-Mail-Adresse ein.'),
@@ -14,6 +17,18 @@ export async function requestPasswordResetAction(
   _prev: ResetState,
   formData: FormData,
 ): Promise<ResetState> {
+  // Rate-Limit vor allem anderen: Reset-Password ist ein E-Mail-
+  // Enumeration-Vektor (Mail geht nur an registrierte Adressen). 3
+  // Versuche/Stunde reichen fuer legitime Vergesslichkeit, blockieren
+  // aber Massen-Enumeration und schuetzen zusaetzlich das Supabase-
+  // E-Mail-Kontingent gegen Missbrauch. KEIN Reset auf Erfolg — sonst
+  // waere der Enumeration-Schutz umgangen.
+  const ip = getClientIp(await headers());
+  const rl = await checkAuthRateLimit(ip, 'reset-password');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
   const parsed = schema.safeParse({ email: formData.get('email') });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Ungültige Eingaben.' };

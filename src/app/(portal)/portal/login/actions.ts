@@ -1,8 +1,15 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getClientIp } from '@/lib/security/client-ip';
+import {
+  checkAuthRateLimit,
+  formatRateLimitError,
+  resetAuthRateLimit,
+} from '@/lib/security/rate-limit';
 
 const schema = z.object({
   email: z.string().email('Bitte geben Sie eine gültige E-Mail-Adresse ein.'),
@@ -15,6 +22,15 @@ export async function portalSignInAction(
   _prev: PortalLoginState,
   formData: FormData,
 ): Promise<PortalLoginState> {
+  // Rate-Limit-Check ZUERST — gleiche Brute-Force-Oberflaeche wie /login,
+  // deshalb dieselbe Config (5 Versuche pro 15 Min). Bei gesperrter IP
+  // sofort mit generischer Retry-Meldung antworten.
+  const ip = getClientIp(await headers());
+  const rl = await checkAuthRateLimit(ip, 'portal-login');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
   const parsed = schema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
@@ -50,6 +66,10 @@ export async function portalSignInAction(
         'Für dieses Konto ist kein Bewohner-Portal-Zugang hinterlegt. Bitte kontaktieren Sie Ihre Verwaltung.',
     };
   }
+
+  // Erfolgreicher Portal-Login (mit Resident-Match): Rate-Limit-Zaehler
+  // fuer diese IP freigeben. Analog zu /login.
+  await resetAuthRateLimit(ip, 'portal-login');
 
   // Beim ersten Login: portal_activated_at setzen (best-effort, verletzt nicht Login-Flow)
   if (!resident.portal_activated_at) {

@@ -1,9 +1,16 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ensureTenantForUser } from '@/lib/auth/ensure-tenant';
+import { getClientIp } from '@/lib/security/client-ip';
+import {
+  checkAuthRateLimit,
+  formatRateLimitError,
+  resetAuthRateLimit,
+} from '@/lib/security/rate-limit';
 
 const loginSchema = z.object({
   email: z.string().email('Bitte geben Sie eine gültige E-Mail-Adresse ein.'),
@@ -14,6 +21,17 @@ const loginSchema = z.object({
 export type LoginState = { error?: string };
 
 export async function signInAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
+  // Rate-Limit-Check ZUERST — noch vor der Zod-Validierung, damit ein
+  // Angreifer nicht per malformed Payload den Zaehler umgeht. IP kommt aus
+  // x-forwarded-for (Hostinger-Reverse-Proxy setzt den immer). Bei
+  // gesperrter IP: sofort mit generischer Retry-Meldung antworten, keine
+  // Auskunft ob die Credentials korrekt gewesen waeren.
+  const ip = getClientIp(await headers());
+  const rl = await checkAuthRateLimit(ip, 'login');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
   const parsed = loginSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
@@ -33,6 +51,10 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   if (error || !signInData.user) {
     return { error: 'Anmeldung fehlgeschlagen. Bitte prüfen Sie E-Mail und Passwort.' };
   }
+
+  // Erfolgreicher Login: Rate-Limit-Zaehler fuer diese IP freigeben, damit
+  // vergangene Tippfehler die naechste Session nicht mehr blockieren.
+  await resetAuthRateLimit(ip, 'login');
 
   // Post-Login-Router:
   //   Staff-Membership vorhanden → next (default /dashboard)
