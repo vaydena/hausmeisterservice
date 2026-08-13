@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { logLoginEvent } from '@/lib/auth/log-login-event';
 import { getClientIp } from '@/lib/security/client-ip';
 import {
   checkAuthRateLimit,
@@ -70,6 +71,17 @@ export async function portalSignInAction(
   // Erfolgreicher Portal-Login (mit Resident-Match): Rate-Limit-Zaehler
   // fuer diese IP freigeben. Analog zu /login.
   await resetAuthRateLimit(ip, 'portal-login');
+
+  // Sprint 29: Login als Zeile in auth_login_events schreiben — Portal-
+  // Bewohner sehen ihren eigenen Anmeldeverlauf ebenfalls im Konto-
+  // Bereich (bzw. der Portal-Konto-Seite, sobald die existiert).
+  const hdrs = await headers();
+  await logLoginEvent({
+    userId: data.user.id,
+    ip,
+    userAgent: hdrs.get('user-agent'),
+    endpoint: 'portal-login',
+  });
 
   // Beim ersten Login: portal_activated_at setzen (best-effort, verletzt nicht Login-Flow)
   if (!resident.portal_activated_at) {

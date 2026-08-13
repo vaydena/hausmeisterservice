@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ensureTenantForUser } from '@/lib/auth/ensure-tenant';
+import { logLoginEvent } from '@/lib/auth/log-login-event';
 import { getClientIp } from '@/lib/security/client-ip';
 import {
   checkAuthRateLimit,
@@ -55,6 +56,17 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   // Erfolgreicher Login: Rate-Limit-Zaehler fuer diese IP freigeben, damit
   // vergangene Tippfehler die naechste Session nicht mehr blockieren.
   await resetAuthRateLimit(ip, 'login');
+
+  // Sprint 29: Login als Zeile in auth_login_events schreiben — der User
+  // sieht seinen eigenen Anmeldeverlauf in /settings/account und kann so
+  // ungewoehnliche Logins (fremde IP, fremder Browser) frueh erkennen.
+  const hdrs = await headers();
+  await logLoginEvent({
+    userId: signInData.user.id,
+    ip,
+    userAgent: hdrs.get('user-agent'),
+    endpoint: 'staff-login',
+  });
 
   // MFA-Gate (Sprint 25): Wenn der User verified TOTP-Faktoren hat, hebt
   // Supabase das AAL-Ziel auf aal2 an. Wir schicken ihn dann durch den

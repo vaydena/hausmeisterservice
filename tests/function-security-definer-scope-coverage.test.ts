@@ -181,6 +181,17 @@ const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([
   //   fuer die Konto-UI. Same-shape wie oben — PostgREST-RPC, service_role-
   //   only, keine caller-abhaengige Interpolation.
   'public.count_unused_mfa_recovery_codes',
+  // public.log_login_event:
+  //   Schreibt einen erfolgreichen Login als Zeile in public.auth_login_events
+  //   (Sprint 29). Muss in `public` fuer PostgREST-RPC vom Service-Client
+  //   (src/lib/auth/log-login-event.ts). Insert auf eine Tabelle mit RLS
+  //   SELECT-only-Policy und keinerlei INSERT-Policy — SECURITY DEFINER ist
+  //   der einzige Weg, dorthin zu schreiben. Execute-Right ausschliesslich
+  //   an service_role, damit ein Angreifer keine Fake-Events fuer beliebige
+  //   User erzeugen kann. Die aufrufende Server-Action stellt user_id aus
+  //   signInData.user (nicht aus der Formular-Payload), sodass IDs nicht
+  //   spoofbar sind.
+  'public.log_login_event',
 ]);
 
 describe('Function security-definer scope coverage', () => {

@@ -159,6 +159,33 @@ export type Database = {
           },
         ]
       }
+      auth_login_events: {
+        Row: {
+          at: string
+          endpoint: string
+          id: string
+          ip: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          at?: string
+          endpoint: string
+          id?: string
+          ip?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          at?: string
+          endpoint?: string
+          id?: string
+          ip?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       auth_mfa_recovery_codes: {
         Row: {
           code_hash: string
@@ -3745,6 +3772,15 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
+      }
+      log_login_event: {
+        Args: {
+          p_endpoint: string
+          p_ip: string
+          p_user_agent: string
+          p_user_id: string
+        }
+        Returns: undefined
       }
       mark_all_notifications_read: { Args: never; Returns: number }
       provision_signup_tenant: {

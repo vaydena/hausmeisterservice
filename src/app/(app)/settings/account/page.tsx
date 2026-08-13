@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { ChangeDisplayNameForm } from './change-display-name-form';
 import { ChangePasswordForm } from './change-password-form';
+import { LoginEventsList } from './login-events-list';
 import { MfaForm } from './mfa-form';
 import { RecoveryCodesForm } from './recovery-codes-form';
 import { RevokeSessionsForm } from './revoke-sessions-form';
@@ -39,6 +40,23 @@ export default async function AccountSettingsPage({
     { p_user_id: ctx.userId },
   );
   const unusedCount = typeof unusedCountData === 'number' ? unusedCountData : 0;
+
+  // Anmeldeverlauf (Sprint 29): letzte 20 erfolgreiche Logins. RLS erlaubt
+  // dem User SELECT auf seine eigenen Rows — daher der anon Server-Client,
+  // kein service_role noetig.
+  const { data: loginEventsData } = await supabase
+    .from('auth_login_events')
+    .select('id, at, ip, user_agent, endpoint')
+    .eq('user_id', ctx.userId)
+    .order('at', { ascending: false })
+    .limit(20);
+  const loginEvents = (loginEventsData ?? []).map((e) => ({
+    id: e.id,
+    at: e.at,
+    ip: e.ip,
+    userAgent: e.user_agent,
+    endpoint: e.endpoint,
+  }));
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -116,6 +134,20 @@ export default async function AccountSettingsPage({
             <RecoveryCodesForm unusedCount={unusedCount} />
           </div>
         )}
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Anmeldeverlauf
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Ihre letzten 20 erfolgreichen Anmeldungen. Prüfen Sie diese Liste
+            regelmässig — eine unbekannte IP oder ein fremder Browser kann
+            ein Hinweis auf eine kompromittierte Sitzung sein.
+          </p>
+        </div>
+        <LoginEventsList events={loginEvents} />
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
