@@ -6,7 +6,12 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { MODULES, type ModuleDomain } from '@/lib/modules/registry';
 import { formatDate } from '@/lib/utils/format';
 import { parseTenantAddress, parseTenantInvoiceData } from '@/lib/schemas/tenant';
-import { toggleModuleAction } from './actions';
+import { countDemoDataForTenant } from '@/lib/tenant/demo-data';
+import {
+  toggleModuleAction,
+  loadDemoDataAction,
+  removeDemoDataAction,
+} from './actions';
 import { TenantBillingForm } from './billing-form';
 
 export const metadata: Metadata = { title: 'Mandant' };
@@ -39,7 +44,7 @@ export default async function TenantSettingsPage() {
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
 
-  const [tenant, enabled, permissions] = await Promise.all([
+  const [tenant, enabled, permissions, demoCount] = await Promise.all([
     supabase
       .from('tenants')
       .select('name, slug, timezone, currency, locale, status, created_at, address, invoice_data')
@@ -47,6 +52,7 @@ export default async function TenantSettingsPage() {
       .maybeSingle(),
     getEnabledModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
+    countDemoDataForTenant(ctx.tenantId),
   ]);
 
   const canManage = permissions.has('core.tenants.manage');
@@ -175,6 +181,45 @@ export default async function TenantSettingsPage() {
           ))}
         </div>
       </section>
+
+      {ctx.isOwner && (
+        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+              Beispieldaten
+            </h2>
+            <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+              Legt drei Beispiel-Objekte und vier Aufträge an, damit Sie die App
+              ohne echten Datenbestand ausprobieren können. Alle Einträge tragen
+              das Präfix „[Demo]" und lassen sich mit einem Klick wieder entfernen.
+            </p>
+          </div>
+          {demoCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-sm">
+                Aktuell sind <strong>{demoCount}</strong> Demo-Objekte plus zugehörige Aufträge geladen.
+              </span>
+              <form action={removeDemoDataAction}>
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]/50"
+                >
+                  Beispieldaten entfernen
+                </button>
+              </form>
+            </div>
+          ) : (
+            <form action={loadDemoDataAction}>
+              <button
+                type="submit"
+                className="inline-flex h-9 items-center rounded-md bg-[var(--color-primary)] px-3 text-sm font-medium text-[var(--color-primary-foreground)] transition hover:opacity-90"
+              >
+                Beispieldaten laden
+              </button>
+            </form>
+          )}
+        </section>
+      )}
     </div>
   );
 }

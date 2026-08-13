@@ -29,6 +29,7 @@ import {
   Zap,
   ShieldCheck,
   CreditCard,
+  LifeBuoy,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -61,6 +62,7 @@ export const NAV_ICONS = {
   zap: Zap,
   'shield-check': ShieldCheck,
   'credit-card': CreditCard,
+  'life-buoy': LifeBuoy,
 } as const satisfies Record<string, LucideIcon>;
 
 export type NavIconKey = keyof typeof NAV_ICONS;

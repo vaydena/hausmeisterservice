@@ -4,6 +4,7 @@ import { getEnabledModules } from '@/lib/modules/enabled';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
+import { WelcomeOverlay } from './welcome-overlay';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -21,7 +22,11 @@ export default async function DashboardPage() {
   const [enabledModules, permissions, tenant, roles] = await Promise.all([
     getEnabledModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
-    supabase.from('tenants').select('name').eq('id', ctx.tenantId).maybeSingle(),
+    supabase
+      .from('tenants')
+      .select('name, onboarding_completed_at')
+      .eq('id', ctx.tenantId)
+      .maybeSingle(),
     supabase
       .from('user_roles')
       .select('role_id, roles(name)')
@@ -31,6 +36,7 @@ export default async function DashboardPage() {
   ]);
 
   const tenantName = tenant.data?.name ?? 'Ihr Mandant';
+  const showWelcome = ctx.isOwner && !tenant.data?.onboarding_completed_at;
   const roleNames =
     (roles.data ?? [])
       .map((r) => r.roles?.name)
@@ -69,6 +75,8 @@ export default async function DashboardPage() {
       ) : (
         <ActiveModulesGrid enabled={activeToggleable} />
       )}
+
+      {showWelcome && <WelcomeOverlay tenantName={tenantName} />}
     </div>
   );
 }

@@ -94,6 +94,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/settings/audit', labelDe: 'Audit-Log', icon: 'shield-check', module: 'core.audit_log', permission: 'core.audit_log.view' },
     ],
   },
+  {
+    labelDe: 'Hilfe',
+    items: [
+      { href: '/hilfe', labelDe: 'Hilfe & Kontakt', icon: 'life-buoy', module: null, permission: null },
+    ],
+  },
 ] as const;
 
 export const MOBILE_NAV_ITEMS: readonly NavItem[] = [

@@ -6,6 +6,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { isCoreModule, MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
 import { tenantBillingUpdateSchema } from '@/lib/schemas/tenant';
+import {
+  loadDemoDataForTenant,
+  removeDemoDataFromTenant,
+} from '@/lib/tenant/demo-data';
 
 export async function toggleModuleAction(formData: FormData): Promise<void> {
   const rawKey = String(formData.get('module_key') ?? '');
@@ -110,4 +114,18 @@ export async function updateTenantBillingAction(
 
   revalidatePath('/settings/tenant');
   return { ok: true, message: 'Firmendaten gespeichert.', fieldErrors: {} };
+}
+
+export async function loadDemoDataAction(): Promise<void> {
+  const ctx = await requireTenantContext();
+  if (!ctx.isOwner) throw new Error('Nur der Inhaber kann Beispieldaten laden.');
+  await loadDemoDataForTenant(ctx.tenantId, ctx.userId);
+  revalidatePath('/', 'layout');
+}
+
+export async function removeDemoDataAction(): Promise<void> {
+  const ctx = await requireTenantContext();
+  if (!ctx.isOwner) throw new Error('Nur der Inhaber kann Beispieldaten entfernen.');
+  await removeDemoDataFromTenant(ctx.tenantId);
+  revalidatePath('/', 'layout');
 }

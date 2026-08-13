@@ -54,6 +54,7 @@ const ALLOW_WHEN_BLOCKED = [
   '/impressum',
   '/datenschutz',
   '/agb',
+  '/hilfe',
 ];
 
 export function isPathAllowedWhenBlocked(pathname: string): boolean {

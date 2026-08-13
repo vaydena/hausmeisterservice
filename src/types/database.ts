@@ -2688,6 +2688,7 @@ export type Database = {
           locale: string
           logo_url: string | null
           name: string
+          onboarding_completed_at: string | null
           payment_method: string
           slug: string
           status: string
@@ -2709,6 +2710,7 @@ export type Database = {
           locale?: string
           logo_url?: string | null
           name: string
+          onboarding_completed_at?: string | null
           payment_method?: string
           slug: string
           status?: string
@@ -2730,6 +2732,7 @@ export type Database = {
           locale?: string
           logo_url?: string | null
           name?: string
+          onboarding_completed_at?: string | null
           payment_method?: string
           slug?: string
           status?: string
