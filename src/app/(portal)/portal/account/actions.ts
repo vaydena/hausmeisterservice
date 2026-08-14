@@ -14,8 +14,18 @@ import {
   mfaVerifySchema,
 } from '@/lib/auth/mfa-verify-schema';
 import { requireAal2WhenEnrolled } from '@/lib/auth/require-aal2';
+import { generateRecoveryCodePlaintexts } from '@/lib/auth/mfa-recovery';
 
 export type PortalAccountActionState = { error?: string; success?: string };
+
+/**
+ * Ergebnis von generatePortalMfaRecoveryCodesAction. Bei Erfolg enthaelt
+ * `codes` die 10 frisch generierten Klartext-Codes; sie werden dem Resident
+ * EIN MAL angezeigt und sind danach nur noch als bcrypt-Hash in der DB.
+ */
+export type PortalRecoveryCodesState = PortalAccountActionState & {
+  codes?: string[];
+};
 
 /**
  * Sprint 33: Portal-Passwort-Aenderung. Semantisch identisch zur Staff-
@@ -180,10 +190,10 @@ export async function revokePortalSessionAction(
  * unenroll) sind user-agnostisch: der anon+cookie-Client operiert
  * automatisch auf dem eingeloggten User. Kein service_role noetig.
  *
- * Recovery-Codes sind fuer Portal-Residents in diesem Sprint NICHT
- * angeboten. Wenn ein Resident sein Handy verliert, kontaktiert er
- * seine Verwaltung — die kann via /platform admin die MFA-Faktoren
- * loeschen und den User per E-Mail-Reset wieder reinlassen.
+ * Sprint 35: Recovery-Codes sind auch fuer Portal-Residents verfuegbar
+ * (siehe generatePortalMfaRecoveryCodesAction unten). Residents koennen
+ * sich damit selbst wiederherstellen, wenn sie ihr Authenticator-Geraet
+ * verlieren, ohne die Verwaltung kontaktieren zu muessen.
  */
 
 export type PortalMfaEnrollState = PortalAccountActionState & {
@@ -318,4 +328,55 @@ export async function unenrollPortalMfaFactorAction(
 
   revalidatePath('/portal', 'layout');
   return { success: 'Faktor entfernt.' };
+}
+
+// ============================================================================
+// MFA Recovery-Codes (Sprint 35)
+// ============================================================================
+//
+// Portal-Variante von generateMfaRecoveryCodesAction. Der Consume-Flow
+// (Einloesen beim Login) liegt bereits in /login/mfa/recovery/actions.ts
+// und ist seit Sprint 32 fuer portal-Redirects vorbereitet — nur die
+// Generierung fehlte fuer Residents.
+//
+// Warum service_role: Die RPC generate_mfa_recovery_codes_for_user ist
+// SECURITY DEFINER mit REVOKE EXECUTE FROM anon/authenticated (Sprint 21
+// Lockdown). Der anon+cookie Server-Client kann sie also nicht aufrufen.
+
+/**
+ * Generiert 10 neue Recovery-Codes fuer den eingeloggten Portal-Resident.
+ * Loescht alle vorherigen Codes (used und unused) — Regenerierung ist der
+ * einzige Weg, alte Codes zu invalidieren. Die Klartext-Codes werden dem
+ * Resident EINMAL im ResponseState zurueckgegeben und sind danach nur noch
+ * als bcrypt-Hash in der DB.
+ */
+export async function generatePortalMfaRecoveryCodesAction(
+  _prev: PortalRecoveryCodesState,
+  _formData: FormData,
+): Promise<PortalRecoveryCodesState> {
+  const ctx = await requireResidentContext();
+
+  // aal2-Guard identisch zum Staff-Flow: ein Angreifer mit erbeuteter
+  // aal1-Session koennte sonst 10 gueltige Codes fuer sich generieren, sie
+  // aufheben und Wochen spaeter fuer die vollstaendige Account-Uebernahme
+  // einloesen — auch nachdem der Resident sein Passwort neu gesetzt hat.
+  const supabase = await createSupabaseServerClient();
+  await requireAal2WhenEnrolled(supabase, '/portal/account');
+
+  const plaintexts = generateRecoveryCodePlaintexts();
+  // Die RPC erwartet die Codes ohne Bindestrich (bcrypt-Hash geht ueber
+  // den Rohtext); wir speichern nur die 8 Alphabet-Zeichen.
+  const rawForHash = plaintexts.map((c) => c.replace(/-/g, ''));
+
+  const service = createSupabaseServiceClient();
+  const { error } = await service.rpc('generate_mfa_recovery_codes_for_user', {
+    p_user_id: ctx.userId,
+    p_plaintext_codes: rawForHash,
+  });
+  if (error) {
+    return { error: 'Recovery-Codes konnten nicht erstellt werden. Bitte spaeter erneut.' };
+  }
+
+  revalidatePath('/portal', 'layout');
+  return { codes: plaintexts, success: '10 neue Recovery-Codes generiert.' };
 }

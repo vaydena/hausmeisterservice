@@ -200,21 +200,27 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   nutzen (service_role only).
   'src/app/(auth)/login/mfa/recovery/actions.ts',
   // src/app/(portal)/portal/account/actions.ts:
-  //   Sprint 34. Portal-Variante von revokeSessionAction — ruft
-  //   revoke_user_session (SECURITY DEFINER, Grant nur an service_role,
-  //   Sprint 31 Lockdown-Muster). Die Function ist aus authenticated-Kontext
-  //   nicht callable; der anon+cookie Server-Client kann sie also unabhaengig
-  //   von den RLS-Regeln auf auth.sessions (Supabase-internes Schema, per
-  //   Default fuer authenticated verriegelt) nicht ausfuehren. Gegated durch
-  //   requireResidentContext + requireAal2WhenEnrolled VOR dem Service-
-  //   Client-Aufruf; p_user_id wird ausschliesslich aus ctx.userId gesetzt
-  //   (nie aus der Formular-Payload), p_session_id ist Zod-uuid-validiert,
-  //   und die Function-Body macht ihren eigenen Ownership-Check (WHERE
-  //   id = p_session_id AND user_id = p_user_id). Die Portal-page.tsx-
-  //   Server-Component ruft ebenfalls list_user_sessions (gleicher Lockdown)
-  //   ueber einen eigenen service-Client-Aufruf — der lebt aber in der
-  //   Server-Component, nicht in der Server-Actions-Datei, und wird von
-  //   diesem Coverage-Test nicht erfasst.
+  //   Sprint 34 + Sprint 35. Enthaelt (a) revokePortalSessionAction, die
+  //   revoke_user_session ruft, und (b) generatePortalMfaRecoveryCodesAction,
+  //   die generate_mfa_recovery_codes_for_user ruft. Beide Functions sind
+  //   SECURITY DEFINER mit REVOKE EXECUTE FROM anon/authenticated und GRANT
+  //   nur an service_role (Sprint 21 + Sprint 31 Lockdown-Muster). Der anon+
+  //   cookie Server-Client kann sie also nicht aufrufen, egal welche RLS-
+  //   Regel man auf die zugrundeliegenden Tabellen setzen wuerde (auth.sessions
+  //   ist Supabase-internes Schema und per Default fuer authenticated
+  //   verriegelt, auth_mfa_recovery_codes ist deny-all). Beide Actions sind
+  //   gegated durch requireResidentContext + requireAal2WhenEnrolled VOR
+  //   dem Service-Client-Aufruf; p_user_id wird ausschliesslich aus
+  //   ctx.userId gesetzt (nie aus der Formular-Payload). Fuer
+  //   revoke_user_session ist zusaetzlich die p_session_id Zod-uuid-
+  //   validiert und die Function-Body macht ihren eigenen Ownership-Check
+  //   (WHERE id = p_session_id AND user_id = p_user_id) — ein Angreifer mit
+  //   erratener fremder session_id kann keine fremde Session killen. Die
+  //   Portal-page.tsx-Server-Component ruft ebenfalls list_user_sessions
+  //   und count_unused_mfa_recovery_codes (gleicher Lockdown) ueber einen
+  //   eigenen service-Client-Aufruf — der lebt aber in der Server-Component,
+  //   nicht in der Server-Actions-Datei, und wird von diesem Coverage-Test
+  //   nicht erfasst.
   'src/app/(portal)/portal/account/actions.ts',
 ]);
 

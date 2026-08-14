@@ -7,6 +7,7 @@ import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import { parseUserSessions } from '@/lib/auth/user-sessions';
 import { ChangePortalPasswordForm } from './change-password-form';
 import { PortalMfaForm } from './mfa-form';
+import { PortalRecoveryCodesForm } from './recovery-codes-form';
 import { PortalSessionsList } from './sessions-list';
 import { PortalRevokeSessionsForm } from './revoke-sessions-form';
 
@@ -14,9 +15,9 @@ export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 
 /**
  * Konto-Seite fuer Portal-Residents. Sprint 32 → MFA, Sprint 33 →
- * Passwort-Aenderung, Sprint 34 → Session-Uebersicht. Alle drei Bloecke
- * sind Selbstbedienung und parallel zu den Staff-Sektionen unter
- * /settings/account gebaut.
+ * Passwort-Aenderung, Sprint 34 → Session-Uebersicht, Sprint 35 →
+ * MFA-Recovery-Codes. Alle Bloecke sind Selbstbedienung und parallel
+ * zu den Staff-Sektionen unter /settings/account gebaut.
  */
 export default async function PortalAccountPage({
   searchParams,
@@ -46,6 +47,14 @@ export default async function PortalAccountPage({
   });
   const sessions = parseUserSessions(sessionsRaw);
   const currentSessionId = await getCurrentSessionId(supabase);
+
+  // Sprint 35: Recovery-Codes-Zaehler. Function ist SECURITY DEFINER mit
+  // execute-Grant nur auf service_role (Sprint 21 Lockdown).
+  const { data: unusedCountData } = await service.rpc(
+    'count_unused_mfa_recovery_codes',
+    { p_user_id: ctx.userId },
+  );
+  const unusedRecoveryCodes = typeof unusedCountData === 'number' ? unusedCountData : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,12 +123,28 @@ export default async function PortalAccountPage({
             Portal sensible Nachrichten mit der Hausverwaltung austauschen.
           </p>
           <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
-            Sollten Sie das Geraet mit der Authenticator-App verlieren, wenden
-            Sie sich an Ihre Hausverwaltung — sie kann die Zwei-Faktor-
-            Anmeldung fuer Ihr Konto zuruecksetzen.
+            Sollten Sie das Geraet mit der Authenticator-App verlieren,
+            koennen Sie einen Recovery-Code verwenden (siehe unten) oder Ihre
+            Hausverwaltung kontaktieren.
           </p>
         </div>
         <PortalMfaForm factors={factors} />
+
+        {factors.length > 0 && (
+          <div className="mt-6 border-t border-[var(--color-border)] pt-5">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold">Recovery-Codes</h3>
+              <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+                Einmalige Ersatz-Codes fuer den Fall, dass Sie Ihr Authenticator-
+                Geraet verlieren. Jeder Code kann genau einmal beim Login
+                verwendet werden und entfernt danach den TOTP-Faktor —
+                anschliessend richten Sie die Zwei-Faktor-Authentifizierung
+                direkt neu ein.
+              </p>
+            </div>
+            <PortalRecoveryCodesForm unusedCount={unusedRecoveryCodes} />
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
