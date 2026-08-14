@@ -1,9 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
+import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
+import { PortalMfaReminderBanner } from './portal-mfa-reminder-banner';
+
+// Sprint 36: Portal-Reminder bleibt nach Dismiss 7 Tage stumm, danach
+// wieder sichtbar. Analog zum Staff-Banner in Sprint 28 — der zweite
+// Faktor ist auch fuer Bewohner-Konten der wichtigste einzelne Hebel
+// gegen Kontoubernahme, deshalb bewusst kein permanentes Ausblenden.
+const PORTAL_MFA_REMINDER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const metadata: Metadata = {
   title: 'Bewohner-Portal',
@@ -14,6 +23,20 @@ export default async function PortalDashboardPage() {
   if (!ctx) redirect('/portal/login');
 
   const supabase = await createSupabaseServerClient();
+
+  const enrolled = await hasVerifiedMfaFactor(supabase);
+  let showMfaReminder = false;
+  if (!enrolled) {
+    const dismissed = (await cookies()).get(
+      'portal_mfa_reminder_dismissed_at',
+    )?.value;
+    const dismissedAt = dismissed ? Number(dismissed) : 0;
+    const cooldownActive =
+      Number.isFinite(dismissedAt) &&
+      dismissedAt > 0 &&
+      Date.now() - dismissedAt < PORTAL_MFA_REMINDER_COOLDOWN_MS;
+    showMfaReminder = !cooldownActive;
+  }
 
   const [announcementsRes, defectsRes, threadsRes, receiptsRes] = await Promise.all([
     supabase
@@ -68,6 +91,8 @@ export default async function PortalDashboardPage() {
           </div>
         </div>
       </section>
+
+      {showMfaReminder && <PortalMfaReminderBanner />}
 
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryCard
