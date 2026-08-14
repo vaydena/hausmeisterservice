@@ -49,7 +49,10 @@ export function PortalLoginForm() {
       </button>
 
       <div className="flex justify-between text-sm">
-        <Link href="/reset-password" className="text-[var(--color-primary)] hover:underline">
+        <Link
+          href="/portal/reset-password"
+          className="text-[var(--color-primary)] hover:underline"
+        >
           Passwort vergessen?
         </Link>
         <Link href="/login" className="text-[var(--color-muted-foreground)] hover:underline">

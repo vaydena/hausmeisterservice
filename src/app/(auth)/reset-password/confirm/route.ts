@@ -16,16 +16,22 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get('code');
   const errorDescription = searchParams.get('error_description');
+  // Sprint 39: Portal-Flag entscheidet ueber den Fehler-Rueckweg. Ein
+  // Bewohner, der einen abgelaufenen Reset-Link oeffnet, soll auf
+  // /portal/login landen (nicht auf der Staff-Anmeldung), damit er den
+  // Link dort neu anfordern kann.
+  const isPortal = searchParams.get('portal') === '1';
+  const failureBase = isPortal ? '/portal/login' : '/login';
 
   if (errorDescription) {
     return NextResponse.redirect(
-      `${appUrl}/login?error=${encodeURIComponent('Reset-Link ungueltig oder abgelaufen. Bitte fordern Sie einen neuen an.')}`,
+      `${appUrl}${failureBase}?error=${encodeURIComponent('Reset-Link ungueltig oder abgelaufen. Bitte fordern Sie einen neuen an.')}`,
     );
   }
 
   if (!code) {
     return NextResponse.redirect(
-      `${appUrl}/login?error=${encodeURIComponent('Reset-Link ist unvollstaendig. Bitte fordern Sie einen neuen an.')}`,
+      `${appUrl}${failureBase}?error=${encodeURIComponent('Reset-Link ist unvollstaendig. Bitte fordern Sie einen neuen an.')}`,
     );
   }
 
@@ -36,9 +42,11 @@ export async function GET(request: NextRequest) {
     // Haeufigster Fall: Code wurde bereits verwendet (User hat schon
     // geklickt, oder Mail-Client hat den Link vorab abgerufen).
     return NextResponse.redirect(
-      `${appUrl}/login?error=${encodeURIComponent('Reset-Link ungueltig oder bereits verwendet. Bitte fordern Sie einen neuen an.')}`,
+      `${appUrl}${failureBase}?error=${encodeURIComponent('Reset-Link ungueltig oder bereits verwendet. Bitte fordern Sie einen neuen an.')}`,
     );
   }
 
-  return NextResponse.redirect(`${appUrl}/reset-password/new`);
+  const nextUrl = new URL('/reset-password/new', appUrl);
+  if (isPortal) nextUrl.searchParams.set('portal', '1');
+  return NextResponse.redirect(nextUrl.toString());
 }

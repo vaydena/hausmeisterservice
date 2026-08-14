@@ -52,11 +52,16 @@ const TOP_LEVEL_SEGMENTS = collectTopLevelSegments();
  *    Funktionen (Uebersicht, Ankuendigungen, Meldungen, Nachrichten);
  *    Kontoeinstellungen sind ein Randfall, der aus dem Avatar-Menue
  *    erreichbar sein sollte, nicht permanent im Header sichtbar.
+ *  - `reset-password`: Sprint 39. Einstiegsseite fuer den Passwort-Reset,
+ *    erreichbar ueber den "Passwort vergessen?"-Link auf /portal/login.
+ *    Nur fuer unauthentifizierte Residents relevant — im eingeloggten
+ *    Portal fuehrt der Weg zur Passwort-Aenderung ueber /portal/account
+ *    (Sprint 33), nicht ueber diese Route. Deshalb bewusst kein Nav-Eintrag.
  *
  * Stale entries are asserted below (once a segment appears in the nav, the
  * allowlist entry must be removed).
  */
-const INTENTIONALLY_NAV_HIDDEN = new Set<string>(['login', 'account']);
+const INTENTIONALLY_NAV_HIDDEN = new Set<string>(['login', 'account', 'reset-password']);
 
 function segmentOfHref(href: string): string {
   return href.replace(/^\/portal\//, '').split('/')[0]!;

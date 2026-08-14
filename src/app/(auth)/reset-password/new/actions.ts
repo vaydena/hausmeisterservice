@@ -30,6 +30,10 @@ export async function updatePasswordAfterResetAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
   }
+  // Sprint 39: Portal-Flag steuert den Redirect nach erfolgreichem
+  // Update. Vom hidden Input in update-form.tsx gesetzt, sobald der
+  // Reset ueber /portal/reset-password angestossen wurde.
+  const isPortal = formData.get('portal') === '1';
 
   const supabase = await createSupabaseServerClient();
 
@@ -65,8 +69,8 @@ export async function updatePasswordAfterResetAction(
   // alle Refresh-Tokens beim Passwort-Update).
   await supabase.auth.signOut();
 
-  redirect(
-    '/login?info=' +
-      encodeURIComponent('Passwort aktualisiert. Bitte melden Sie sich mit dem neuen Passwort an.'),
+  const successMsg = encodeURIComponent(
+    'Passwort aktualisiert. Bitte melden Sie sich mit dem neuen Passwort an.',
   );
+  redirect(`${isPortal ? '/portal/login' : '/login'}?info=${successMsg}`);
 }

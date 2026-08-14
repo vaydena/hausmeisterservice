@@ -7,9 +7,21 @@ export const metadata: Metadata = {
   title: 'Bewohner-Portal · Anmelden',
 };
 
-export default async function PortalLoginPage() {
+/**
+ * Sprint 39: Info-/Error-Banner rendern, damit der Reset-Flow einen
+ * sauberen Rueckweg hat — nach erfolgreichem Passwort-Update landet
+ * der Resident hier mit ?info=…, bei abgelaufenem Link mit ?error=…
+ * (beides gesetzt von /reset-password/{confirm,new}).
+ */
+export default async function PortalLoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ info?: string; error?: string }>;
+}) {
   const ctx = await getResidentContext();
   if (ctx) redirect('/portal/dashboard');
+
+  const params = await searchParams;
 
   return (
     <div className="mx-auto max-w-md">
@@ -20,6 +32,22 @@ export default async function PortalLoginPage() {
           erhalten haben.
         </p>
       </div>
+      {params.info && (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-[var(--color-success)]/40 bg-[var(--color-success)]/5 p-3 text-sm text-[var(--color-success)]"
+        >
+          {params.info}
+        </p>
+      )}
+      {params.error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-md border border-[var(--color-destructive)]/40 bg-[var(--color-destructive)]/5 p-3 text-sm text-[var(--color-destructive)]"
+        >
+          {params.error}
+        </p>
+      )}
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-6 shadow-sm">
         <PortalLoginForm />
       </div>

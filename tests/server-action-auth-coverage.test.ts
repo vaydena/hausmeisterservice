@@ -78,6 +78,15 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   'src/app/(auth)/login/actions.ts',
   'src/app/(auth)/reset-password/actions.ts',
   'src/app/(portal)/portal/login/actions.ts',
+  // src/app/(portal)/portal/reset-password/actions.ts:
+  //   Portal-Variante der Passwort-Reset-Anforderung (Sprint 39). Gleiche
+  //   Pre-Session-Semantik wie die Staff-Version: der User beweist seine
+  //   Identitaet spaeter ueber den Klick auf den per E-Mail versandten
+  //   Recovery-Link, deshalb waere requireResidentContext() hier ein
+  //   Chicken-and-egg-Fall. Rate-Limit-Bucket 'reset-password' (IP-basiert)
+  //   ist mit der Staff-Version geteilt, weil die Enumeration-Oberflaeche
+  //   identisch ist.
+  'src/app/(portal)/portal/reset-password/actions.ts',
   // src/app/(auth)/signup/actions.ts:
   //   Self-Signup für neue Mandanten. Läuft per Definition pre-session:
   //   der Aufrufer hat noch keinen Account und deshalb keine Membership.

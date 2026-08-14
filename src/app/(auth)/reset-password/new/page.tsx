@@ -12,9 +12,20 @@ export const metadata: Metadata = {
 // davon ab, den Prerender-Pfad zu versuchen.
 export const dynamic = 'force-dynamic';
 
-export default async function NewPasswordPage() {
+export default async function NewPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ portal?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase.auth.getUser();
+  // Sprint 39: Portal-Flag entscheidet Rueckweg + Neu-Anfordern-Link.
+  // Der Confirm-Handler haengt ihn ans /reset-password/new dran, wenn
+  // der Reset ueber /portal/reset-password angestossen wurde.
+  const { portal } = await searchParams;
+  const isPortal = portal === '1';
+  const requestPath = isPortal ? '/portal/reset-password' : '/reset-password';
+  const loginPath = isPortal ? '/portal/login' : '/login';
 
   // Ohne aktive Recovery-Session (direkter Aufruf, oder Session
   // zwischenzeitlich abgelaufen): keine Formular-Anzeige. Sonst wuerde
@@ -31,13 +42,13 @@ export default async function NewPasswordPage() {
           </p>
         </div>
         <Link
-          href="/reset-password"
+          href={requestPath}
           className="mt-2 inline-flex h-10 items-center justify-center rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)] transition hover:opacity-90"
         >
           Neuen Reset-Link anfordern
         </Link>
         <Link
-          href="/login"
+          href={loginPath}
           className="text-sm text-[var(--color-primary)] hover:underline text-center"
         >
           Zurück zur Anmeldung
@@ -54,7 +65,7 @@ export default async function NewPasswordPage() {
           Wählen Sie ein neues Passwort für Ihr Konto.
         </p>
       </div>
-      <UpdatePasswordForm />
+      <UpdatePasswordForm isPortal={isPortal} />
     </div>
   );
 }
