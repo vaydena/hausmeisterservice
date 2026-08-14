@@ -133,6 +133,19 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   + ctx.isOwner-Check VOR dem Service-Client-Aufruf; die Update-Clause
   //   ist auf ctx.tenantId + is null gescopt und aendert genau ein Feld.
   'src/app/(app)/dashboard/onboarding-actions.ts',
+  // src/app/(portal)/portal/dashboard/portal-onboarding-actions.ts:
+  //   Sprint 40. Analog zum Staff-Onboarding-Dismiss (siehe darueber),
+  //   nur pro Resident-Datensatz statt pro Tenant. Setzt
+  //   residents.portal_onboarding_completed_at = now() und nur, wenn
+  //   das Feld noch NULL ist (Idempotenz). Die aktuelle residents-RLS
+  //   erlaubt Residents ausschliesslich SELECT auf ihren eigenen
+  //   Datensatz — kein UPDATE, weil residents-Datensaetze sonst rein
+  //   verwaltungs-seitig gepflegt werden (Vertragsdaten, Objektzuordnung
+  //   usw.). Diese Action ist gegated durch requireResidentContext VOR
+  //   dem Service-Client-Aufruf; die Update-Clause ist auf ctx.residentId
+  //   + is null gescopt und aendert genau ein Feld (das UI-Onboarding-
+  //   Flag), keine Vertragsdaten.
+  'src/app/(portal)/portal/dashboard/portal-onboarding-actions.ts',
   // src/app/(app)/settings/subscription/actions.ts:
   //   Abo-Verwaltung durch den Mandanten-Inhaber (Plan waehlen, Zahlungsart
   //   umstellen, Rechnung anfordern). Schreibt public.tenants

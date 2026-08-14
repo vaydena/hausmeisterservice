@@ -2347,6 +2347,7 @@ export type Database = {
           phone: string | null
           portal_activated_at: string | null
           portal_invited_at: string | null
+          portal_onboarding_completed_at: string | null
           property_id: string | null
           tenant_id: string
           unit_id: string | null
@@ -2369,6 +2370,7 @@ export type Database = {
           phone?: string | null
           portal_activated_at?: string | null
           portal_invited_at?: string | null
+          portal_onboarding_completed_at?: string | null
           property_id?: string | null
           tenant_id: string
           unit_id?: string | null
@@ -2391,6 +2393,7 @@ export type Database = {
           phone?: string | null
           portal_activated_at?: string | null
           portal_invited_at?: string | null
+          portal_onboarding_completed_at?: string | null
           property_id?: string | null
           tenant_id?: string
           unit_id?: string | null

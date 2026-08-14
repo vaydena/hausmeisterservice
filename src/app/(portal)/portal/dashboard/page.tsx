@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { PortalMfaReminderBanner } from './portal-mfa-reminder-banner';
+import { PortalWelcomeOverlay } from './portal-welcome-overlay';
 
 // Sprint 36: Portal-Reminder bleibt nach Dismiss 7 Tage stumm, danach
 // wieder sichtbar. Analog zum Staff-Banner in Sprint 28 — der zweite
@@ -37,6 +38,16 @@ export default async function PortalDashboardPage() {
       Date.now() - dismissedAt < PORTAL_MFA_REMINDER_COOLDOWN_MS;
     showMfaReminder = !cooldownActive;
   }
+
+  // Sprint 40: Willkommens-Overlay einmalig fuer neue Bewohner. Wir
+  // lesen das Flag direkt hier statt via getResidentContext, um den
+  // geteilten Helper nicht um ein rein UI-relevantes Feld aufzublaehen.
+  const { data: onboardingRow } = await supabase
+    .from('residents')
+    .select('portal_onboarding_completed_at')
+    .eq('id', ctx.residentId)
+    .maybeSingle();
+  const showWelcomeOverlay = !onboardingRow?.portal_onboarding_completed_at;
 
   const [announcementsRes, defectsRes, threadsRes, receiptsRes] = await Promise.all([
     supabase
@@ -76,6 +87,7 @@ export default async function PortalDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {showWelcomeOverlay && <PortalWelcomeOverlay firstName={ctx.firstName} />}
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-6">
         <div className="flex items-start gap-4">
           <div className="flex size-12 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
