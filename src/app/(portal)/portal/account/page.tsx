@@ -5,6 +5,7 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { getResidentContext } from '@/lib/portal/current';
 import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import { parseUserSessions } from '@/lib/auth/user-sessions';
+import { ChangePortalEmailForm } from './change-email-form';
 import { ChangePortalPasswordForm } from './change-password-form';
 import { LoginEventsList } from '@/app/(app)/settings/account/login-events-list';
 import { PortalMfaForm } from './mfa-form';
@@ -17,9 +18,9 @@ export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 /**
  * Konto-Seite fuer Portal-Residents. Sprint 32 → MFA, Sprint 33 →
  * Passwort-Aenderung, Sprint 34 → Session-Uebersicht, Sprint 35 →
- * MFA-Recovery-Codes, Sprint 37 → Anmeldeverlauf. Alle Bloecke sind
- * Selbstbedienung und parallel zu den Staff-Sektionen unter
- * /settings/account gebaut.
+ * MFA-Recovery-Codes, Sprint 37 → Anmeldeverlauf, Sprint 38 → E-Mail-
+ * Aenderung. Alle Bloecke sind Selbstbedienung und parallel zu den
+ * Staff-Sektionen unter /settings/account gebaut.
  */
 export default async function PortalAccountPage({
   searchParams,
@@ -98,6 +99,19 @@ export default async function PortalAccountPage({
         </div>
       )}
 
+      {info === 'email-changed' && (
+        <div
+          role="status"
+          className="rounded-md border border-[var(--color-success)]/40 bg-[var(--color-success)]/5 p-4 text-sm"
+        >
+          <p className="font-medium">E-Mail-Adresse erfolgreich geaendert.</p>
+          <p className="mt-1 text-[var(--color-muted-foreground)]">
+            Ihre neue Adresse ist jetzt aktiv. Beim naechsten Login verwenden
+            Sie bitte die neue E-Mail.
+          </p>
+        </div>
+      )}
+
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
         <div className="mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
@@ -116,6 +130,20 @@ export default async function PortalAccountPage({
             </p>
           )}
         </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            E-Mail-Adresse aendern
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Ihre E-Mail ist gleichzeitig Ihr Login-Name. Ein Wechsel wird
+            per Bestaetigungs-Link an die neue Adresse abgesichert und
+            wirkt sich erst nach Klick auf den Link aus.
+          </p>
+        </div>
+        <ChangePortalEmailForm currentEmail={ctx.email ?? ''} />
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">

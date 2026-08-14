@@ -6,7 +6,9 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { requireResidentContext } from '@/lib/portal/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
+import { changeEmailSchema } from '@/lib/auth/change-email-schema';
 import { revokeSessionSchema } from '@/lib/auth/revoke-session-schema';
+import { clientEnv } from '@/lib/env';
 import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import {
   mfaEnrollSchema,
@@ -26,6 +28,82 @@ export type PortalAccountActionState = { error?: string; success?: string };
 export type PortalRecoveryCodesState = PortalAccountActionState & {
   codes?: string[];
 };
+
+/**
+ * Sprint 38: Portal-E-Mail-Aenderung. Semantisch identisch zur Staff-
+ * Action (changeEmailAction, Sprint 30): Supabase versendet eine
+ * Bestaetigungs-Mail an die NEUE Adresse; bei aktivem "Secure email
+ * change" (Default) zusaetzlich eine an die alte. Der Wechsel wird
+ * erst nach Klick auf beide Confirm-Links wirksam — bis dahin bleibt
+ * die aktuelle Adresse als Login gueltig.
+ *
+ * Sicherheitsmaßnahmen (deckungsgleich zu Sprint 30):
+ *   - aal2 verlangt, wenn Resident MFA hat (E-Mail-Wechsel ist bei aal1-
+ *     Session sonst Account-Takeover-Vektor via anschliessendem Passwort-
+ *     Reset).
+ *   - Rate-Limit 3/Stunde auf aktuelle E-Mail (verhindert Mail-Bombing
+ *     der neuen Adresse). Wir teilen bewusst den 'email-change'-Bucket
+ *     mit Staff — identifier ist die E-Mail, endpoint-Typ egal.
+ *   - Redirect nach Klick geht via /auth/callback → /portal/account
+ *     ?info=email-changed.
+ */
+export async function changePortalEmailAction(
+  _prev: PortalAccountActionState,
+  formData: FormData,
+): Promise<PortalAccountActionState> {
+  const ctx = await requireResidentContext();
+  if (!ctx.email) {
+    return {
+      error:
+        'Fuer dieses Konto ist keine E-Mail hinterlegt. Bitte Hausverwaltung kontaktieren.',
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  await requireAal2WhenEnrolled(supabase, '/portal/account');
+
+  const rl = await checkAuthRateLimit(ctx.email, 'email-change');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
+  const parsed = changeEmailSchema.safeParse({
+    newEmail: formData.get('newEmail'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  if (parsed.data.newEmail === ctx.email.toLowerCase()) {
+    return { error: 'Die neue E-Mail-Adresse ist mit der aktuellen identisch.' };
+  }
+
+  const redirectUrl = new URL('/auth/callback', clientEnv.NEXT_PUBLIC_APP_URL);
+  redirectUrl.searchParams.set('next', '/portal/account?info=email-changed');
+
+  const { error } = await supabase.auth.updateUser(
+    { email: parsed.data.newEmail },
+    { emailRedirectTo: redirectUrl.toString() },
+  );
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+      return { error: 'Diese E-Mail-Adresse ist bereits vergeben.' };
+    }
+    if (msg.includes('rate') || msg.includes('too many')) {
+      return {
+        error:
+          'Zu viele Anfragen an den Mail-Provider. Bitte in ein paar Minuten erneut versuchen.',
+      };
+    }
+    return { error: 'E-Mail-Adresse konnte nicht geaendert werden. Bitte spaeter erneut.' };
+  }
+
+  return {
+    success:
+      'Bestaetigungs-Mail an die neue Adresse gesendet. Falls "Secure email change" aktiv ist, muessen Sie zusaetzlich den Link in der Mail an Ihre bisherige Adresse anklicken. Die Aenderung wird erst nach Bestaetigung wirksam.',
+  };
+}
 
 /**
  * Sprint 33: Portal-Passwort-Aenderung. Semantisch identisch zur Staff-
