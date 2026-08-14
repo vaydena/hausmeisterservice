@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { requireResidentContext } from '@/lib/portal/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
+import { changePasswordSchema } from '@/lib/auth/change-password-schema';
 import {
   mfaEnrollSchema,
   mfaUnenrollSchema,
@@ -12,6 +13,78 @@ import {
 import { requireAal2WhenEnrolled } from '@/lib/auth/require-aal2';
 
 export type PortalAccountActionState = { error?: string; success?: string };
+
+/**
+ * Sprint 33: Portal-Passwort-Aenderung. Semantisch identisch zur Staff-
+ * Action (changePasswordAction): Re-Auth mit aktuellem Passwort,
+ * Rate-Limit auf E-Mail-Basis (password-change bucket, 5/15min),
+ * aal2-Guard falls MFA aktiv. Der einzige Unterschied ist der Guard:
+ * Portal-Residents haben keine Tenant-Membership.
+ */
+export async function changePortalPasswordAction(
+  _prev: PortalAccountActionState,
+  formData: FormData,
+): Promise<PortalAccountActionState> {
+  const ctx = await requireResidentContext();
+  if (!ctx.email) {
+    return {
+      error:
+        'Fuer dieses Konto ist keine E-Mail hinterlegt. Bitte Hausverwaltung kontaktieren.',
+    };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // aal2 verlangen, sobald der User MFA aktiv hat (Sprint 32). Ein
+  // Angreifer mit erbeuteter aal1-Session koennte sonst per Passwort-
+  // Aenderung dauerhaft in den Account rutschen — Owner wird beim
+  // naechsten Login ausgesperrt.
+  await requireAal2WhenEnrolled(supabase, '/portal/account');
+
+  const rl = await checkAuthRateLimit(ctx.email, 'password-change');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
+  const parsed = changePasswordSchema.safeParse({
+    currentPassword: formData.get('currentPassword'),
+    newPassword: formData.get('newPassword'),
+    newPasswordConfirm: formData.get('newPasswordConfirm'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  // Re-Auth: aktuelles Passwort verifizieren. Bei Erfolg ueberschreibt
+  // Supabase die Session-Cookies mit einer frischen Session (gleicher
+  // User) — der Resident bleibt eingeloggt.
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email: ctx.email,
+    password: parsed.data.currentPassword,
+  });
+  if (reauthError) {
+    return { error: 'Das aktuelle Passwort ist nicht korrekt.' };
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: parsed.data.newPassword,
+  });
+  if (updateError) {
+    const msg = updateError.message.toLowerCase();
+    if (msg.includes('should be different')) {
+      return { error: 'Das neue Passwort muss sich vom aktuellen unterscheiden.' };
+    }
+    if (msg.includes('weak') || msg.includes('pwned') || msg.includes('leaked')) {
+      return {
+        error:
+          'Dieses Passwort wurde in bekannten Datenlecks gefunden. Bitte waehlen Sie ein anderes.',
+      };
+    }
+    return { error: 'Passwort konnte nicht geaendert werden. Bitte spaeter erneut versuchen.' };
+  }
+
+  return { success: 'Passwort erfolgreich geaendert.' };
+}
 
 /**
  * Sprint 32: Portal-MFA. Parallel zu den Staff-Actions in

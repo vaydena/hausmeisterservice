@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
+import { ChangePortalPasswordForm } from './change-password-form';
 import { PortalMfaForm } from './mfa-form';
 
 export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
@@ -71,6 +72,19 @@ export default async function PortalAccountPage({
             </p>
           )}
         </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Passwort aendern
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Zur Bestaetigung wird das aktuelle Passwort erneut abgefragt. Nach zu vielen
+            Fehlversuchen wird die Aenderung fuer 15 Minuten gesperrt.
+          </p>
+        </div>
+        <ChangePortalPasswordForm />
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
