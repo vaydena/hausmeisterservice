@@ -1,17 +1,22 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { getResidentContext } from '@/lib/portal/current';
+import { getCurrentSessionId } from '@/lib/auth/current-session-id';
+import { parseUserSessions } from '@/lib/auth/user-sessions';
 import { ChangePortalPasswordForm } from './change-password-form';
 import { PortalMfaForm } from './mfa-form';
+import { PortalSessionsList } from './sessions-list';
+import { PortalRevokeSessionsForm } from './revoke-sessions-form';
 
 export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 
 /**
- * Sprint 32: Konto-Seite fuer Portal-Residents. Erster Schritt: MFA-
- * Enrollment. Passwort-Aenderung und Session-Uebersicht kommen in
- * separaten Sprints, damit die einzelnen Aenderungen ueberschaubar
- * bleiben.
+ * Konto-Seite fuer Portal-Residents. Sprint 32 → MFA, Sprint 33 →
+ * Passwort-Aenderung, Sprint 34 → Session-Uebersicht. Alle drei Bloecke
+ * sind Selbstbedienung und parallel zu den Staff-Sektionen unter
+ * /settings/account gebaut.
  */
 export default async function PortalAccountPage({
   searchParams,
@@ -31,6 +36,16 @@ export default async function PortalAccountPage({
       friendlyName: f.friendly_name ?? null,
       createdAt: f.created_at,
     }));
+
+  // Sprint 34: Aktive Sessions. Load via service_role, weil auth.sessions
+  // aus authenticated-Kontext nicht lesbar ist; die SECURITY-DEFINER-Function
+  // list_user_sessions scoped selbst auf p_user_id = ctx.userId.
+  const service = createSupabaseServiceClient();
+  const { data: sessionsRaw } = await service.rpc('list_user_sessions', {
+    p_user_id: ctx.userId,
+  });
+  const sessions = parseUserSessions(sessionsRaw);
+  const currentSessionId = await getCurrentSessionId(supabase);
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,6 +120,30 @@ export default async function PortalAccountPage({
           </p>
         </div>
         <PortalMfaForm factors={factors} />
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Aktive Sitzungen
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Alle Geraete, auf denen Sie gerade im Bewohner-Portal eingeloggt sind.
+            Beenden Sie einzelne Sitzungen, wenn Sie ein Geraet nicht wiedererkennen —
+            Ihre aktuelle Sitzung hier bleibt davon unberuehrt.
+          </p>
+        </div>
+
+        <PortalSessionsList sessions={sessions} currentSessionId={currentSessionId} />
+
+        {sessions.length > 1 && (
+          <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+            <p className="mb-3 text-xs text-[var(--color-muted-foreground)]">
+              Alle anderen Sitzungen auf einmal beenden:
+            </p>
+            <PortalRevokeSessionsForm />
+          </div>
+        )}
       </section>
     </div>
   );

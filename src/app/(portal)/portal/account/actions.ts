@@ -2,9 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { requireResidentContext } from '@/lib/portal/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
+import { revokeSessionSchema } from '@/lib/auth/revoke-session-schema';
+import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import {
   mfaEnrollSchema,
   mfaUnenrollSchema,
@@ -84,6 +87,88 @@ export async function changePortalPasswordAction(
   }
 
   return { success: 'Passwort erfolgreich geaendert.' };
+}
+
+// ============================================================================
+// Sessions (Sprint 34)
+// ============================================================================
+//
+// Portal-Variante von signOutOtherSessionsAction/revokeSessionAction. Die
+// zugrundeliegenden RPCs (list_user_sessions, revoke_user_session) sind
+// user-agnostisch — sie kommen aus Sprint 31 und bekommen p_user_id vom
+// Server-Aufrufer. Der einzige Unterschied zu den Staff-Actions ist der
+// Guard: requireResidentContext statt requireTenantContext.
+
+export async function signOutOtherPortalSessionsAction(
+  _prev: PortalAccountActionState,
+  _formData: FormData,
+): Promise<PortalAccountActionState> {
+  await requireResidentContext();
+  const supabase = await createSupabaseServerClient();
+
+  // aal2 verlangen sobald MFA aktiv ist — sonst koennte ein Angreifer mit
+  // erbeuteter aal1-Session die legitime aal2-Session des Residents killen.
+  await requireAal2WhenEnrolled(supabase, '/portal/account');
+
+  // scope:'others' invalidiert alle Refresh-Tokens des Users AUSSER dem
+  // der aktuellen Session — der Resident bleibt hier eingeloggt.
+  const { error } = await supabase.auth.signOut({ scope: 'others' });
+  if (error) {
+    return { error: 'Andere Sitzungen konnten nicht abgemeldet werden. Bitte spaeter erneut.' };
+  }
+
+  return { success: 'Alle anderen Sitzungen wurden abgemeldet.' };
+}
+
+/**
+ * Beendet eine einzelne Session des eingeloggten Residents. Ownership-Check
+ * laeuft in der SECURITY-DEFINER-Function revoke_user_session ueber
+ * (user_id, session_id); die Server-Action passt ausschliesslich
+ * ctx.userId + die Zod-validierte sessionId durch.
+ *
+ * Die aktuelle Session zu beenden wird geblockt — dafuer gibt es das
+ * User-Menue oben rechts ("Abmelden").
+ */
+export async function revokePortalSessionAction(
+  _prev: PortalAccountActionState,
+  formData: FormData,
+): Promise<PortalAccountActionState> {
+  const ctx = await requireResidentContext();
+  const supabase = await createSupabaseServerClient();
+
+  await requireAal2WhenEnrolled(supabase, '/portal/account');
+
+  const parsed = revokeSessionSchema.safeParse({
+    sessionId: formData.get('sessionId'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const currentSessionId = await getCurrentSessionId(supabase);
+  if (currentSessionId && currentSessionId === parsed.data.sessionId) {
+    return {
+      error:
+        'Sie koennen Ihre aktuelle Sitzung nicht hier beenden. Nutzen Sie dazu "Abmelden" im Benutzermenue oben rechts.',
+    };
+  }
+
+  const service = createSupabaseServiceClient();
+  const { data: affected, error } = await service.rpc('revoke_user_session', {
+    p_user_id: ctx.userId,
+    p_session_id: parsed.data.sessionId,
+  });
+  if (error) {
+    return { error: 'Sitzung konnte nicht beendet werden. Bitte spaeter erneut.' };
+  }
+  if (!affected || affected === 0) {
+    return {
+      error: 'Diese Sitzung ist bereits abgelaufen oder nicht mehr aktiv.',
+    };
+  }
+
+  revalidatePath('/portal/account');
+  return { success: 'Sitzung beendet.' };
 }
 
 /**

@@ -199,6 +199,23 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   die RPC nicht aufrufen (Grant fehlt) und die Auth-Admin-API nicht
   //   nutzen (service_role only).
   'src/app/(auth)/login/mfa/recovery/actions.ts',
+  // src/app/(portal)/portal/account/actions.ts:
+  //   Sprint 34. Portal-Variante von revokeSessionAction — ruft
+  //   revoke_user_session (SECURITY DEFINER, Grant nur an service_role,
+  //   Sprint 31 Lockdown-Muster). Die Function ist aus authenticated-Kontext
+  //   nicht callable; der anon+cookie Server-Client kann sie also unabhaengig
+  //   von den RLS-Regeln auf auth.sessions (Supabase-internes Schema, per
+  //   Default fuer authenticated verriegelt) nicht ausfuehren. Gegated durch
+  //   requireResidentContext + requireAal2WhenEnrolled VOR dem Service-
+  //   Client-Aufruf; p_user_id wird ausschliesslich aus ctx.userId gesetzt
+  //   (nie aus der Formular-Payload), p_session_id ist Zod-uuid-validiert,
+  //   und die Function-Body macht ihren eigenen Ownership-Check (WHERE
+  //   id = p_session_id AND user_id = p_user_id). Die Portal-page.tsx-
+  //   Server-Component ruft ebenfalls list_user_sessions (gleicher Lockdown)
+  //   ueber einen eigenen service-Client-Aufruf — der lebt aber in der
+  //   Server-Component, nicht in der Server-Actions-Datei, und wird von
+  //   diesem Coverage-Test nicht erfasst.
+  'src/app/(portal)/portal/account/actions.ts',
 ]);
 
 describe('Server-Action service-client coverage', () => {
