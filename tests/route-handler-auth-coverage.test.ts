@@ -102,6 +102,16 @@ const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
  */
 const INTENTIONALLY_PUBLIC_ROUTES = new Set<string>([
   'src/app/api/push/vapid-key/route.ts',
+  // src/app/api/portal/push/vapid-key/route.ts:
+  //   Sprint 43. Portal-Variante der VAPID-Key-Route. Selbe Rationale wie
+  //   die Staff-Route direkt darueber: der VAPID-Public-Key ist per
+  //   Definition nicht geheim, wird im ServiceWorker-Register-Handshake
+  //   verwendet und ohnehin per Push-Subscription vom Browser an den
+  //   Push-Provider weitergereicht. Ein Auth-Gate wuerde das
+  //   Registrierungs-Handshake vor der ersten Portal-Push-Anmeldung
+  //   brechen. Body enthaelt nur { public_key: string } — keine
+  //   User-Daten.
+  'src/app/api/portal/push/vapid-key/route.ts',
   'src/app/api/qr/[type]/[id]/route.ts',
   // src/app/auth/callback/route.ts:
   //   Supabase-Auth-Callback für den Self-Signup-E-Mail-Verify-Flow. Ist per

@@ -13,6 +13,7 @@ import { PortalRecoveryCodesForm } from './recovery-codes-form';
 import { PortalSessionsList } from './sessions-list';
 import { PortalRevokeSessionsForm } from './revoke-sessions-form';
 import { PortalExportButton } from './portal-export-button';
+import { PortalPushPanel } from './portal-push-panel';
 
 export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 
@@ -59,6 +60,21 @@ export default async function PortalAccountPage({
     { p_user_id: ctx.userId },
   );
   const unusedRecoveryCodes = typeof unusedCountData === 'number' ? unusedCountData : 0;
+
+  // Sprint 43: Push-Subscriptions. RLS auf push_subscriptions verlangt
+  // is_tenant_member/current_tenant_id, was Bewohner nicht erfuellen —
+  // sie haben keinen memberships-Eintrag. Daher service-Client mit
+  // explizitem user_id-Filter (gleiches Muster wie list_user_sessions
+  // oben). Die zugehoerigen API-Routes /api/portal/push/{subscribe,
+  // unsubscribe} arbeiten aus demselben Grund via Service-Role.
+  const { data: pushSubsData } = await service
+    .from('push_subscriptions')
+    .select('id, endpoint, user_agent, created_at, last_used_at, last_error')
+    .eq('user_id', ctx.userId)
+    .order('created_at', { ascending: false });
+  const pushSubs = pushSubsData ?? [];
+
+  const pushConfigured = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
 
   // Sprint 37: Anmeldeverlauf. RLS erlaubt dem User SELECT auf seine
   // eigenen Rows in auth_login_events — daher anon Server-Client, kein
@@ -216,6 +232,67 @@ export default async function PortalAccountPage({
               Alle anderen Sitzungen auf einmal beenden:
             </p>
             <PortalRevokeSessionsForm />
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Push-Benachrichtigungen
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Erhalten Sie sofortige Hinweise auf neue Ankuendigungen,
+            Nachrichten und Status-Aenderungen an Ihren Meldungen — direkt
+            auf diesem Geraet. Sie koennen jederzeit deaktivieren.
+          </p>
+        </div>
+        {!pushConfigured ? (
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            Push-Benachrichtigungen sind aktuell nicht konfiguriert. Bitte
+            wenden Sie sich an Ihre Hausverwaltung, falls Sie diese Funktion
+            aktivieren moechten.
+          </p>
+        ) : (
+          <PortalPushPanel />
+        )}
+        {pushSubs.length > 0 && (
+          <div className="mt-6 border-t border-[var(--color-border)] pt-4">
+            <h3 className="text-sm font-semibold">Angemeldete Geraete</h3>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[500px] text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)] text-left text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                    <th className="py-2">Geraet / Browser</th>
+                    <th className="py-2">Angemeldet</th>
+                    <th className="py-2">Zuletzt zugestellt</th>
+                    <th className="py-2">Fehler</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pushSubs.map((s) => (
+                    <tr key={s.id} className="border-b border-[var(--color-border)] last:border-0">
+                      <td className="py-2 text-xs">
+                        <div className="max-w-[280px] truncate" title={s.user_agent ?? ''}>
+                          {s.user_agent ?? '—'}
+                        </div>
+                      </td>
+                      <td className="py-2">
+                        {s.created_at
+                          ? new Date(s.created_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+                          : '—'}
+                      </td>
+                      <td className="py-2">
+                        {s.last_used_at
+                          ? new Date(s.last_used_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+                          : '—'}
+                      </td>
+                      <td className="py-2 text-xs text-[var(--color-destructive)]">{s.last_error ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </section>
