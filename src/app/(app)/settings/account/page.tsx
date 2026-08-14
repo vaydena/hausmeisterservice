@@ -3,6 +3,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { ChangeDisplayNameForm } from './change-display-name-form';
+import { ChangeEmailForm } from './change-email-form';
 import { ChangePasswordForm } from './change-password-form';
 import { LoginEventsList } from './login-events-list';
 import { MfaForm } from './mfa-form';
@@ -81,17 +82,43 @@ export default async function AccountSettingsPage({
         </div>
       )}
 
+      {info === 'email-changed' && (
+        <div
+          role="status"
+          className="rounded-md border border-[var(--color-success)]/40 bg-[var(--color-success)]/5 p-4 text-sm"
+        >
+          <p className="font-medium">E-Mail-Adresse erfolgreich geaendert.</p>
+          <p className="mt-1 text-[var(--color-muted-foreground)]">
+            Ihre neue Adresse ist jetzt aktiv. Falls Sie sich auf anderen Geraeten
+            einloggen, verwenden Sie bitte die neue E-Mail.
+          </p>
+        </div>
+      )}
+
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
         <div className="mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
             Anzeigename
           </h2>
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-            E-Mail: <span className="font-medium text-[var(--color-foreground)]">{ctx.email ?? '–'}</span>
-            {' '}(nicht aenderbar)
+            Wird oben rechts, in Nachrichten und in Audit-Log-Eintraegen angezeigt.
           </p>
         </div>
         <ChangeDisplayNameForm currentDisplayName={ctx.displayName ?? ''} />
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            E-Mail-Adresse
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Ihre E-Mail wird fuer Login, Benachrichtigungen und Passwort-Zuruecksetzung
+            verwendet. Aus Sicherheitsgruenden ist die Aenderung nur mit Bestaetigungs-
+            Link moeglich.
+          </p>
+        </div>
+        <ChangeEmailForm currentEmail={ctx.email ?? '–'} />
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">

@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { AUTH_RATE_LIMITS, formatRateLimitError } from '@/lib/security/rate-limit-config';
 
 describe('AUTH_RATE_LIMITS config', () => {
-  it('covers exactly the seven expected auth endpoints', () => {
+  it('covers exactly the eight expected auth endpoints', () => {
     expect(Object.keys(AUTH_RATE_LIMITS).sort()).toEqual([
+      'email-change',
       'login',
       'mfa-recovery',
       'mfa-verify',
@@ -48,6 +49,10 @@ describe('AUTH_RATE_LIMITS config', () => {
 
   it('mfa-recovery matches login policy (5 attempts per 15 min, 15 min block) — recovery-code space is huge (32^10) but rate-limit is the front-line defence', () => {
     expect(AUTH_RATE_LIMITS['mfa-recovery']).toEqual(AUTH_RATE_LIMITS.login);
+  });
+
+  it('email-change matches signup policy (3 per hour) — same enumeration/mail-bombing surface as signup, applied per-account', () => {
+    expect(AUTH_RATE_LIMITS['email-change']).toEqual(AUTH_RATE_LIMITS.signup);
   });
 
   it('all configs use positive integers', () => {

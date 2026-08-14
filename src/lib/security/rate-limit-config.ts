@@ -44,12 +44,22 @@
  *     erst nach Passwort-Login, IP schon vorher — sicherheitshalber
  *     beides). KEIN Reset auf Erfolg — verwendete Codes sind sowieso
  *     verbrannt, Rate-Limit-Zaehler laeuft von selbst aus.
+ *   - email-change: 3 Aktionen pro Stunde. Sprint 30: E-Mail-Aenderung
+ *     im Konto-Bereich versendet eine Confirm-Mail an die NEUE Adresse
+ *     (und, wenn "Secure email change" aktiv, auch an die alte). Ohne
+ *     Rate-Limit koennte ein Angreifer mit gestohlener Session in kurzer
+ *     Zeit viele Wechsel-Mails triggern, was den User mit Bestaetigungs-
+ *     Mails ueberschwemmt und ihm die legitime Aktivitaet verdeckt.
+ *     Zaehler ist auf die AKTUELLE E-Mail des eingeloggten Users bezogen
+ *     (nicht auf die neue — die kann bei jedem Versuch anders sein).
+ *     KEIN Reset auf Erfolg — die 3/Stunde sind hart, auch nach einem
+ *     bestaetigten Wechsel.
  *
  * Zaehler wird bei erfolgreichem Login/Portal-Login geloescht (siehe
  * `resetAuthRateLimit` in ./rate-limit.ts), damit ein legitimes Passwort
  * das Rate-Limit befreit. Fuer Signup/Reset-Password/Password-Change/
- * MFA-Verify/MFA-Recovery KEIN Reset auf Erfolg — sonst waere die
- * E-Mail-Enumeration- bzw. die Session-Hijack-Schutzwirkung weg.
+ * MFA-Verify/MFA-Recovery/Email-Change KEIN Reset auf Erfolg — sonst
+ * waere die E-Mail-Enumeration- bzw. die Session-Hijack-Schutzwirkung weg.
  */
 export const AUTH_RATE_LIMITS = {
   login: { limit: 5, windowSec: 900, blockSec: 900 },
@@ -59,6 +69,7 @@ export const AUTH_RATE_LIMITS = {
   'password-change': { limit: 5, windowSec: 900, blockSec: 900 },
   'mfa-verify': { limit: 5, windowSec: 900, blockSec: 900 },
   'mfa-recovery': { limit: 5, windowSec: 900, blockSec: 900 },
+  'email-change': { limit: 3, windowSec: 3600, blockSec: 3600 },
 } as const;
 
 export type AuthEndpoint = keyof typeof AUTH_RATE_LIMITS;

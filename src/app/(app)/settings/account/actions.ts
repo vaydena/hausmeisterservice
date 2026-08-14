@@ -7,6 +7,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
 import { changeDisplayNameSchema } from '@/lib/auth/change-display-name-schema';
+import { changeEmailSchema } from '@/lib/auth/change-email-schema';
 import {
   mfaEnrollSchema,
   mfaUnenrollSchema,
@@ -14,6 +15,7 @@ import {
 } from '@/lib/auth/mfa-verify-schema';
 import { generateRecoveryCodePlaintexts } from '@/lib/auth/mfa-recovery';
 import { requireAal2WhenEnrolled } from '@/lib/auth/require-aal2';
+import { clientEnv } from '@/lib/env';
 
 export type AccountActionState = { error?: string; success?: string };
 
@@ -107,6 +109,80 @@ export async function changePasswordAction(
   }
 
   return { success: 'Passwort erfolgreich geaendert.' };
+}
+
+/**
+ * E-Mail-Adresse aendern (Sprint 30). Supabase versendet eine
+ * Bestaetigungs-Mail an die NEUE Adresse; wenn im Supabase-Dashboard
+ * "Secure email change" aktiv ist (Default), zusaetzlich eine an die
+ * alte. Der Wechsel wird erst nach Klick auf den Confirm-Link wirksam
+ * — bis dahin bleibt die aktuelle Adresse gueltig.
+ *
+ * Sicherheitsmaßnahmen:
+ *   - aal2 verlangt, wenn User MFA hat (identisch zu Passwort-Change:
+ *     E-Mail-Wechsel ist Account-Takeover-Vektor, wenn Angreifer aal1
+ *     hat und die neue E-Mail dann zum Passwort-Reset nutzt).
+ *   - Rate-Limit 3/Stunde auf aktuelle E-Mail (verhindert Mail-Bombing
+ *     der neuen Adresse und Ueberflutung des Users mit Confirm-Mails).
+ *   - Redirect nach Klick geht via /auth/callback → /settings/account
+ *     ?info=email-changed, damit der User eine sichtbare Bestaetigung
+ *     bekommt.
+ */
+export async function changeEmailAction(
+  _prev: AccountActionState,
+  formData: FormData,
+): Promise<AccountActionState> {
+  const ctx = await requireTenantContext();
+  if (!ctx.email) {
+    return { error: 'Fuer dieses Konto ist keine E-Mail hinterlegt. Bitte Support kontaktieren.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  await requireAal2WhenEnrolled(supabase, '/settings/account');
+
+  const rl = await checkAuthRateLimit(ctx.email, 'email-change');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
+  const parsed = changeEmailSchema.safeParse({
+    newEmail: formData.get('newEmail'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  if (parsed.data.newEmail === ctx.email.toLowerCase()) {
+    return { error: 'Die neue E-Mail-Adresse ist mit der aktuellen identisch.' };
+  }
+
+  // Callback-URL bauen: nach Confirm landet der User auf /settings/account
+  // mit info=email-changed, damit die UI eine sichtbare Rueckmeldung
+  // zeigen kann. URLSearchParams encodet das inner "?" automatisch.
+  const redirectUrl = new URL('/auth/callback', clientEnv.NEXT_PUBLIC_APP_URL);
+  redirectUrl.searchParams.set('next', '/settings/account?info=email-changed');
+
+  const { error } = await supabase.auth.updateUser(
+    { email: parsed.data.newEmail },
+    { emailRedirectTo: redirectUrl.toString() },
+  );
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+      return { error: 'Diese E-Mail-Adresse ist bereits vergeben.' };
+    }
+    if (msg.includes('rate') || msg.includes('too many')) {
+      return {
+        error: 'Zu viele Anfragen an den Mail-Provider. Bitte in ein paar Minuten erneut versuchen.',
+      };
+    }
+    return { error: 'E-Mail-Adresse konnte nicht geaendert werden. Bitte spaeter erneut.' };
+  }
+
+  return {
+    success:
+      'Bestaetigungs-Mail an die neue Adresse gesendet. Falls "Secure email change" aktiv ist, muessen Sie zusaetzlich den Link in der Mail an Ihre bisherige Adresse anklicken. Die Aenderung wird erst nach Bestaetigung wirksam.',
+  };
 }
 
 export async function changeDisplayNameAction(
