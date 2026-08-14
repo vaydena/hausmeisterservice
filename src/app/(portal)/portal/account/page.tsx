@@ -6,6 +6,7 @@ import { getResidentContext } from '@/lib/portal/current';
 import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import { parseUserSessions } from '@/lib/auth/user-sessions';
 import { ChangePortalPasswordForm } from './change-password-form';
+import { LoginEventsList } from '@/app/(app)/settings/account/login-events-list';
 import { PortalMfaForm } from './mfa-form';
 import { PortalRecoveryCodesForm } from './recovery-codes-form';
 import { PortalSessionsList } from './sessions-list';
@@ -16,8 +17,9 @@ export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 /**
  * Konto-Seite fuer Portal-Residents. Sprint 32 → MFA, Sprint 33 →
  * Passwort-Aenderung, Sprint 34 → Session-Uebersicht, Sprint 35 →
- * MFA-Recovery-Codes. Alle Bloecke sind Selbstbedienung und parallel
- * zu den Staff-Sektionen unter /settings/account gebaut.
+ * MFA-Recovery-Codes, Sprint 37 → Anmeldeverlauf. Alle Bloecke sind
+ * Selbstbedienung und parallel zu den Staff-Sektionen unter
+ * /settings/account gebaut.
  */
 export default async function PortalAccountPage({
   searchParams,
@@ -55,6 +57,24 @@ export default async function PortalAccountPage({
     { p_user_id: ctx.userId },
   );
   const unusedRecoveryCodes = typeof unusedCountData === 'number' ? unusedCountData : 0;
+
+  // Sprint 37: Anmeldeverlauf. RLS erlaubt dem User SELECT auf seine
+  // eigenen Rows in auth_login_events — daher anon Server-Client, kein
+  // service_role noetig. Portal-Logins landen dort seit Sprint 29 mit
+  // endpoint = 'portal-login'; die List-Komponente formatiert das lesbar.
+  const { data: loginEventsData } = await supabase
+    .from('auth_login_events')
+    .select('id, at, ip, user_agent, endpoint')
+    .eq('user_id', ctx.userId)
+    .order('at', { ascending: false })
+    .limit(20);
+  const loginEvents = (loginEventsData ?? []).map((e) => ({
+    id: e.id,
+    at: e.at,
+    ip: e.ip,
+    userAgent: e.user_agent,
+    endpoint: e.endpoint,
+  }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -169,6 +189,21 @@ export default async function PortalAccountPage({
             <PortalRevokeSessionsForm />
           </div>
         )}
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Anmeldeverlauf
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Ihre letzten 20 erfolgreichen Anmeldungen im Bewohner-Portal.
+            Pruefen Sie diese Liste gelegentlich — eine unbekannte IP oder
+            ein fremder Browser kann ein Hinweis darauf sein, dass Ihr
+            Passwort in fremde Haende geraten ist.
+          </p>
+        </div>
+        <LoginEventsList events={loginEvents} />
       </section>
     </div>
   );
