@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Megaphone, Wrench, MessageSquare } from 'lucide-react';
+import { Home, Megaphone, Wrench, MessageSquare, HelpCircle } from 'lucide-react';
 
 const ITEMS = [
   { href: '/portal/dashboard', label: 'Übersicht', icon: Home },
   { href: '/portal/announcements', label: 'Ankündigungen', icon: Megaphone },
   { href: '/portal/defects', label: 'Meldungen', icon: Wrench },
   { href: '/portal/messages', label: 'Nachrichten', icon: MessageSquare },
+  { href: '/portal/hilfe', label: 'Hilfe', icon: HelpCircle },
 ] as const;
 
 export function PortalNav() {
