@@ -12,6 +12,7 @@ import { PortalMfaForm } from './mfa-form';
 import { PortalRecoveryCodesForm } from './recovery-codes-form';
 import { PortalSessionsList } from './sessions-list';
 import { PortalRevokeSessionsForm } from './revoke-sessions-form';
+import { PortalExportButton } from './portal-export-button';
 
 export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 
@@ -232,6 +233,43 @@ export default async function PortalAccountPage({
           </p>
         </div>
         <LoginEventsList events={loginEvents} />
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Datenauskunft &amp; Loeschung
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Nach Art. 15 DSGVO haben Sie das Recht auf Auskunft ueber alle
+            personenbezogenen Daten, die zu Ihrem Bewohner-Konto gespeichert
+            sind. Ueber den Button unten laden Sie diese Daten als
+            maschinenlesbare JSON-Datei herunter.
+          </p>
+        </div>
+        <PortalExportButton />
+        <div className="mt-6 border-t border-[var(--color-border)] pt-4">
+          <h3 className="text-sm font-semibold">Loeschung Ihrer Daten</h3>
+          <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
+            Ihr Bewohner-Datensatz (Name, Anschrift, Wohnungszuordnung)
+            wird von Ihrer Hausverwaltung gepflegt und ist Teil eines
+            bestehenden Vertragsverhaeltnisses zwischen Ihnen und der
+            Hausverwaltung. Fuer Loeschung oder Berichtigung wenden Sie
+            sich daher bitte direkt an Ihre Hausverwaltung — sie kann
+            Ihren Zugang beenden und den Datensatz nach Ablauf der
+            gesetzlichen Aufbewahrungsfristen entfernen.
+          </p>
+          <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
+            Am schnellsten geht das ueber eine{' '}
+            <a
+              href="/portal/defects/new"
+              className="text-[var(--color-primary)] hover:underline"
+            >
+              neue Meldung
+            </a>{' '}
+            im Portal.
+          </p>
+        </div>
       </section>
     </div>
   );
