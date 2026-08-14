@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { getCurrentSessionId } from '@/lib/auth/current-session-id';
+import { parseUserSessions } from '@/lib/auth/user-sessions';
 import { ChangeDisplayNameForm } from './change-display-name-form';
 import { ChangeEmailForm } from './change-email-form';
 import { ChangePasswordForm } from './change-password-form';
@@ -9,6 +11,7 @@ import { LoginEventsList } from './login-events-list';
 import { MfaForm } from './mfa-form';
 import { RecoveryCodesForm } from './recovery-codes-form';
 import { RevokeSessionsForm } from './revoke-sessions-form';
+import { SessionsList } from './sessions-list';
 
 export const metadata: Metadata = { title: 'Konto' };
 
@@ -58,6 +61,15 @@ export default async function AccountSettingsPage({
     userAgent: e.user_agent,
     endpoint: e.endpoint,
   }));
+
+  // Sprint 31: Aktive Sessions inkl. eigener session_id. Load via service_role,
+  // weil auth.sessions aus authenticated-Kontext nicht lesbar ist; die
+  // SECURITY-DEFINER-Function scoped selbst auf p_user_id = ctx.userId.
+  const { data: sessionsRaw } = await service.rpc('list_user_sessions', {
+    p_user_id: ctx.userId,
+  });
+  const sessions = parseUserSessions(sessionsRaw);
+  const currentSessionId = await getCurrentSessionId(supabase);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -183,11 +195,22 @@ export default async function AccountSettingsPage({
             Aktive Sitzungen
           </h2>
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-            Meldet Sie auf allen anderen Geraeten ab (Handy, anderer Browser, alter Laptop). Diese
-            Sitzung hier bleibt aktiv.
+            Alle Geraete, auf denen Sie gerade eingeloggt sind. Beenden Sie einzelne
+            Sitzungen, wenn Sie ein Geraet nicht wiedererkennen — Ihre aktuelle Sitzung
+            hier bleibt davon unberuehrt.
           </p>
         </div>
-        <RevokeSessionsForm />
+
+        <SessionsList sessions={sessions} currentSessionId={currentSessionId} />
+
+        {sessions.length > 1 && (
+          <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+            <p className="mb-3 text-xs text-[var(--color-muted-foreground)]">
+              Alle anderen Sitzungen auf einmal beenden:
+            </p>
+            <RevokeSessionsForm />
+          </div>
+        )}
       </section>
     </div>
   );

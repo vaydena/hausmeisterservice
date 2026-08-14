@@ -8,6 +8,8 @@ import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-li
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
 import { changeDisplayNameSchema } from '@/lib/auth/change-display-name-schema';
 import { changeEmailSchema } from '@/lib/auth/change-email-schema';
+import { revokeSessionSchema } from '@/lib/auth/revoke-session-schema';
+import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import {
   mfaEnrollSchema,
   mfaUnenrollSchema,
@@ -239,6 +241,65 @@ export async function signOutOtherSessionsAction(
   }
 
   return { success: 'Alle anderen Sitzungen wurden abgemeldet.' };
+}
+
+/**
+ * Sprint 31: Beendet eine einzelne Sitzung des eingeloggten Users. Der
+ * Ownership-Check laeuft in der SECURITY-DEFINER-Function
+ * revoke_user_session ueber (user_id, session_id) — der Aufrufer passt
+ * ausschliesslich ctx.userId + die Zod-validierte sessionId durch.
+ *
+ * Verhalten:
+ *   - Fehlende oder ungueltige sessionId: Fehlermeldung (Zod-Ergebnis).
+ *   - sessionId == aktuelle Session: Fehler, damit der User sich nicht
+ *     ausversehen aus dem Konto-Bereich aussperrt. Fuer den "aktuelle
+ *     Sitzung beenden"-Fall gibt es das UserMenu → "Abmelden".
+ *   - Session gehoert nicht dem User oder existiert nicht mehr: freundliche
+ *     Meldung, statt einer schweigenden 0-Zeilen-Loeschung.
+ *   - Erfolg: success-Meldung. Der User bleibt hier eingeloggt (nur die
+ *     fremde Session ist weg); die aktuelle Sessions-Liste wird durch
+ *     revalidatePath('/settings/account') nachgeladen.
+ */
+export async function revokeSessionAction(
+  _prev: AccountActionState,
+  formData: FormData,
+): Promise<AccountActionState> {
+  const ctx = await requireTenantContext();
+  const supabase = await createSupabaseServerClient();
+
+  await requireAal2WhenEnrolled(supabase, '/settings/account');
+
+  const parsed = revokeSessionSchema.safeParse({
+    sessionId: formData.get('sessionId'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const currentSessionId = await getCurrentSessionId(supabase);
+  if (currentSessionId && currentSessionId === parsed.data.sessionId) {
+    return {
+      error:
+        'Sie koennen Ihre aktuelle Sitzung nicht hier beenden. Nutzen Sie dazu "Abmelden" im Benutzermenue oben rechts.',
+    };
+  }
+
+  const service = createSupabaseServiceClient();
+  const { data: affected, error } = await service.rpc('revoke_user_session', {
+    p_user_id: ctx.userId,
+    p_session_id: parsed.data.sessionId,
+  });
+  if (error) {
+    return { error: 'Sitzung konnte nicht beendet werden. Bitte spaeter erneut.' };
+  }
+  if (!affected || affected === 0) {
+    return {
+      error: 'Diese Sitzung ist bereits abgelaufen oder nicht mehr aktiv.',
+    };
+  }
+
+  revalidatePath('/settings/account');
+  return { success: 'Sitzung beendet.' };
 }
 
 // ============================================================================

@@ -3743,23 +3743,12 @@ export type Database = {
       }
       cleanup_expired_auth_rate_limits: { Args: never; Returns: number }
       consume_mfa_recovery_code: {
-        Args: {
-          p_plaintext: string
-          p_used_ip: string
-          p_user_id: string
-        }
+        Args: { p_plaintext: string; p_used_ip: string; p_user_id: string }
         Returns: boolean
       }
       count_unused_mfa_recovery_codes: {
         Args: { p_user_id: string }
         Returns: number
-      }
-      generate_mfa_recovery_codes_for_user: {
-        Args: {
-          p_plaintext_codes: string[]
-          p_user_id: string
-        }
-        Returns: undefined
       }
       enqueue_notification: {
         Args: {
@@ -3773,6 +3762,11 @@ export type Database = {
         }
         Returns: string
       }
+      generate_mfa_recovery_codes_for_user: {
+        Args: { p_plaintext_codes: string[]; p_user_id: string }
+        Returns: undefined
+      }
+      list_user_sessions: { Args: { p_user_id: string }; Returns: Json }
       log_login_event: {
         Args: {
           p_endpoint: string
@@ -3793,11 +3787,12 @@ export type Database = {
         Returns: Json
       }
       reset_auth_rate_limit: {
-        Args: {
-          p_endpoint: string
-          p_identifier: string
-        }
+        Args: { p_endpoint: string; p_identifier: string }
         Returns: undefined
+      }
+      revoke_user_session: {
+        Args: { p_session_id: string; p_user_id: string }
+        Returns: number
       }
     }
     Enums: {

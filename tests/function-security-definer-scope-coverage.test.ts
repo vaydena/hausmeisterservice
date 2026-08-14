@@ -192,6 +192,31 @@ const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([
   //   signInData.user (nicht aus der Formular-Payload), sodass IDs nicht
   //   spoofbar sind.
   'public.log_login_event',
+  // public.list_user_sessions:
+  //   Sprint 31. Liest aktive Sessions eines Users aus auth.sessions als
+  //   JSON-Array fuer die Konto-UI. Muss in `public` fuer PostgREST-RPC
+  //   vom Service-Client (src/app/(app)/settings/account/page.tsx). auth.*
+  //   ist Supabase-verwaltet und aus authenticated-Kontext nicht lesbar;
+  //   SECURITY DEFINER ist der einzige Weg dorthin. Execute-Right
+  //   ausschliesslich an service_role — anon/authenticated bekommt
+  //   `permission denied for function`. Die aufrufende Server-Page fuellt
+  //   p_user_id nur mit ctx.userId aus requireTenantContext (nie aus einer
+  //   Query-String-Payload); die WHERE-Clause im Body scoped ausserdem
+  //   selbst auf user_id = p_user_id, sodass die Function kein Cross-
+  //   Tenant-Read-Primitive ist.
+  'public.list_user_sessions',
+  // public.revoke_user_session:
+  //   Sprint 31. Loescht eine Session-Row aus auth.sessions (kaskadiert auf
+  //   auth.refresh_tokens, invalidiert die zugehoerige Refresh-Kette). Muss
+  //   in `public` fuer PostgREST-RPC vom Service-Client
+  //   (src/app/(app)/settings/account/actions.ts revokeSessionAction).
+  //   Execute-Right ausschliesslich an service_role. Ownership-Guard im
+  //   Body: DELETE ... WHERE id = p_session_id AND user_id = p_user_id —
+  //   ein Aufruf mit fremder session_id kann keine fremde Session killen.
+  //   Die aufrufende Server-Action passt p_user_id nur als ctx.userId
+  //   durch und nimmt p_session_id aus einer Zod-validierten Formular-
+  //   Payload; aal2-Guard vorgeschaltet.
+  'public.revoke_user_session',
 ]);
 
 describe('Function security-definer scope coverage', () => {

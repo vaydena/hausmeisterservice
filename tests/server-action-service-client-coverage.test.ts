@@ -166,16 +166,25 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   Tenant-Namen als "sind Sie sicher"-Bestaetigung.
   'src/app/platform/tenants/actions.ts',
   // src/app/(app)/settings/account/actions.ts:
-  //   Sprint 26. Enthaelt generateMfaRecoveryCodesAction, die die drei
-  //   Recovery-Codes-Functions (generate/consume/count) aufruft. Diese sind
-  //   SECURITY DEFINER mit REVOKE EXECUTE FROM anon/authenticated und GRANT
-  //   nur an service_role (Sprint 21 Lockdown-Muster). Der anon+cookie
-  //   Server-Client kann sie also nicht aufrufen, egal welche RLS-Regel man
-  //   auf die auth_mfa_recovery_codes-Tabelle setzen wuerde (die ist
-  //   ohnehin deny-all). Die Action ist gegated durch requireTenantContext
-  //   VOR dem Service-Client-Aufruf; p_user_id wird ausschliesslich aus
-  //   ctx.userId gesetzt (nie aus der Formular-Payload) — ein Angreifer
-  //   kann keine Codes fuer fremde User erzeugen.
+  //   Sprint 26 + Sprint 31. Enthaelt (a) generateMfaRecoveryCodesAction,
+  //   die die drei Recovery-Codes-Functions (generate/consume/count)
+  //   aufruft, und (b) revokeSessionAction, die revoke_user_session
+  //   aufruft. Alle vier Functions sind SECURITY DEFINER mit REVOKE
+  //   EXECUTE FROM anon/authenticated und GRANT nur an service_role
+  //   (Sprint 21 Lockdown-Muster). Der anon+cookie Server-Client kann
+  //   sie also nicht aufrufen, egal welche RLS-Regel man auf die
+  //   auth_mfa_recovery_codes-Tabelle setzen wuerde (die ist ohnehin
+  //   deny-all) bzw. wie auth.sessions per Default fuer authenticated
+  //   verriegelt ist (Supabase-internes Schema). Beide Actions sind
+  //   gegated durch requireTenantContext + requireAal2WhenEnrolled VOR
+  //   dem Service-Client-Aufruf; p_user_id wird ausschliesslich aus
+  //   ctx.userId gesetzt (nie aus der Formular-Payload). Fuer
+  //   revoke_user_session ist zusaetzlich die p_session_id Zod-uuid-
+  //   validiert und die Function-Body macht ihren eigenen Ownership-
+  //   Check (WHERE id = p_session_id AND user_id = p_user_id) — ein
+  //   Angreifer mit erratener fremder session_id kann keine fremde
+  //   Session killen. Ebenso liest list_user_sessions (via
+  //   page.tsx-Server-Component) nur die eigenen Sessions des Users.
   'src/app/(app)/settings/account/actions.ts',
   // src/app/(auth)/login/mfa/recovery/actions.ts:
   //   Sprint 26. Loest einen Recovery-Code beim MFA-Login-Prompt ein und

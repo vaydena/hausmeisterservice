@@ -1,3 +1,5 @@
+import { summarizeUserAgent } from '@/lib/ua/summarize';
+
 type LoginEvent = {
   id: string;
   at: string;
@@ -5,45 +7,6 @@ type LoginEvent = {
   userAgent: string | null;
   endpoint: string;
 };
-
-/**
- * Kompakter Reader fuer den User-Agent: kein CSS-taugliches Browser-
- * Fingerprinting, nur eine grobe Zuordnung, die auf einen Blick sagt
- * "Firefox auf Windows" statt der langen UA-Zeile. Absichtlich klein und
- * deterministisch — bessere Erkennung wuerde eine ua-parser-Lib brauchen,
- * die Bundle-Groesse kostet.
- */
-function summarizeUserAgent(ua: string | null): string {
-  if (!ua) return 'Unbekannter Browser';
-  const os = /Windows/.test(ua)
-    ? 'Windows'
-    : /Mac OS X/.test(ua)
-      ? 'macOS'
-      : /iPhone|iPad|iOS/.test(ua)
-        ? 'iOS'
-        : /Android/.test(ua)
-          ? 'Android'
-          : /Linux/.test(ua)
-            ? 'Linux'
-            : null;
-  // Reihenfolge wichtig: Edge/OPR/... enthalten "Chrome"-Substring, deshalb zuerst pruefen.
-  const browser = /Edg\//.test(ua)
-    ? 'Edge'
-    : /OPR\/|Opera/.test(ua)
-      ? 'Opera'
-      : /Firefox\//.test(ua)
-        ? 'Firefox'
-        : /Chrome\//.test(ua)
-          ? 'Chrome'
-          : /Safari\//.test(ua)
-            ? 'Safari'
-            : null;
-  if (browser && os) return `${browser} auf ${os}`;
-  if (browser) return browser;
-  if (os) return os;
-  // Fallback: erste 40 Zeichen, damit die Zeile nicht die Tabelle sprengt.
-  return ua.slice(0, 40);
-}
 
 function formatEndpoint(endpoint: string): string {
   if (endpoint === 'staff-login') return 'Mitarbeiter-Login';
