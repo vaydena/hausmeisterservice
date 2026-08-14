@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef, useState, useEffect } from 'react';
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, Settings } from 'lucide-react';
 
 export function PortalUserMenu({
   displayName,
@@ -56,7 +57,16 @@ export function PortalUserMenu({
               <p className="truncate text-xs text-[var(--color-muted-foreground)]">{email}</p>
             )}
           </div>
-          <form action="/portal/logout" method="POST">
+          <Link
+            href="/portal/account"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-[var(--color-muted)]"
+          >
+            <Settings className="size-4" aria-hidden />
+            Konto
+          </Link>
+          <form action="/portal/logout" method="POST" className="border-t border-[var(--color-border)]">
             <button
               type="submit"
               role="menuitem"

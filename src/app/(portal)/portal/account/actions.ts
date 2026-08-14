@@ -1,0 +1,163 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { requireResidentContext } from '@/lib/portal/current';
+import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
+import {
+  mfaEnrollSchema,
+  mfaUnenrollSchema,
+  mfaVerifySchema,
+} from '@/lib/auth/mfa-verify-schema';
+import { requireAal2WhenEnrolled } from '@/lib/auth/require-aal2';
+
+export type PortalAccountActionState = { error?: string; success?: string };
+
+/**
+ * Sprint 32: Portal-MFA. Parallel zu den Staff-Actions in
+ * src/app/(app)/settings/account/actions.ts, aber gegated auf
+ * requireResidentContext statt requireTenantContext — Portal-Residents
+ * haben keine Tenant-Membership und wuerden sonst durch die Staff-Guard
+ * fallen. Die drei Supabase-Auth-MFA-Endpoints (enroll/challengeAndVerify/
+ * unenroll) sind user-agnostisch: der anon+cookie-Client operiert
+ * automatisch auf dem eingeloggten User. Kein service_role noetig.
+ *
+ * Recovery-Codes sind fuer Portal-Residents in diesem Sprint NICHT
+ * angeboten. Wenn ein Resident sein Handy verliert, kontaktiert er
+ * seine Verwaltung — die kann via /platform admin die MFA-Faktoren
+ * loeschen und den User per E-Mail-Reset wieder reinlassen.
+ */
+
+export type PortalMfaEnrollState = PortalAccountActionState & {
+  enrollment?: {
+    factorId: string;
+    qrCodeDataUri: string;
+    secret: string;
+  };
+};
+
+export async function enrollPortalMfaFactorAction(
+  _prev: PortalMfaEnrollState,
+  formData: FormData,
+): Promise<PortalMfaEnrollState> {
+  await requireResidentContext();
+  const parsed = mfaEnrollSchema.safeParse({
+    friendlyName: formData.get('friendlyName'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // Verwaiste unverified Faktoren einsammeln — sonst laeuft der User bei
+  // wiederholten Abbruch/Neustart in Supabases Faktor-Limit.
+  const { data: factorsData } = await supabase.auth.mfa.listFactors();
+  const stale = factorsData?.all?.filter((f) => f.status === 'unverified') ?? [];
+  for (const f of stale) {
+    await supabase.auth.mfa.unenroll({ factorId: f.id });
+  }
+
+  const primaryName = parsed.data.friendlyName;
+  const { data, error } = await supabase.auth.mfa.enroll({
+    factorType: 'totp',
+    friendlyName: primaryName,
+  });
+
+  if (error || !data) {
+    if (error?.message.toLowerCase().includes('already exists')) {
+      // Name-Kollision mit bestehendem verified Faktor — Datum anhaengen.
+      const suffixed = `${primaryName} (${new Date().toISOString().slice(0, 10)})`;
+      const retry = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: suffixed,
+      });
+      if (retry.error || !retry.data) {
+        return { error: 'MFA-Faktor konnte nicht angelegt werden. Bitte spaeter erneut.' };
+      }
+      return {
+        enrollment: {
+          factorId: retry.data.id,
+          qrCodeDataUri: retry.data.totp.qr_code,
+          secret: retry.data.totp.secret,
+        },
+      };
+    }
+    return { error: 'MFA-Faktor konnte nicht angelegt werden. Bitte spaeter erneut.' };
+  }
+
+  return {
+    enrollment: {
+      factorId: data.id,
+      qrCodeDataUri: data.totp.qr_code,
+      secret: data.totp.secret,
+    },
+  };
+}
+
+export async function verifyPortalMfaEnrollmentAction(
+  _prev: PortalAccountActionState,
+  formData: FormData,
+): Promise<PortalAccountActionState> {
+  const ctx = await requireResidentContext();
+
+  // Rate-Limit auf User-ID: TOTP-Codes haben 10^6 Kombinationen; die Sperre
+  // verhindert, dass jemand mit erbeutetem Enrollment-Link (unverified
+  // Faktor) den Code durch Brute-Force verifiziert.
+  const rl = await checkAuthRateLimit(`user:${ctx.userId}`, 'mfa-verify');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
+  }
+
+  const parsed = mfaVerifySchema.safeParse({
+    factorId: formData.get('factorId'),
+    code: formData.get('code'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.auth.mfa.challengeAndVerify({
+    factorId: parsed.data.factorId,
+    code: parsed.data.code,
+  });
+  if (error) {
+    return {
+      error: 'Der Code ist nicht gueltig. Bitte einen frischen Code aus der App eingeben.',
+    };
+  }
+
+  revalidatePath('/portal', 'layout');
+  return { success: 'Zwei-Faktor-Authentifizierung ist aktiv.' };
+}
+
+export async function unenrollPortalMfaFactorAction(
+  _prev: PortalAccountActionState,
+  formData: FormData,
+): Promise<PortalAccountActionState> {
+  await requireResidentContext();
+  const parsed = mfaUnenrollSchema.safeParse({
+    factorId: formData.get('factorId'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // aal2-Guard identisch zum Staff-Flow: sobald der User MFA aktiv hat,
+  // darf ein Angreifer mit erbeuteter aal1-Session den Schutz nicht
+  // einfach abschalten. Die Enroll-Kaskade (unverified Faktoren beim
+  // neuen Enroll wegraeumen) umgeht diesen Guard bewusst — dort gibt es
+  // noch keine aal2-Session, die geprueft werden koennte.
+  await requireAal2WhenEnrolled(supabase, '/portal/account');
+
+  const { error } = await supabase.auth.mfa.unenroll({ factorId: parsed.data.factorId });
+  if (error) {
+    return { error: 'Faktor konnte nicht entfernt werden. Bitte spaeter erneut.' };
+  }
+
+  revalidatePath('/portal', 'layout');
+  return { success: 'Faktor entfernt.' };
+}

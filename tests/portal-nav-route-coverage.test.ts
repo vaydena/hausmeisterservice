@@ -45,11 +45,18 @@ const TOP_LEVEL_SEGMENTS = collectTopLevelSegments();
  * Segments that intentionally do NOT appear in the resident nav.
  *  - `login`: the sign-in landing page. Residents reach it via the unauth
  *    redirect, never via the authenticated nav.
+ *  - `account`: Sprint 32. Konto-Selbstverwaltung (MFA-Enroll, spaeter
+ *    Passwort/Sessions). Erreichbar ueber den User-Avatar-Dropdown oben
+ *    rechts (PortalUserMenu → "Konto"), nicht ueber die Hauptnavigation.
+ *    Wir halten die Top-Nav bewusst kurz auf die wenigen aktiven Portal-
+ *    Funktionen (Uebersicht, Ankuendigungen, Meldungen, Nachrichten);
+ *    Kontoeinstellungen sind ein Randfall, der aus dem Avatar-Menue
+ *    erreichbar sein sollte, nicht permanent im Header sichtbar.
  *
  * Stale entries are asserted below (once a segment appears in the nav, the
  * allowlist entry must be removed).
  */
-const INTENTIONALLY_NAV_HIDDEN = new Set<string>(['login']);
+const INTENTIONALLY_NAV_HIDDEN = new Set<string>(['login', 'account']);
 
 function segmentOfHref(href: string): string {
   return href.replace(/^\/portal\//, '').split('/')[0]!;

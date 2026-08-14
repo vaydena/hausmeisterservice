@@ -91,5 +91,16 @@ export async function portalSignInAction(
       .eq('id', resident.id);
   }
 
+  // MFA-Gate (Sprint 32, analog zu staff signInAction): Wenn der Resident
+  // verified TOTP-Faktoren hat, hebt Supabase das AAL-Ziel auf aal2 an.
+  // Wir schicken ihn dann durch den TOTP-Verify-Schritt, BEVOR er ins
+  // Portal-Dashboard kommt. /login/mfa ist user-agnostisch und akzeptiert
+  // jeden /-Pfad als next — Portal-Pfade landen automatisch wieder im
+  // Portal-Kontext (Layout gated selbst auf getResidentContext).
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (aal?.currentLevel === 'aal1' && aal.nextLevel === 'aal2') {
+    redirect('/login/mfa?next=%2Fportal%2Fdashboard');
+  }
+
   redirect('/portal/dashboard');
 }

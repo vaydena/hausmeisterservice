@@ -6,7 +6,14 @@ import { LoginMfaRecoveryForm } from './recovery-form';
 
 export const metadata: Metadata = { title: 'Recovery-Code einloesen' };
 
-export default async function LoginMfaRecoveryPage() {
+export default async function LoginMfaRecoveryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next: nextParam } = await searchParams;
+  const next = nextParam && nextParam.startsWith('/') ? nextParam : '/dashboard';
+
   const supabase = await createSupabaseServerClient();
 
   // Ohne aal1-Session hier gar nichts erlauben — der User muss zuerst
@@ -16,11 +23,16 @@ export default async function LoginMfaRecoveryPage() {
   if (!userData?.user) redirect('/login');
 
   // Wenn der User bereits aal2 hat oder gar keine MFA-Faktoren registriert
-  // sind, ist die Seite obsolet — direkt weiter ins Dashboard.
+  // sind, ist die Seite obsolet — direkt weiter zum next-Ziel (bzw.
+  // /dashboard als sicherer Fallback).
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (aal?.currentLevel === 'aal2' || aal?.nextLevel !== 'aal2') {
-    redirect('/dashboard');
+    redirect(next);
   }
+
+  // Der "Zurueck"-Link soll das next zurueckgeben, damit die MFA-Verify-
+  // Seite den Portal-Kontext nicht verliert.
+  const backHref = `/login/mfa?next=${encodeURIComponent(next)}`;
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6">
@@ -32,10 +44,10 @@ export default async function LoginMfaRecoveryPage() {
           Zwei-Faktor-Authentifizierung direkt anschliessend neu ein.
         </p>
       </header>
-      <LoginMfaRecoveryForm />
+      <LoginMfaRecoveryForm next={next} />
       <p className="text-sm">
         <Link
-          href="/login/mfa"
+          href={backHref}
           className="text-[var(--color-primary)] underline underline-offset-4 hover:opacity-80"
         >
           ← Zurueck zur Code-Eingabe aus der App

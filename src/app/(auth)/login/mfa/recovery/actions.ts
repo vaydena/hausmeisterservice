@@ -82,5 +82,14 @@ export async function useMfaRecoveryCodeAction(
     await service.auth.admin.mfa.deleteFactor({ id: f.id, userId });
   }
 
-  redirect('/settings/account?info=mfa-lost');
+  // Sprint 32: Redirect-Ziel richtet sich nach dem urspruenglichen next-
+  // Kontext des Login-Flows. Portal-Residents (next=/portal/*) landen auf
+  // /portal/account und koennen dort MFA neu einrichten; Staff/Owner
+  // landen weiterhin auf /settings/account. Beide Pfade zeigen einen
+  // "MFA verloren"-Banner und die Neu-Enroll-Sektion.
+  const nextRaw = String(formData.get('next') ?? '');
+  const target = nextRaw.startsWith('/portal/')
+    ? '/portal/account?info=mfa-lost'
+    : '/settings/account?info=mfa-lost';
+  redirect(target);
 }

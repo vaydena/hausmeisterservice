@@ -49,7 +49,7 @@ export default async function LoginMfaPage({
       <LoginMfaVerifyForm factors={factors} next={next} />
       <p className="text-sm">
         <Link
-          href="/login/mfa/recovery"
+          href={`/login/mfa/recovery?next=${encodeURIComponent(next)}`}
           className="text-[var(--color-primary)] underline underline-offset-4 hover:opacity-80"
         >
           Handy verloren? Recovery-Code verwenden

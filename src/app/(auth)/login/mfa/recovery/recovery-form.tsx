@@ -5,11 +5,13 @@ import { useMfaRecoveryCodeAction, type RecoveryLoginState } from './actions';
 
 const INITIAL: RecoveryLoginState = {};
 
-export function LoginMfaRecoveryForm() {
+export function LoginMfaRecoveryForm({ next }: { next: string }) {
   const [state, formAction, pending] = useActionState(useMfaRecoveryCodeAction, INITIAL);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      {/* next steuert das Post-Consume-Redirect-Ziel (Portal vs. Staff). */}
+      <input type="hidden" name="next" value={next} />
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">Recovery-Code</span>
         <input
