@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { AlertCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { portalAcknowledgeAnnouncementAction } from '../actions';
@@ -71,6 +72,13 @@ export default async function PortalAnnouncementDetailPage({
   }
 
   const needsAck = a.requires_acknowledgement && !r?.acknowledged_at;
+  // Sprint 66: Ablauf-Warnung. Das Datum "gültig bis" stand bisher
+  // nur diskret im Header — Bewohner konnten so alte Aushänge lesen,
+  // ohne zu bemerken, dass sie bereits abgelaufen sind. Der Ack-Button
+  // bleibt bewusst aktiv: wer die Ankündigung erst nach Ablauf öffnet,
+  // soll sie trotzdem quittieren können.
+  const expiresAt = a.expires_at ? new Date(a.expires_at) : null;
+  const isExpired = expiresAt !== null && expiresAt.getTime() < Date.now();
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,9 +96,25 @@ export default async function PortalAnnouncementDetailPage({
           <h1 className="text-xl font-semibold">{a.title}</h1>
           <p className="text-xs text-[var(--color-muted-foreground)]">
             Veröffentlicht {formatDate(a.published_at)}
-            {a.expires_at ? ` · gültig bis ${formatDate(a.expires_at)}` : ''}
+            {a.expires_at
+              ? isExpired
+                ? ` · war gültig bis ${formatDate(a.expires_at)}`
+                : ` · gültig bis ${formatDate(a.expires_at)}`
+              : ''}
           </p>
         </header>
+        {isExpired && (
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <p>
+              Diese Ankündigung ist am {formatDate(a.expires_at)} abgelaufen und
+              dient nur noch zur Information.
+            </p>
+          </div>
+        )}
         <div className="whitespace-pre-wrap text-sm leading-relaxed">{a.body}</div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
