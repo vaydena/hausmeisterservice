@@ -1,6 +1,43 @@
+import { execFileSync } from 'node:child_process';
 import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
+
+// Sprint 99: Build-Marker fuer /api/health (Details in src/lib/build-info.ts).
+//
+// Die beiden Werte werden hier ermittelt, weil diese Datei zur Build-Zeit
+// laeuft — und nur ein zur Build-Zeit eingefrorener Wert kann belegen,
+// WELCHER Build gerade antwortet. Zur Laufzeit gelesen waere derselbe Wert
+// auch auf dem alten Build zu sehen und damit wertlos.
+//
+// Reihenfolge beim SHA: ein bereits gesetztes APP_BUILD_SHA gewinnt, damit
+// eine Build-Umgebung ohne .git-Verzeichnis den Wert einfach vorgeben kann.
+// Sonst wird git gefragt. Schlaegt beides fehl, bleibt der Wert leer und
+// build-info liefert 'unknown' — der Zeitstempel traegt den Beweis dann
+// allein.
+function resolveBuildSha() {
+  const preset = (process.env.APP_BUILD_SHA ?? '').trim();
+  if (preset.length > 0) return preset;
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], {
+      // stderr verschlucken: ausserhalb eines Repos ist das Scheitern der
+      // Normalfall und keine Meldung wert.
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+// In process.env festschreiben statt nur in eine Konstante: `next build`
+// laedt diese Datei in seinen Worker-Prozessen erneut, und die erben das
+// env des Elternprozesses. Ohne das Festschreiben bekaeme jeder Worker
+// einen eigenen Zeitstempel — und der Marker koennte dann nicht mehr
+// sagen, welcher davon "der" Build ist.
+process.env.APP_BUILD_SHA = resolveBuildSha();
+process.env.APP_BUILD_TIME = (process.env.APP_BUILD_TIME ?? '').trim() || new Date().toISOString();
 
 // Content-Security-Policy — restriktiv nach Least-Privilege.
 //
@@ -50,6 +87,13 @@ function buildCsp({ isDev, sentryEnabled }) {
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Kompiliert die beiden Marker-Werte fest ins Bundle. Next.js ersetzt
+  // dabei nur die woertliche Property-Schreibweise `process.env.APP_BUILD_*`
+  // — siehe die Warnung in src/lib/build-info.ts.
+  env: {
+    APP_BUILD_SHA: process.env.APP_BUILD_SHA,
+    APP_BUILD_TIME: process.env.APP_BUILD_TIME,
+  },
   // typedRoutes bewusst aus: erzwingt Route-Cast bei jedem dynamischen
   // <Link href> / redirect(). Kann später über Adapter zurückkommen.
   typedRoutes: false,
