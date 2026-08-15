@@ -2,9 +2,19 @@
 
 import { useActionState, useState } from 'react';
 import { AlertTriangle, Paperclip } from 'lucide-react';
+import { CharCounter } from '@/components/ui/char-counter';
 import { createPortalDefectAction, type PortalDefectFormState } from '../actions';
 
 const INITIAL: PortalDefectFormState = {};
+
+// Server-Caps aus lib/schemas/defect-reports.ts: title 200, optionalShort 200,
+// optionalText 2000. Sprint 97: keines der Felder hatte bis hierher ein
+// maxLength — eine ausfuehrliche Schilderung lief erst beim Absenden in den
+// Zod-Fehler. Zaehler nur am Beschreibungsfeld, weil die Kurzfelder ohnehin
+// selten in die Naehe ihrer Grenze kommen.
+const TITLE_MAX = 200;
+const DESCRIPTION_MAX = 2000;
+const SHORT_MAX = 200;
 
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'niedrig — kann warten' },
@@ -43,6 +53,7 @@ export function PortalDefectForm() {
         label="Titel"
         name="title"
         required
+        maxLength={TITLE_MAX}
         placeholder="z. B. Wasserhahn im Bad tropft"
         error={state.fieldErrors?.['title']}
       />
@@ -52,6 +63,8 @@ export function PortalDefectForm() {
         name="description"
         multiline
         rows={4}
+        maxLength={DESCRIPTION_MAX}
+        counter
         placeholder="Beschreiben Sie den Mangel so genau wie möglich."
         error={state.fieldErrors?.['description']}
       />
@@ -59,6 +72,7 @@ export function PortalDefectForm() {
       <Field
         label="Wo genau? (optional)"
         name="location_details"
+        maxLength={SHORT_MAX}
         placeholder="z. B. Bad, links unter dem Waschbecken"
         error={state.fieldErrors?.['location_details']}
       />
@@ -173,6 +187,8 @@ function Field({
   placeholder,
   multiline,
   rows,
+  maxLength,
+  counter,
   error,
 }: {
   label: string;
@@ -181,8 +197,13 @@ function Field({
   placeholder?: string;
   multiline?: boolean;
   rows?: number;
+  maxLength?: number;
+  counter?: boolean;
   error?: string;
 }) {
+  const [length, setLength] = useState(0);
+  const showCounter = counter && maxLength !== undefined;
+
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium">
@@ -194,7 +215,9 @@ function Field({
           name={name}
           required={required}
           rows={rows ?? 3}
+          maxLength={maxLength}
           placeholder={placeholder}
+          onChange={showCounter ? (e) => setLength(e.target.value.length) : undefined}
           className="resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
         />
       ) : (
@@ -202,11 +225,19 @@ function Field({
           type="text"
           name={name}
           required={required}
+          maxLength={maxLength}
           placeholder={placeholder}
           className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
         />
       )}
-      {error && <span className="text-xs text-[var(--color-destructive)]">{error}</span>}
+      <span className="flex items-center justify-between gap-2">
+        {error ? (
+          <span className="text-xs text-[var(--color-destructive)]">{error}</span>
+        ) : (
+          <span aria-hidden />
+        )}
+        {showCounter && <CharCounter length={length} max={maxLength} />}
+      </span>
     </label>
   );
 }

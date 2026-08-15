@@ -2,29 +2,18 @@
 
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
+import { CharCounter } from '@/components/ui/char-counter';
 import { createPortalThreadAction, type PortalCreateThreadFormState } from '../actions';
 
 const INITIAL: PortalCreateThreadFormState = {};
 
-// Sprint 96: Server-Limit ist 4000 (portal/messages/actions.ts). Das textarea
-// hat schon maxLength=4000, aber ohne sichtbaren Counter tippt Bewohner blind
-// gegen das Limit — bei einem laengeren Anliegen (Nachbarschaftsstreit, formale
-// Beschwerde) faellt der Text still weg. Warn-Schwelle bei 90%, Hard-Warn bei
-// 97.5% — letzterer bekommt destructive-Rot, damit klar wird "gleich reicht's".
+// Server-Limit aus portal/messages/actions.ts (createThreadSchema).
 const BODY_MAX = 4000;
-const BODY_WARN = Math.floor(BODY_MAX * 0.9);
-const BODY_HARD_WARN = Math.floor(BODY_MAX * 0.975);
 
 export function PortalNewThreadForm() {
   const [state, formAction, pending] = useActionState(createPortalThreadAction, INITIAL);
   const err = state.fieldErrors ?? {};
   const [bodyLength, setBodyLength] = useState(0);
-  const bodyCounterClass =
-    bodyLength >= BODY_HARD_WARN
-      ? 'text-[var(--color-destructive)]'
-      : bodyLength >= BODY_WARN
-        ? 'text-amber-700 dark:text-amber-400'
-        : 'text-[var(--color-muted-foreground)]';
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -72,9 +61,7 @@ export function PortalNewThreadForm() {
           ) : (
             <span aria-hidden />
           )}
-          <p id="body-counter" className={`text-xs tabular-nums ${bodyCounterClass}`}>
-            {bodyLength} / {BODY_MAX} Zeichen
-          </p>
+          <CharCounter id="body-counter" length={bodyLength} max={BODY_MAX} />
         </div>
       </div>
 

@@ -1,10 +1,16 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { CharCounter } from '@/components/ui/char-counter';
 import { postPortalMessageAction, type PortalMessageFormState } from '../actions';
 
 const INITIAL: PortalMessageFormState = {};
+
+// Server-Limit aus portal/messages/actions.ts (postSchema). Sprint 97: bis
+// hierher fehlte das maxLength komplett — eine lange Antwort lief in einen
+// Zod-Fehler beim Absenden, statt beim Tippen gebremst zu werden.
+const BODY_MAX = 4000;
 
 export function PortalReplyForm({
   threadId,
@@ -15,10 +21,14 @@ export function PortalReplyForm({
 }) {
   const [state, formAction, pending] = useActionState(postPortalMessageAction, INITIAL);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [bodyLength, setBodyLength] = useState(0);
 
   useEffect(() => {
     if (!pending && !state.error) {
       formRef.current?.reset();
+      // Der Zaehler haengt am React-State, form.reset() leert nur das DOM —
+      // ohne das hier bliebe nach dem Senden die alte Laenge stehen.
+      setBodyLength(0);
     }
   }, [pending, state.error]);
 
@@ -44,8 +54,11 @@ export function PortalReplyForm({
         name="body"
         required
         rows={3}
+        maxLength={BODY_MAX}
         disabled={disabled}
         placeholder={disabled ? 'Antworten derzeit nicht möglich' : 'Ihre Antwort …'}
+        onChange={(e) => setBodyLength(e.target.value.length)}
+        aria-describedby="reply-body-counter"
         className="resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 disabled:cursor-not-allowed disabled:bg-[var(--color-muted)] disabled:opacity-70"
       />
       {state.error && (
@@ -53,7 +66,10 @@ export function PortalReplyForm({
           {state.error}
         </p>
       )}
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {!disabled && bodyLength > 0 && (
+          <CharCounter id="reply-body-counter" length={bodyLength} max={BODY_MAX} />
+        )}
         <button
           type="submit"
           disabled={pending || disabled}

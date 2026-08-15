@@ -8,7 +8,14 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const postSchema = z.object({
   thread_id: z.string().uuid('Ungültige Thread-ID.'),
-  body: z.string().trim().min(1, 'Nachricht darf nicht leer sein.').max(4000),
+  // Sprint 97: max() brauchte eine eigene Meldung — postPortalMessageAction
+  // reicht issues[0].message direkt an die UI durch, und Zods englischer
+  // Default waere so im deutschen Portal gelandet.
+  body: z
+    .string()
+    .trim()
+    .min(1, 'Nachricht darf nicht leer sein.')
+    .max(4000, 'Nachricht darf maximal 4000 Zeichen lang sein.'),
 });
 
 const createThreadSchema = z.object({
