@@ -95,6 +95,21 @@ export default async function PortalAnnouncementsPage({
     return true;
   });
 
+  // Sprint 87: Zu-quittierende Ankuendigungen an den Anfang priorisieren
+  // (analog Sprint 68 fuer Notfall-Meldungen im Dashboard). Bewohner
+  // sollen keinen wichtigen Aushang uebersehen, nur weil ein neuerer
+  // Info-Aushang oben steht. Innerhalb der beiden Gruppen bleibt die
+  // Server-Sortierung (published_at desc) erhalten — Array.prototype.sort
+  // ist seit ES2019 stabil, also wirkt sich der 0-Return korrekt aus.
+  // Im "zu_quittieren"-Tab ist die Priorisierung No-Op; wir wenden sie
+  // trotzdem immer an, damit die Logik lokalisiert bleibt.
+  const sortedVisible = [...visible].sort((a, b) => {
+    const needsAckA = a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at;
+    const needsAckB = b.requires_acknowledgement && !receiptMap.get(b.id)?.acknowledged_at;
+    if (needsAckA === needsAckB) return 0;
+    return needsAckA ? -1 : 1;
+  });
+
   // Sprint 71: Button oben nur einblenden, wenn es tatsaechlich noch
   // etwas zu markieren gibt — ein disabled Button ohne Wirkung waere
   // fuer den Bewohner nur Rauschen.
@@ -173,7 +188,7 @@ export default async function PortalAnnouncementsPage({
         })}
       </nav>
 
-      {visible.length === 0 ? (
+      {sortedVisible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-8 text-center text-sm text-[var(--color-muted-foreground)]">
           {searchTerm.length > 0
             ? `Keine Ankündigungen gefunden für „${searchTerm}“.`
@@ -181,7 +196,7 @@ export default async function PortalAnnouncementsPage({
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {visible.map((a) => {
+          {sortedVisible.map((a) => {
             const r = receiptMap.get(a.id);
             const isUnread = !r?.read_at;
             const needsAck = a.requires_acknowledgement && !r?.acknowledged_at;
