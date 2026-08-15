@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { describeUnclosedEntries, summarizeUnclosedEntries } from '@/lib/time-tracking/unclosed';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Field } from '@/components/ui/input';
@@ -26,28 +28,62 @@ export default async function TimeReportPage({
   const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
   const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
-  const { data: entries } = await supabase
-    .from('time_entries')
-    .select('user_id, kind, start_at, end_at, property_id')
-    .gte('start_at', fromIso)
-    .lte('start_at', toIso)
-    .not('end_at', 'is', null);
+  // Sprint 108: Diese Seite ist die Grundlage fuer Lohn- und
+  // Kundenabrechnung. Ein verschluckter Query-Fehler wurde hier zu weniger
+  // Stunden — und zwar zu einer Zahl, der man nicht ansieht, dass sie
+  // unvollstaendig ist. Genau deshalb wird jetzt geworfen statt gerundet.
+  const list = unwrapRows(
+    await supabase
+      .from('time_entries')
+      .select('user_id, kind, start_at, end_at, property_id')
+      .gte('start_at', fromIso)
+      .lte('start_at', toIso)
+      .not('end_at', 'is', null),
+    'Zeitbericht: abgeschlossene Zeiten',
+  );
 
-  const list = entries ?? [];
+  // Die Query oben filtert nicht beendete Zeiten weg — sie sind der zweite,
+  // unabhaengige Weg zu einer zu niedrigen Summe (siehe
+  // lib/time-tracking/unclosed.ts). Ohne diesen Zaehler taeten sie es
+  // unbemerkt.
+  const unclosed = unwrapRows(
+    await supabase
+      .from('time_entries')
+      .select('user_id, start_at, end_at')
+      .gte('start_at', fromIso)
+      .lte('start_at', toIso)
+      .is('end_at', null),
+    'Zeitbericht: nicht beendete Zeiten',
+  );
+  const unclosedNote = describeUnclosedEntries(
+    summarizeUnclosedEntries(
+      unclosed.map((e) => ({ start_at: e.start_at, end_at: e.end_at, person_id: e.user_id })),
+      new Date(),
+    ),
+  );
+
   const userIds = [...new Set(list.map((e) => e.user_id))];
   const propertyIds = [...new Set(list.map((e) => e.property_id).filter((v): v is string => Boolean(v)))];
 
-  const [{ data: users }, { data: properties }] = await Promise.all([
+  const [users, properties] = await Promise.all([
     userIds.length > 0
-      ? supabase.from('users').select('id, display_name').in('id', userIds)
-      : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
+      ? supabase
+          .from('users')
+          .select('id, display_name')
+          .in('id', userIds)
+          .then((r) => unwrapRows(r, 'Zeitbericht: Anzeigenamen'))
+      : Promise.resolve([] as { id: string; display_name: string | null }[]),
     propertyIds.length > 0
-      ? supabase.from('properties').select('id, name').in('id', propertyIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? supabase
+          .from('properties')
+          .select('id, name')
+          .in('id', propertyIds)
+          .then((r) => unwrapRows(r, 'Zeitbericht: Objektnamen'))
+      : Promise.resolve([] as { id: string; name: string }[]),
   ]);
 
-  const userById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
-  const propById = new Map((properties ?? []).map((p) => [p.id, p.name]));
+  const userById = new Map(users.map((u) => [u.id, u.display_name]));
+  const propById = new Map(properties.map((p) => [p.id, p.name]));
 
   type Bucket = { minutes: number; byKind: Record<string, number>; byProperty: Record<string, number> };
   const byUser = new Map<string, Bucket>();
@@ -95,6 +131,23 @@ export default async function TimeReportPage({
           ) : undefined
         }
       />
+
+      {unclosedNote && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          role="status"
+        >
+          <p className="font-semibold">Nicht beendete Zeiten im Zeitraum</p>
+          <p className="mt-1">{unclosedNote}</p>
+          <p className="mt-2 text-[var(--color-muted-foreground)]">
+            Auch der CSV-Export enthält diese Einträge nicht. Fehlende Enden lassen sich unter{' '}
+            <Link href="/time-tracking/team" className="underline hover:text-[var(--color-primary)]">
+              Zeiterfassung → Team
+            </Link>{' '}
+            zuordnen und nachtragen.
+          </p>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

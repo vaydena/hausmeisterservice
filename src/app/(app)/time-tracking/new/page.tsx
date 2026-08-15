@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { redirect } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
@@ -48,11 +49,11 @@ export default async function NewTimeEntryPage() {
           property_id: '',
           note: '',
         }}
-        workOrders={(workOrdersRes.data ?? []).map((w) => ({
+        workOrders={unwrapRows(workOrdersRes, 'Zeit nacherfassen: Auftragsauswahl').map((w) => ({
           id: w.id,
           label: w.code ? `${w.code} · ${w.title}` : w.title,
         }))}
-        properties={(propsRes.data ?? []).map((p) => ({
+        properties={unwrapRows(propsRes, 'Zeit nacherfassen: Objektauswahl').map((p) => ({
           id: p.id,
           label: p.code ? `${p.code} · ${p.name}` : p.name,
         }))}

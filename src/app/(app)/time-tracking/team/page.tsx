@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { describeUnclosedEntries, summarizeUnclosedEntries } from '@/lib/time-tracking/unclosed';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -68,15 +70,22 @@ export default async function TimeTrackingTeamPage({
       .limit(2000),
   ]);
 
-  const employees = employeesRes.data ?? [];
-  const entries = entriesRes.data ?? [];
+  // Sprint 108: Ohne Fehlerpruefung wurde aus einer gescheiterten Query eine
+  // Team-Uebersicht, in der alle Mitarbeiter mit 0:00 dastehen — fuer eine
+  // Fuehrungskraft nicht von "diese Woche hat niemand gearbeitet" zu
+  // unterscheiden.
+  const employees = unwrapRows(employeesRes, 'Team-Zeiten: aktive Mitarbeiter');
+  const entries = unwrapRows(entriesRes, 'Team-Zeiten: Eintraege der Woche');
 
   const userIds = [...new Set(employees.map((e) => e.user_id))];
-  const { data: users } =
+  const users =
     userIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', userIds),
+          'Team-Zeiten: Anzeigenamen',
+        )
+      : [];
+  const displayById = new Map(users.map((u) => [u.id, u.display_name]));
   const employeeById = new Map(
     employees.map((e) => [
       e.id,
@@ -109,6 +118,14 @@ export default async function TimeTrackingTeamPage({
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const totalMinutes = rows.reduce((s, r) => s + r.work, 0);
+  // Die Gesamtsumme oben zaehlt nur beendete Zeiten. Wer hier steht, kann die
+  // fehlenden Enden nachtragen lassen — also gehoert der Hinweis hierher.
+  const unclosedNote = describeUnclosedEntries(
+    summarizeUnclosedEntries(
+      entries.map((e) => ({ start_at: e.start_at, end_at: e.end_at, person_id: e.employee_id })),
+      new Date(),
+    ),
+  );
 
   const selectedEntries = selectedEmployeeId ? byEmployee.get(selectedEmployeeId) ?? [] : [];
   const selectedName = selectedEmployeeId
@@ -125,6 +142,16 @@ export default async function TimeTrackingTeamPage({
         title="Team-Zeiten"
         description={`Woche ${formatWeekRange(week)} · gesamt ${formatDurationMinutes(totalMinutes)}`}
       />
+
+      {unclosedNote && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          role="status"
+        >
+          <p className="font-semibold">Offene Zeiten in dieser Woche</p>
+          <p className="mt-1">{unclosedNote}</p>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className={selectedEmployeeId ? 'lg:col-span-1' : 'lg:col-span-3'}>

@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { describeOwnOpenEntry } from '@/lib/time-tracking/unclosed';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -97,13 +99,17 @@ export default async function TimeTrackingPage() {
       .limit(50),
   ]);
 
-  const openEntry = openRes.data;
-  const entries = entriesRes.data ?? [];
-  const propertyOptions = (propsRes.data ?? []).map((p) => ({
+  // Sprint 108: Die Wochensumme unten wird aus `entries` gerechnet. Mit
+  // `?? []` wurde aus einer gescheiterten Query eine glaubhafte "0:00" — der
+  // Mitarbeiter haette seine Woche als nicht erfasst gelesen und nachgetragen,
+  // was laengst in der Datenbank steht.
+  const openEntry = unwrapMaybeRow(openRes, 'Zeiterfassung: laufender Eintrag');
+  const entries = unwrapRows(entriesRes, 'Zeiterfassung: eigene Zeiten der Woche');
+  const propertyOptions = unwrapRows(propsRes, 'Zeiterfassung: Objektauswahl').map((p) => ({
     id: p.id,
     label: p.code ? `${p.code} · ${p.name}` : p.name,
   }));
-  const workOrderOptions = (workOrdersRes.data ?? []).map((w) => ({
+  const workOrderOptions = unwrapRows(workOrdersRes, 'Zeiterfassung: Auftragsauswahl').map((w) => ({
     id: w.id,
     label: w.code ? `${w.code} · ${w.title}` : w.title,
   }));
@@ -126,6 +132,12 @@ export default async function TimeTrackingPage() {
   const weekBreakMinutes = entries
     .filter((e) => e.kind === 'break' && e.end_at)
     .reduce((sum, e) => sum + minutesBetween(e.start_at, e.end_at), 0);
+
+  // Sprint 108: Ein Eintrag ohne end_at zaehlt in keiner der Zahlen unten mit
+  // und faellt auch aus Zeitbericht und Lohn-Export heraus. Das Badge "laeuft"
+  // in der Liste sagt das nicht — deshalb hier ein Satz, sobald die Zeit
+  // laenger laeuft, als ein Arbeitstag plausibel dauert.
+  const openWarning = openEntry ? describeOwnOpenEntry(openEntry.start_at, new Date()) : null;
 
   const { PunchWidget } = await import('./punch-widget');
 
@@ -161,6 +173,16 @@ export default async function TimeTrackingPage() {
           title="Keine Berechtigung zum Stempeln"
           description="Bitte kontaktieren Sie einen Administrator."
         />
+      )}
+
+      {openWarning && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          role="status"
+        >
+          <p className="font-semibold">Laufende Zeit ohne Ende</p>
+          <p className="mt-1">{openWarning}</p>
+        </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">

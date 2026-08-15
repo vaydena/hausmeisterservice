@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import {
   manualEntrySchema,
   punchInSchema,
@@ -24,17 +25,25 @@ function friendlyDbMessage(msg?: string | null): string {
 /**
  * Ermittelt die employee_id zum aktuellen User. Der User muss einen aktiven
  * Employee-Datensatz haben — ohne den geht kein Stempeln.
+ *
+ * Sprint 108: Vorher stand hier `const { data }` ohne `error`. Eine gescheiterte
+ * Query war damit nicht von "es gibt keinen Datensatz" zu unterscheiden, und
+ * der Mitarbeiter bekam bei einer Stoerung die Auskunft, sein Personalstammsatz
+ * fehle oder sei inaktiv — eine Aussage ueber sein Arbeitsverhaeltnis, die ihn
+ * zum Chef schickt statt zum Support. In Sentry landete derselbe Satz und sah
+ * dort aus wie eine ganz normale Fehlbedienung.
  */
 async function resolveOwnEmployeeId(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   userId: string,
 ): Promise<string> {
-  const { data } = await supabase
+  const result = await supabase
     .from('employees')
     .select('id')
     .eq('user_id', userId)
     .eq('employment_status', 'active')
     .maybeSingle();
+  const data = unwrapMaybeRow(result, 'Zeiterfassung: eigener Mitarbeiter-Datensatz');
   if (!data) {
     throw new Error('Kein aktiver Mitarbeiter-Datensatz für Ihren Account.');
   }
@@ -81,7 +90,14 @@ export async function punchOutAction(formData: FormData): Promise<void> {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: open } = await supabase
+  // Sprint 108: Die teuerste Stelle des Sprints. Ohne die Fehlerpruefung wurde
+  // aus einer gescheiterten Query die Antwort "Es laeuft aktuell keine offene
+  // Zeit." — eine Aussage ueber den Zustand des Mitarbeiters, die im selben
+  // Moment nachweislich falsch ist: er steht davor, weil die Zeit laeuft. Der
+  // Eintrag blieb mit end_at NULL liegen und war ab da in Wochensumme,
+  // Zeitbericht und Lohn-Export null Minuten wert (siehe lib/time-tracking/
+  // unclosed.ts). Jetzt sind Stoerung und Zustand zwei verschiedene Fehler.
+  const openResult = await supabase
     .from('time_entries')
     .select('id, note')
     .eq('user_id', ctx.userId)
@@ -89,6 +105,7 @@ export async function punchOutAction(formData: FormData): Promise<void> {
     .order('start_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  const open = unwrapMaybeRow(openResult, 'Zeiterfassung: laufender Eintrag');
 
   if (!open) throw new Error('Es läuft aktuell keine offene Zeit.');
 
@@ -127,11 +144,12 @@ export async function createManualEntryAction(formData: FormData): Promise<void>
   let employeeId: string;
   let userId: string;
   if (parsed.data.employee_id) {
-    const { data: emp } = await supabase
+    const empResult = await supabase
       .from('employees')
       .select('id, user_id')
       .eq('id', parsed.data.employee_id)
       .maybeSingle();
+    const emp = unwrapMaybeRow(empResult, 'Zeiterfassung: Mitarbeiter zur Nacherfassung');
     if (!emp) throw new Error('Mitarbeiter nicht gefunden.');
     employeeId = emp.id;
     userId = emp.user_id;

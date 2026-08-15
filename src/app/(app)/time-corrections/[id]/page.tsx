@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,21 +51,31 @@ export default async function CorrectionDetailPage({
   if (!permissions.has('time_tracking.view')) redirect('/dashboard');
 
   const supabase = await createSupabaseServerClient();
-  const { data: corr } = await supabase
-    .from('time_entry_corrections')
-    .select(
-      'id, tenant_id, time_entry_id, entry_user_id, requested_by, requested_at, reason, status, decided_by, decided_at, decision_note, proposed_kind, proposed_start_at, proposed_end_at, proposed_work_order_id, proposed_property_id, proposed_note',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  const corr = unwrapMaybeRow(
+    await supabase
+      .from('time_entry_corrections')
+      .select(
+        'id, tenant_id, time_entry_id, entry_user_id, requested_by, requested_at, reason, status, decided_by, decided_at, decision_note, proposed_kind, proposed_start_at, proposed_end_at, proposed_work_order_id, proposed_property_id, proposed_note',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Korrekturantrag',
+  );
 
   if (!corr) notFound();
 
-  const { data: entry } = await supabase
-    .from('time_entries')
-    .select('id, kind, start_at, end_at, work_order_id, property_id, note')
-    .eq('id', corr.time_entry_id)
-    .maybeSingle();
+  // Sprint 108: Die Tabelle unten stellt "Aktuell" gegen "Vorschlag". Fiel
+  // diese Query aus, stand in der ganzen Aktuell-Spalte "—" — und der
+  // Freigeber haette einer Aenderung zugestimmt, ohne zu sehen, was er
+  // aendert.
+  const entry = unwrapMaybeRow(
+    await supabase
+      .from('time_entries')
+      .select('id, kind, start_at, end_at, work_order_id, property_id, note')
+      .eq('id', corr.time_entry_id)
+      .maybeSingle(),
+    'Korrekturantrag: betroffener Zeiteintrag',
+  );
 
   const proposedWorkOrderIds = [corr.proposed_work_order_id, entry?.work_order_id].filter(
     (v): v is string => !!v,
@@ -73,13 +84,21 @@ export default async function CorrectionDetailPage({
     (v): v is string => !!v,
   );
 
-  const [worksRes, propsRes, usersRes] = await Promise.all([
+  const [works, props, users] = await Promise.all([
     proposedWorkOrderIds.length > 0
-      ? supabase.from('work_orders').select('id, code, title').in('id', proposedWorkOrderIds)
-      : Promise.resolve({ data: [] }),
+      ? supabase
+          .from('work_orders')
+          .select('id, code, title')
+          .in('id', proposedWorkOrderIds)
+          .then((r) => unwrapRows(r, 'Korrekturantrag: Auftragsnamen'))
+      : Promise.resolve([] as { id: string; code: string | null; title: string }[]),
     proposedPropertyIds.length > 0
-      ? supabase.from('properties').select('id, code, name').in('id', proposedPropertyIds)
-      : Promise.resolve({ data: [] }),
+      ? supabase
+          .from('properties')
+          .select('id, code, name')
+          .in('id', proposedPropertyIds)
+          .then((r) => unwrapRows(r, 'Korrekturantrag: Objektnamen'))
+      : Promise.resolve([] as { id: string; code: string | null; name: string }[]),
     supabase
       .from('users')
       .select('id, display_name')
@@ -88,16 +107,13 @@ export default async function CorrectionDetailPage({
         [corr.requested_by, corr.entry_user_id, corr.decided_by].filter(
           (v): v is string => !!v,
         ),
-      ),
+      )
+      .then((r) => unwrapRows(r, 'Korrekturantrag: Anzeigenamen')),
   ]);
 
-  const woMap = new Map(
-    (worksRes.data ?? []).map((w) => [w.id, w.code ? `${w.code} · ${w.title}` : w.title]),
-  );
-  const propMap = new Map(
-    (propsRes.data ?? []).map((p) => [p.id, p.code ? `${p.code} · ${p.name}` : p.name]),
-  );
-  const nameByUserId = new Map((usersRes.data ?? []).map((u) => [u.id, u.display_name]));
+  const woMap = new Map(works.map((w) => [w.id, w.code ? `${w.code} · ${w.title}` : w.title]));
+  const propMap = new Map(props.map((p) => [p.id, p.code ? `${p.code} · ${p.name}` : p.name]));
+  const nameByUserId = new Map(users.map((u) => [u.id, u.display_name]));
 
   const status = corr.status as CorrectionStatus;
   const canApprove =

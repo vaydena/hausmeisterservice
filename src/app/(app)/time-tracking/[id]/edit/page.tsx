@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { toDateTimeLocalInput, type TimeEntryKind } from '@/lib/schemas/time-tracking';
@@ -23,11 +24,16 @@ export default async function EditTimeEntryPage({
   if (!permissions.has('time_tracking.edit')) redirect('/time-tracking');
 
   const supabase = await createSupabaseServerClient();
-  const { data: entry } = await supabase
-    .from('time_entries')
-    .select('id, user_id, kind, start_at, end_at, work_order_id, property_id, note')
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 108: Ein Query-Fehler sah hier aus wie ein geloeschter Eintrag —
+  // "nicht gefunden" auf einem Nachweis, der zwei Jahre aufzubewahren ist.
+  const entry = unwrapMaybeRow(
+    await supabase
+      .from('time_entries')
+      .select('id, user_id, kind, start_at, end_at, work_order_id, property_id, note')
+      .eq('id', id)
+      .maybeSingle(),
+    'Zeiteintrag',
+  );
 
   if (!entry) notFound();
 
@@ -63,11 +69,11 @@ export default async function EditTimeEntryPage({
           property_id: entry.property_id ?? '',
           note: entry.note ?? '',
         }}
-        workOrders={(workOrdersRes.data ?? []).map((w) => ({
+        workOrders={unwrapRows(workOrdersRes, 'Zeiteintrag: Auftragsauswahl').map((w) => ({
           id: w.id,
           label: w.code ? `${w.code} · ${w.title}` : w.title,
         }))}
-        properties={(propsRes.data ?? []).map((p) => ({
+        properties={unwrapRows(propsRes, 'Zeiteintrag: Objektauswahl').map((p) => ({
           id: p.id,
           label: p.code ? `${p.code} · ${p.name}` : p.name,
         }))}

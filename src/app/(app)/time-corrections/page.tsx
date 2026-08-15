@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody } from '@/components/ui/card';
@@ -62,19 +63,25 @@ export default async function TimeCorrectionsPage({
   if (filter === 'pending') query = query.eq('status', 'pending');
   if (filter === 'mine') query = query.eq('requested_by', ctx.userId);
 
-  const { data: rows } = await query;
-  const list = rows ?? [];
+  // Sprint 108: Der Filter "Offen" ist die Arbeitsliste der Freigeber. Mit
+  // `?? []` sah eine gescheiterte Query aus wie "Keine offenen Antraege." —
+  // die Korrekturen blieben liegen, und niemand hatte einen Anlass,
+  // nachzusehen.
+  const list = unwrapRows(await query, 'Korrekturantraege');
 
   const userIds = [
     ...new Set(
       list.flatMap((r) => [r.requested_by, r.entry_user_id]).filter((v): v is string => !!v),
     ),
   ];
-  const usersRes =
+  const users =
     userIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const nameByUserId = new Map((usersRes.data ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', userIds),
+          'Korrekturantraege: Anzeigenamen',
+        )
+      : [];
+  const nameByUserId = new Map(users.map((u) => [u.id, u.display_name]));
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">

@@ -131,12 +131,49 @@ const BILLING_FILES = [
   'src/app/(app)/billing/offers/[id]/page.tsx',
 ];
 
+/**
+ * Die Zeiterfassung (Sprint 108).
+ *
+ * Die sechste Folge-Klasse und die erste, in der die falsche Auskunft den
+ * Nutzer ueber SEINEN EIGENEN Zustand betrifft — nachpruefbar falsch in dem
+ * Moment, in dem sie erscheint:
+ *
+ *   - `punchOutAction` antwortete bei einer gescheiterten Query "Es laeuft
+ *     aktuell keine offene Zeit." Der Mitarbeiter steht davor, WEIL die Zeit
+ *     laeuft. Der Eintrag blieb mit end_at NULL liegen.
+ *   - `resolveOwnEmployeeId` antwortete "Kein aktiver Mitarbeiter-Datensatz
+ *     fuer Ihren Account." — eine Aussage ueber das Arbeitsverhaeltnis, die
+ *     den Mitarbeiter zum Chef schickt statt zum Support.
+ *
+ * Die zweite Haelfte ist der Rechenweg: Wochensumme, Team-Uebersicht,
+ * Zeitbericht und der CSV-Export fuer die Lohnabrechnung filtern alle auf
+ * `end_at`. Ein `?? []` wurde dort zu WENIGER STUNDEN — nicht zu einer
+ * Fehlermeldung und nicht zu einer leeren Seite, sondern zu einer
+ * plausiblen, zu niedrigen Zahl auf einem Nachweis, der Lohngrundlage ist
+ * und nach §16 Abs. 2 ArbZG zwei Jahre aufzubewahren ist. Anders als beim
+ * Rechnungspfad (107) gibt es hier kein Dokument, dem man den Fehler ansehen
+ * koennte: eine Woche mit 32 statt 38 Stunden sieht aus wie eine kurze Woche.
+ */
+const TIME_TRACKING_FILES = [
+  'src/app/(app)/time-tracking/actions.ts',              // -> "keine offene Zeit", waehrend sie laeuft
+  'src/app/(app)/time-tracking/page.tsx',                // -> Wochensumme 0:00
+  'src/app/(app)/time-tracking/team/page.tsx',           // -> Team-Uebersicht ohne Stunden
+  'src/app/(app)/time-tracking/new/page.tsx',
+  'src/app/(app)/time-tracking/[id]/edit/page.tsx',
+  'src/app/(app)/time-tracking/[id]/correction/page.tsx',
+  'src/app/(app)/reports/time/page.tsx',                 // -> zu wenig ausgewiesene Stunden
+  'src/app/(app)/reports/time/export/route.ts',          // -> CSV fuer die Lohnabrechnung
+  'src/app/(app)/time-corrections/page.tsx',             // -> "keine offenen Antraege" bei Stoerung
+  'src/app/(app)/time-corrections/[id]/page.tsx',        // -> Freigabe ohne sichtbaren Ist-Stand
+];
+
 /** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
 const LISTED_FILES = [
   ...GUARD_FILES,
   ...EXPORT_ROUTES,
   ...AUTOMATION_FILES,
   ...BILLING_FILES,
+  ...TIME_TRACKING_FILES,
 ];
 
 function walk(dir: string): string[] {
@@ -232,7 +269,7 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export + Automations + Billing: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
@@ -246,7 +283,8 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing: keine verschlu
       // an denen stiller Erfolg am teuersten ist.
       expect(
         existsSync(join(process.cwd(), listed)),
-        `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES bzw. BILLING_FILES, ` +
+        `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES, BILLING_FILES ` +
+          `bzw. TIME_TRACKING_FILES, ` +
           `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
           `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);

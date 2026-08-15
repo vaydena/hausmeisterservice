@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { CorrectionForm } from './correction-form';
@@ -19,11 +20,18 @@ export default async function RequestCorrectionPage({
   if (!permissions.has('time_tracking.edit')) redirect('/time-tracking');
 
   const supabase = await createSupabaseServerClient();
-  const { data: entry } = await supabase
-    .from('time_entries')
-    .select('id, user_id, kind, start_at, end_at, work_order_id, property_id, note')
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 108: siehe Edit-Seite. Zusaetzlich haengt unten die
+  // Berechtigungsentscheidung an `entry.user_id` — ein verschluckter Fehler
+  // haette hier also nicht nur eine Ansicht, sondern eine Zugriffsantwort
+  // verfaelscht.
+  const entry = unwrapMaybeRow(
+    await supabase
+      .from('time_entries')
+      .select('id, user_id, kind, start_at, end_at, work_order_id, property_id, note')
+      .eq('id', id)
+      .maybeSingle(),
+    'Korrekturantrag: Zeiteintrag',
+  );
 
   if (!entry) notFound();
 
@@ -42,11 +50,11 @@ export default async function RequestCorrectionPage({
       .limit(100),
   ]);
 
-  const workOrderOptions = (workOrdersRes.data ?? []).map((w) => ({
+  const workOrderOptions = unwrapRows(workOrdersRes, 'Korrekturantrag: Auftragsauswahl').map((w) => ({
     id: w.id,
     label: w.code ? `${w.code} · ${w.title}` : w.title,
   }));
-  const propertyOptions = (propsRes.data ?? []).map((p) => ({
+  const propertyOptions = unwrapRows(propsRes, 'Korrekturantrag: Objektauswahl').map((p) => ({
     id: p.id,
     label: p.code ? `${p.code} · ${p.name}` : p.name,
   }));
