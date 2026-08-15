@@ -252,41 +252,64 @@ export default async function PortalDashboardPage() {
         />
       </div>
 
-      {upcomingWorkOrder && (
-        <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
-              <Calendar className="size-5" aria-hidden />
-            </div>
-            <div className="flex-1">
-              <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
-                Nächster Auftragstermin
-              </p>
-              <p className="mt-1 text-sm font-medium">
-                {upcomingWorkOrder.code ? `Auftrag ${upcomingWorkOrder.code}` : 'Auftrag'}
-                {upcomingDefect ? ` · ${upcomingDefect.title}` : ''}
-              </p>
-              {(() => {
-                const range = formatPlannedRange(
-                  upcomingWorkOrder.planned_start,
-                  upcomingWorkOrder.planned_end,
-                );
-                return range ? (
+      {upcomingWorkOrder && (() => {
+        // Sprint 80: Status-abhaengiger Header + Warn-Badge.
+        // - in_progress + planned_start bereits vergangen: "Arbeiten laufen"
+        //   (der Bewohner sieht so, dass es aktuell passiert, nicht erst noch
+        //   kommt).
+        // - blocked: pausiert-Badge (die Verwaltung hat Termin markiert, aber
+        //   arbeitet gerade nicht — z. B. auf Ersatzteil warten). Termin bleibt
+        //   sichtbar, damit der Bewohner nicht denkt es sei vergessen.
+        // - sonst: unveraenderter Default "Naechster Auftragstermin".
+        const hasStarted =
+          !!upcomingWorkOrder.planned_start &&
+          new Date(upcomingWorkOrder.planned_start).getTime() <= nowMs;
+        const isInProgress = upcomingWorkOrder.status === 'in_progress';
+        const isBlocked = upcomingWorkOrder.status === 'blocked';
+        const headerLabel = isInProgress && hasStarted
+          ? 'Arbeiten laufen'
+          : 'Nächster Auftragstermin';
+        const range = formatPlannedRange(
+          upcomingWorkOrder.planned_start,
+          upcomingWorkOrder.planned_end,
+        );
+        return (
+          <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                <Calendar className="size-5" aria-hidden />
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+                    {headerLabel}
+                  </p>
+                  {isBlocked && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                      pausiert
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-sm font-medium">
+                  {upcomingWorkOrder.code ? `Auftrag ${upcomingWorkOrder.code}` : 'Auftrag'}
+                  {upcomingDefect ? ` · ${upcomingDefect.title}` : ''}
+                </p>
+                {range && (
                   <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">{range}</p>
-                ) : null;
-              })()}
-              {upcomingDefect && (
-                <Link
-                  href={`/portal/defects/${upcomingDefect.id}`}
-                  className="mt-2 inline-flex text-xs font-medium text-[var(--color-primary)] hover:underline"
-                >
-                  Zur Meldung →
-                </Link>
-              )}
+                )}
+                {upcomingDefect && (
+                  <Link
+                    href={`/portal/defects/${upcomingDefect.id}`}
+                    className="mt-2 inline-flex text-xs font-medium text-[var(--color-primary)] hover:underline"
+                  >
+                    Zur Meldung →
+                  </Link>
+                )}
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Panel title="Neueste Ankündigungen" href="/portal/announcements">
