@@ -206,6 +206,40 @@ const DEADLINE_FILES = [
   'src/app/(app)/vehicles/actions.ts',            // -> Km-Stand wird zurueckgedreht
 ];
 
+/**
+ * Die Schluesselverwaltung (Sprint 110).
+ *
+ * Die achte Folge-Klasse: keine Zahl, keine Frist und kein Dokument, sondern
+ * eine Aussage darueber, wer gerade Zutritt zu fremdem Wohneigentum hat.
+ *
+ * `keys.status` ist ein Lebenszyklus-Status ('active'/'lost'/'retired'), NICHT
+ * "ausgegeben". Der ausgegebene Bestand existiert nirgends als gespeicherter
+ * Wert — er wird bei jedem Seitenaufruf aus den Ausgabe- und
+ * Rueckgabe-Vorgaengen rekonstruiert. Diese Aggregation ist damit die einzige
+ * Quelle fuer die Frage "wer haelt einen Schluessel", und ein Fehler darin
+ * faellt an keiner zweiten Stelle auf.
+ *
+ * Beide Abfragen standen ohne Fehlerpruefung da, und sie kippen in
+ * entgegengesetzte Richtungen: ohne Ausgaben sieht jeder Schluessel
+ * vollzaehlig im Kasten aus, ohne Rueckgaben gilt jede jemals erfolgte
+ * Ausgabe wieder als offen. Die erste Richtung ist die gefaehrliche, weil
+ * sie beruhigt.
+ *
+ * Auf der Detailseite haengt daran nicht nur die Anzeige. `totalOut` steuert
+ * dort auch, ob "Schluessel entfernen" freigeschaltet wird — dessen eigener
+ * Hinweistext lautet "Nur moeglich, wenn keine Exemplare ausgegeben sind".
+ * Ein verschluckter Lesefehler oeffnet also genau die Schranke, die auf
+ * dieser Information sitzt. Dieselbe Umkehrung wie beim Km-Stand in Sprint
+ * 109, hier mit einem Loeschknopf am Ende.
+ */
+const KEY_FILES = [
+  'src/app/(app)/keys/page.tsx',           // -> jeder Schluessel sieht vollzaehlig aus
+  'src/app/(app)/keys/[id]/page.tsx',      // -> "keine Exemplare ausgegeben" + Loeschknopf frei
+  'src/app/(app)/keys/[id]/edit/page.tsx', // -> "Schluessel existiert nicht"
+  'src/app/(app)/keys/new/page.tsx',       // -> Objektliste leer, Formular nicht absendbar
+  'src/app/(app)/keys/actions.ts',         // -> Nachfertigung still nicht ausgefuehrt
+];
+
 /** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
 const LISTED_FILES = [
   ...GUARD_FILES,
@@ -214,6 +248,7 @@ const LISTED_FILES = [
   ...BILLING_FILES,
   ...TIME_TRACKING_FILES,
   ...DEADLINE_FILES,
+  ...KEY_FILES,
 ];
 
 function walk(dir: string): string[] {
@@ -309,7 +344,7 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung + Fristen: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung + Fristen + Schlüssel: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
@@ -324,7 +359,7 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung
       expect(
         existsSync(join(process.cwd(), listed)),
         `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES, BILLING_FILES, ` +
-          `TIME_TRACKING_FILES bzw. DEADLINE_FILES, ` +
+          `TIME_TRACKING_FILES, DEADLINE_FILES bzw. KEY_FILES, ` +
           `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
           `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { KeyForm } from '../../key-form';
@@ -20,20 +21,40 @@ export default async function EditKeyPage({
   if (!permissions.has('keys.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: key } = await supabase
-    .from('keys')
-    .select(
-      'id, label, identifier, kind, property_id, building_id, unit_id, copies_total, storage_location, notes',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 110: Ein verschluckter Fehler wurde hier zu notFound() — die
+  // Seite behauptete, es gebe diesen Schluessel nicht.
+  const key = unwrapMaybeRow(
+    await supabase
+      .from('keys')
+      .select(
+        'id, label, identifier, kind, property_id, building_id, unit_id, copies_total, storage_location, notes',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Schlüssel bearbeiten',
+  );
 
   if (!key) notFound();
 
-  const [{ data: properties }, { data: buildings }, { data: units }] = await Promise.all([
-    supabase.from('properties').select('id, name, code').is('deleted_at', null).order('name'),
-    supabase.from('buildings').select('id, property_id, name').order('name'),
-    supabase.from('units').select('id, building_id, property_id, code').order('code'),
+  // Faellt eine dieser drei Listen aus, steht das Zuordnungs-Dropdown leer
+  // da und der Schluessel laesst sich nur noch ohne Objekt speichern.
+  const [properties, buildings, units] = await Promise.all([
+    supabase
+      .from('properties')
+      .select('id, name, code')
+      .is('deleted_at', null)
+      .order('name')
+      .then((r) => unwrapRows(r, 'Schlüssel bearbeiten: Objekte')),
+    supabase
+      .from('buildings')
+      .select('id, property_id, name')
+      .order('name')
+      .then((r) => unwrapRows(r, 'Schlüssel bearbeiten: Gebäude')),
+    supabase
+      .from('units')
+      .select('id, building_id, property_id, code')
+      .order('code')
+      .then((r) => unwrapRows(r, 'Schlüssel bearbeiten: Einheiten')),
   ]);
 
   const boundAction = updateKeyAction.bind(null, id);
@@ -46,9 +67,9 @@ export default async function EditKeyPage({
         action={wrapped}
         cancelHref={`/keys/${id}`}
         submitLabel="Änderungen speichern"
-        properties={properties ?? []}
-        buildings={buildings ?? []}
-        units={units ?? []}
+        properties={properties}
+        buildings={buildings}
+        units={units}
         initial={key}
       />
     </div>

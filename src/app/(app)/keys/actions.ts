@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { createNotification } from '@/lib/notifications/create';
 import {
   keyInputSchema,
@@ -154,13 +155,15 @@ async function loadKeyProperty(
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   keyId: string,
 ): Promise<{ property_id: string; label: string; code: string | null }> {
-  const { data, error } = await supabase
-    .from('keys')
-    .select('property_id, label, code')
-    .eq('id', keyId)
-    .maybeSingle();
-  if (error || !data) throw new Error('Schlüssel nicht gefunden.');
-  return data;
+  // Sprint 110: `error || !data` warf beides in eine Meldung — eine
+  // gescheiterte Query las sich danach als "Schluessel nicht gefunden".
+  // Der Mitarbeiter sucht den Datensatz, der die ganze Zeit da war.
+  const key = unwrapMaybeRow(
+    await supabase.from('keys').select('property_id, label, code').eq('id', keyId).maybeSingle(),
+    'Schlüsselvorgang: Stammdaten',
+  );
+  if (!key) throw new Error('Schlüssel nicht gefunden.');
+  return key;
 }
 
 export async function issueKeyAction(formData: FormData): Promise<void> {
@@ -237,12 +240,42 @@ export async function returnKeyAction(formData: FormData): Promise<void> {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: issue, error: issueErr } = await supabase
-    .from('key_handovers')
-    .select('id, key_id, property_id, tenant_id, holder_user_id')
-    .eq('id', parsed.data.issue_handover_id)
-    .maybeSingle();
-  if (issueErr || !issue) throw new Error('Ausgabe nicht gefunden.');
+  const issue = unwrapMaybeRow(
+    await supabase
+      .from('key_handovers')
+      .select('id, key_id, property_id, tenant_id, holder_user_id, copies_count')
+      .eq('id', parsed.data.issue_handover_id)
+      .maybeSingle(),
+    'Rückgabe: zugehörige Ausgabe',
+  );
+  if (!issue) throw new Error('Ausgabe nicht gefunden.');
+
+  // Sprint 110: Teilrueckgaben sind ausdruecklich vorgesehen (das Formular
+  // bietet min 1 / max = ausgegebene Anzahl an) und die Datenbank erlaubt
+  // mehrere Rueckgaben pro Ausgabe — auf issue_handover_id liegt kein
+  // Unique-Index. Es gab aber nirgends eine Regel, die verhindert haette,
+  // insgesamt mehr zurueckzunehmen als je ausgegeben wurde. Solange die
+  // Anzeige jede Ausgabe schon beim ersten Rueckgabe-Vorgang als erledigt
+  // behandelte, fiel das nicht auf; jetzt, wo das Formular fuer den Rest
+  // stehen bleibt, ist die Regel noetig.
+  const priorReturns = unwrapRows(
+    await supabase
+      .from('key_handovers')
+      .select('copies_count')
+      .eq('kind', 'return')
+      .eq('issue_handover_id', issue.id),
+    'Rückgabe: bereits zurückgegebene Exemplare',
+  );
+  const alreadyReturned = priorReturns.reduce((sum, r) => sum + r.copies_count, 0);
+  const outstanding = issue.copies_count - alreadyReturned;
+  if (outstanding <= 0) {
+    throw new Error('Diese Ausgabe ist bereits vollständig zurückgegeben.');
+  }
+  if (parsed.data.copies_count > outstanding) {
+    throw new Error(
+      `Es sind nur noch ${outstanding} ${outstanding === 1 ? 'Exemplar' : 'Exemplare'} aus dieser Ausgabe offen.`,
+    );
+  }
 
   const { error } = await supabase.from('key_handovers').insert({
     tenant_id: issue.tenant_id,
@@ -354,20 +387,31 @@ export async function recordKeyReplacedAction(formData: FormData): Promise<void>
   });
   if (insertErr) throw new Error(friendlyDbMessage(insertErr.message));
 
-  const { data: current } = await supabase
-    .from('keys')
-    .select('copies_total')
-    .eq('id', parsed.data.key_id)
-    .maybeSingle();
-  if (current) {
+  // Sprint 110: Das `if (current)` war eine stille Nicht-Ausfuehrung wie in
+  // Sprint 106. Der Vorgang "Nachfertigung" wurde protokolliert, die
+  // Gesamtzahl aber nicht erhoeht — der Mitarbeiter sah eine erfolgreiche
+  // Meldung, und danach existierten mehr physische Schluessel als der
+  // Bestand kennt. Auffallen wuerde das erst, wenn die Ausgaben die
+  // Gesamtzahl uebersteigen und "0/2 im Bestand" dasteht, obwohl drei
+  // Exemplare unterwegs sind.
+  const current = unwrapMaybeRow(
     await supabase
       .from('keys')
-      .update({
-        copies_total: current.copies_total + parsed.data.copies_count,
-        updated_by: ctx.userId,
-      })
-      .eq('id', parsed.data.key_id);
-  }
+      .select('copies_total')
+      .eq('id', parsed.data.key_id)
+      .maybeSingle(),
+    'Nachfertigung: bisherige Gesamtzahl',
+  );
+  if (!current) throw new Error('Schlüssel nicht gefunden.');
+
+  const { error: totalErr } = await supabase
+    .from('keys')
+    .update({
+      copies_total: current.copies_total + parsed.data.copies_count,
+      updated_by: ctx.userId,
+    })
+    .eq('id', parsed.data.key_id);
+  if (totalErr) throw new Error(friendlyDbMessage(totalErr.message));
 
   revalidatePath('/keys');
   revalidatePath(`/keys/${parsed.data.key_id}`);

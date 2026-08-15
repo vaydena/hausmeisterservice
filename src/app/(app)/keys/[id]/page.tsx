@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
@@ -19,6 +20,12 @@ import {
   type KeyKind,
   type KeyStatus,
 } from '@/lib/schemas/keys';
+import {
+  CUSTODY_TONE,
+  computeCustody,
+  describeCustodyAge,
+  describeReturnStatus,
+} from '@/lib/keys/custody';
 import { IssueForm, ReturnForm, KeyStatusChangeForms } from '../handover-forms';
 import { softDeleteKeyAction } from '../actions';
 
@@ -50,44 +57,71 @@ export default async function KeyDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: key } = await supabase
-    .from('keys')
-    .select(
-      'id, code, label, identifier, kind, status, property_id, building_id, unit_id, copies_total, storage_location, notes, deleted_at, created_at, updated_at',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  const key = unwrapMaybeRow(
+    await supabase
+      .from('keys')
+      .select(
+        'id, code, label, identifier, kind, status, property_id, building_id, unit_id, copies_total, storage_location, notes, deleted_at, created_at, updated_at',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Schlüssel-Detail',
+  );
 
   if (!key) notFound();
 
-  const [{ data: property }, { data: building }, { data: unit }, { data: handovers }] =
-    await Promise.all([
-      supabase.from('properties').select('id, code, name').eq('id', key.property_id).maybeSingle(),
-      key.building_id
-        ? supabase.from('buildings').select('id, name').eq('id', key.building_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      key.unit_id
-        ? supabase.from('units').select('id, code').eq('id', key.unit_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      supabase
-        .from('key_handovers')
-        .select(
-          'id, kind, happened_at, expected_return_at, holder_kind, holder_user_id, holder_name, holder_contact, issue_handover_id, reference_work_order_id, copies_count, performed_by, note',
-        )
-        .eq('key_id', id)
-        .order('happened_at', { ascending: false }),
-    ]);
+  // Sprint 110: Diese eine Abfrage traegt drei Entscheidungen auf dieser
+  // Seite — ob "Aktuell sind keine Exemplare ausgegeben" dasteht, ob das
+  // Ausgabe-Formular erscheint, und ob "Schluessel entfernen" freigegeben
+  // wird (dessen eigener Hinweis lautet: "Nur moeglich, wenn keine
+  // Exemplare ausgegeben sind"). Ein verschluckter Lesefehler machte
+  // historyItems leer und oeffnete damit genau die Schranke, die auf dieser
+  // Information sitzt.
+  const [property, building, unit, historyItems] = await Promise.all([
+    supabase
+      .from('properties')
+      .select('id, code, name')
+      .eq('id', key.property_id)
+      .maybeSingle()
+      .then((r) => unwrapMaybeRow(r, 'Schlüssel: Objekt')),
+    key.building_id
+      ? supabase
+          .from('buildings')
+          .select('id, name')
+          .eq('id', key.building_id)
+          .maybeSingle()
+          .then((r) => unwrapMaybeRow(r, 'Schlüssel: Gebäude'))
+      : Promise.resolve(null),
+    key.unit_id
+      ? supabase
+          .from('units')
+          .select('id, code')
+          .eq('id', key.unit_id)
+          .maybeSingle()
+          .then((r) => unwrapMaybeRow(r, 'Schlüssel: Einheit'))
+      : Promise.resolve(null),
+    supabase
+      .from('key_handovers')
+      .select(
+        'id, kind, happened_at, expected_return_at, holder_kind, holder_user_id, holder_name, holder_contact, issue_handover_id, reference_work_order_id, copies_count, performed_by, note',
+      )
+      .eq('key_id', id)
+      .order('happened_at', { ascending: false })
+      .then((r) => unwrapRows<HandoverRow>(r, 'Schlüssel: Ausgabe-/Rückgabe-Historie')),
+  ]);
 
-  const historyItems: HandoverRow[] = handovers ?? [];
-
-  // Offene Ausgaben: issue-Events, für die kein return mit issue_handover_id existiert
-  const issueEvents = historyItems.filter((h) => h.kind === 'issue');
-  const returnedIssueIds = new Set(
-    historyItems.filter((h) => h.kind === 'return' && h.issue_handover_id).map((h) => h.issue_handover_id as string),
-  );
-  const openIssues = issueEvents.filter((h) => !returnedIssueIds.has(h.id));
-  const totalOut = openIssues.reduce((sum, h) => sum + h.copies_count, 0);
-  const totalAvailable = key.copies_total - totalOut;
+  // Sprint 110: Der Bestand wird in Exemplaren gerechnet, nicht in
+  // Vorgaengen. Die abgeloeste Fassung galt eine Ausgabe als erledigt,
+  // sobald irgendein Rueckgabe-Vorgang auf sie verwies — bei einer
+  // Teilrueckgabe verschwanden die restlichen Exemplare damit aus der
+  // Anzeige UND aus dem Formular, das sie zurueckgenommen haette.
+  const custody = computeCustody(historyItems, new Date());
+  const handoverById = new Map(historyItems.map((h) => [h.id, h]));
+  const totalOut = custody.outstandingCopies;
+  // Nie negativ: bei einer Nachfertigung, die copies_total nicht erhoeht hat
+  // (siehe recordKeyReplacedAction), koennen mehr Exemplare draussen sein
+  // als der Stamm kennt.
+  const totalAvailable = Math.max(0, key.copies_total - totalOut);
 
   // User-Namen auflösen
   const userIds = [
@@ -95,18 +129,21 @@ export default async function KeyDetailPage({
     ...historyItems.map((h) => h.performed_by),
   ].filter((v): v is string => Boolean(v));
   const uniqueUserIds = [...new Set(userIds)];
-  const { data: users } =
+  const users =
     uniqueUserIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', uniqueUserIds)
-      : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', uniqueUserIds),
+          'Schlüssel: Namen der Beteiligten',
+        )
+      : [];
+  const displayById = new Map(users.map((u) => [u.id, u.display_name]));
 
   // Mitarbeiter-User-Liste für Ausgabe-Form
-  const { data: employees } = await supabase
-    .from('employees')
-    .select('user_id, users(id, display_name)')
-    .is('deleted_at', null);
-  const employeeUsers: { id: string; display_name: string | null }[] = (employees ?? [])
+  const employees = unwrapRows(
+    await supabase.from('employees').select('user_id, users(id, display_name)').is('deleted_at', null),
+    'Schlüssel: Mitarbeiterliste für die Ausgabe',
+  );
+  const employeeUsers: { id: string; display_name: string | null }[] = employees
     .map((e) => {
       const u = Array.isArray(e.users) ? e.users[0] : e.users;
       return u ? { id: u.id as string, display_name: (u.display_name as string | null) ?? null } : null;
@@ -169,39 +206,58 @@ export default async function KeyDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle>Aktuelle Ausgaben ({openIssues.length})</CardTitle>
+              <CardTitle>Aktuelle Ausgaben ({custody.openIssues.length})</CardTitle>
             </CardHeader>
             <CardBody>
-              {openIssues.length === 0 ? (
+              {custody.openIssues.length === 0 ? (
                 <p className="text-sm text-[var(--color-muted-foreground)]">
                   Aktuell sind keine Exemplare ausgegeben.
                 </p>
               ) : (
                 <ul className="flex flex-col gap-4">
-                  {openIssues.map((h) => (
-                    <li
-                      key={h.id}
-                      className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium">
-                            {holderLabel(h, displayById)}
-                          </span>
-                          <span className="text-xs text-[var(--color-muted-foreground)]">
-                            {h.copies_count} × ausgegeben am {formatDateTime(h.happened_at)}
-                            {h.expected_return_at && ` · Rückgabe bis ${formatDateTime(h.expected_return_at)}`}
-                          </span>
+                  {custody.openIssues.map((open) => {
+                    const h = handoverById.get(open.issueId);
+                    if (!h) return null;
+                    const returnStatus = describeReturnStatus(open);
+                    return (
+                      <li
+                        key={open.issueId}
+                        className="flex flex-col gap-2 rounded-md border border-[var(--color-border)] p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium">
+                              {holderLabel(h, displayById)}
+                            </span>
+                            <span className="text-xs text-[var(--color-muted-foreground)]">
+                              {describeCustodyAge(open)} · ausgegeben am{' '}
+                              {formatDateTime(h.happened_at)}
+                              {h.expected_return_at &&
+                                ` · Rückgabe bis ${formatDateTime(h.expected_return_at)}`}
+                            </span>
+                          </div>
+                          {returnStatus && (
+                            <Badge tone={CUSTODY_TONE[open.status]}>{returnStatus}</Badge>
+                          )}
                         </div>
-                      </div>
-                      {h.note && (
-                        <p className="text-xs text-[var(--color-muted-foreground)]">{h.note}</p>
-                      )}
-                      {canAssign && (
-                        <ReturnForm issueHandoverId={h.id} maxCopies={h.copies_count} />
-                      )}
-                    </li>
-                  ))}
+                        {h.note && (
+                          <p className="text-xs text-[var(--color-muted-foreground)]">{h.note}</p>
+                        )}
+                        {/*
+                          Sprint 110: maxCopies kommt aus outstandingCopies, nicht
+                          mehr aus copies_count. Vorher verschwand dieses Formular
+                          nach der ersten Teilrueckgabe komplett — die restlichen
+                          Exemplare waren im System nicht mehr zurueckzugeben.
+                        */}
+                        {canAssign && (
+                          <ReturnForm
+                            issueHandoverId={open.issueId}
+                            maxCopies={open.outstandingCopies}
+                          />
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </CardBody>
