@@ -116,7 +116,14 @@ export const loadPortalNotificationBellFeed = cache(
         };
       });
 
+    // Sprint 89: needsAck zuerst (analog Sprint 87 Liste + Sprint 88
+    // Dashboard-Panel). Innerhalb der beiden Gruppen bleibt die
+    // createdAt-DESC-Reihenfolge erhalten. Damit sieht der Bewohner
+    // eine zu-quittierende Ankuendigung im Bell ganz oben — auch wenn
+    // spaeter eine neuere Nachricht eingegangen ist, die sonst mit
+    // createdAt gewinnen wuerde.
     const items = [...unreadThreads, ...unreadAnnouncements].sort((a, b) => {
+      if (a.needsAck !== b.needsAck) return a.needsAck ? -1 : 1;
       const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return bt - at;
