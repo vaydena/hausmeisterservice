@@ -34,23 +34,42 @@ export default async function PortalMessagesPage({
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
 
-  // Sprint 84: Text-Suche im Betreff analog zu Sprint 72 (Meldungen) und
-  // Sprint 73 (Ankuendigungen). Wildcards (%/_) und PostgREST-or()-Trenner
+  // Sprint 84 + 85: Text-Suche in Betreff UND Nachrichten-Body. Erst
+  // messages.body per ILIKE durchsuchen (RLS begrenzt auf sichtbare
+  // Threads), daraus distinct thread_ids sammeln, dann in der Haupt-Query
+  // per .or() sowohl Betreff-ILike als auch matching thread-ids
+  // beruecksichtigen. Wildcards (%/_) und PostgREST-or()-Trenner (,())
   // aus dem Query entfernen — Bewohner-Input soll keine ILIKE-Wildcards
-  // enthalten und die Query nicht aufbrechen. Kein Body-Search, weil das
-  // eine zusaetzliche JOIN/DISTINCT-Query erfordern wuerde und Betreff
-  // fuer den Wiederfindungs-Fall meist reicht.
+  // enthalten und die Query-Struktur nicht aufbrechen koennen.
   const { q: qParam } = await searchParams;
   const searchTerm = (qParam ?? '').trim();
   const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
 
   const supabase = await createSupabaseServerClient();
+
+  let bodyThreadIds: string[] = [];
+  if (searchSafe.length > 0) {
+    const { data: bodyMatches } = await supabase
+      .from('messages')
+      .select('thread_id')
+      .ilike('body', `%${searchSafe}%`);
+    bodyThreadIds = Array.from(
+      new Set((bodyMatches ?? []).map((m) => m.thread_id)),
+    );
+  }
+
   let threadsQuery = supabase
     .from('message_threads')
     .select('id, subject, last_message_at')
     .order('last_message_at', { ascending: false });
   if (searchSafe.length > 0) {
-    threadsQuery = threadsQuery.ilike('subject', `%${searchSafe}%`);
+    if (bodyThreadIds.length > 0) {
+      threadsQuery = threadsQuery.or(
+        `subject.ilike.%${searchSafe}%,id.in.(${bodyThreadIds.join(',')})`,
+      );
+    } else {
+      threadsQuery = threadsQuery.ilike('subject', `%${searchSafe}%`);
+    }
   }
   const { data: threads } = await threadsQuery;
 
@@ -123,7 +142,7 @@ export default async function PortalMessagesPage({
           type="search"
           name="q"
           defaultValue={searchTerm}
-          placeholder="Nach Betreff suchen"
+          placeholder="Betreff oder Nachrichten-Inhalt suchen"
           aria-label="Nachrichten durchsuchen"
           className="h-9 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none focus:border-[var(--color-primary)]"
         />
