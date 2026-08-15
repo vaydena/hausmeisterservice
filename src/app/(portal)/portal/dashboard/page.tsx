@@ -49,41 +49,58 @@ export default async function PortalDashboardPage() {
     .maybeSingle();
   const showWelcomeOverlay = !onboardingRow?.portal_onboarding_completed_at;
 
-  const [announcementsRes, defectsRes, threadsRes, receiptsRes] = await Promise.all([
-    supabase
-      .from('announcements')
-      .select('id, title, published_at, requires_acknowledgement, target_type')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(5),
-    supabase
-      .from('defect_reports')
-      .select('id, code, title, status, priority, created_at')
-      .eq('reporter_user_id', ctx.userId)
-      .in('status', ['new', 'reviewing'])
-      .order('created_at', { ascending: false })
-      .limit(5),
-    supabase
-      .from('message_threads')
-      .select('id, subject, last_message_at')
-      .order('last_message_at', { ascending: false })
-      .limit(5),
-    supabase
-      .from('announcement_receipts')
-      .select('announcement_id, read_at, acknowledged_at')
-      .eq('user_id', ctx.userId),
-  ]);
+  const [announcementsRes, defectsRes, threadsRes, receiptsRes, threadParticipationRes] =
+    await Promise.all([
+      supabase
+        .from('announcements')
+        .select('id, title, published_at, requires_acknowledgement, target_type')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(5),
+      supabase
+        .from('defect_reports')
+        .select('id, code, title, status, priority, created_at')
+        .eq('reporter_user_id', ctx.userId)
+        .in('status', ['new', 'reviewing'])
+        .order('created_at', { ascending: false })
+        .limit(5),
+      // Sprint 45: threads werden aktuell nur fuer den ungelesen-Count
+      // gebraucht; das RLS-Filter auf message_threads scoped bereits auf
+      // Threads, in denen der User als participant eingetragen ist.
+      supabase.from('message_threads').select('id, last_message_at'),
+      supabase
+        .from('announcement_receipts')
+        .select('announcement_id, read_at, acknowledged_at')
+        .eq('user_id', ctx.userId),
+      supabase
+        .from('message_thread_participants')
+        .select('thread_id, last_read_at')
+        .eq('user_id', ctx.userId),
+    ]);
 
   const announcements = announcementsRes.data ?? [];
   const defects = defectsRes.data ?? [];
   const threads = threadsRes.data ?? [];
   const receipts = receiptsRes.data ?? [];
+  const threadParticipation = threadParticipationRes.data ?? [];
 
   const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
   const unreadCount = announcements.filter((a) => !receiptMap.get(a.id)?.read_at).length;
   const openAckCount = announcements.filter(
     (a) => a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at,
   ).length;
+
+  // Sprint 45: unread-Berechnung identisch zur Messages-Uebersicht
+  // (portal/messages/page.tsx): ein Thread ist ungelesen, wenn der User
+  // ihn noch nie geoeffnet hat (kein participant-Eintrag oder last_read_at
+  // null) oder wenn seine letzte Aktivitaet neuer ist als sein last_read_at.
+  const lastReadMap = new Map(
+    threadParticipation.map((p) => [p.thread_id, p.last_read_at]),
+  );
+  const unreadThreadsCount = threads.filter((t) => {
+    const lastRead = lastReadMap.get(t.id);
+    return !lastRead || (t.last_message_at !== null && lastRead < t.last_message_at);
+  }).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -126,10 +143,16 @@ export default async function PortalDashboardPage() {
         <SummaryCard
           href="/portal/messages"
           label="Nachrichten"
-          value={threads.length}
-          hint={threads.length === 0 ? 'keine Konversationen' : 'aktive Threads'}
+          value={unreadThreadsCount}
+          hint={
+            threads.length === 0
+              ? 'keine Konversationen'
+              : unreadThreadsCount === 0
+                ? 'alle gelesen'
+                : `${unreadThreadsCount === 1 ? '1 Thread' : `${unreadThreadsCount} Threads`} ungelesen`
+          }
           icon={<MessageSquare className="size-5" aria-hidden />}
-          tone="default"
+          tone={unreadThreadsCount > 0 ? 'warning' : 'default'}
         />
       </div>
 
