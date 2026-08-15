@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { AlertTriangle, Plus, Tag } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -42,7 +42,7 @@ export default async function PortalDefectsPage({
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from('defect_reports')
-    .select('id, code, title, priority, status, created_at')
+    .select('id, code, title, priority, status, category, created_at')
     .eq('reporter_user_id', ctx.userId)
     .order('created_at', { ascending: false });
 
@@ -93,39 +93,60 @@ export default async function PortalDefectsPage({
         </div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {defects.map((d) => (
-            <li key={d.id}>
-              <Link
-                href={`/portal/defects/${d.id}`}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4 transition hover:border-[var(--color-primary)]/50"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{d.title}</span>
-                    <span className="text-xs text-[var(--color-muted-foreground)]">
-                      {d.code ?? ''}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
-                    Erfasst am{' '}
-                    {new Date(d.created_at).toLocaleDateString('de-DE', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric',
-                    })}{' '}
-                    · Priorität: {PRIORITY_LABEL[d.priority] ?? d.priority}
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    STATUS_TONE[d.status] ?? 'bg-[var(--color-muted)] text-[var(--color-foreground)]'
+          {defects.map((d) => {
+            const isEmergency = d.priority === 'emergency';
+            return (
+              <li key={d.id}>
+                <Link
+                  href={`/portal/defects/${d.id}`}
+                  className={`flex items-center justify-between gap-4 rounded-2xl border bg-[var(--color-background)] p-4 transition ${
+                    isEmergency
+                      ? 'border-red-300 hover:border-red-400 dark:border-red-800 dark:hover:border-red-700'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/50'
                   }`}
                 >
-                  {STATUS_LABEL[d.status] ?? d.status}
-                </span>
-              </Link>
-            </li>
-          ))}
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isEmergency && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950 dark:text-red-200">
+                          <AlertTriangle className="h-3 w-3" aria-hidden />
+                          Notfall
+                        </span>
+                      )}
+                      <span className="text-sm font-semibold">{d.title}</span>
+                      <span className="text-xs text-[var(--color-muted-foreground)]">
+                        {d.code ?? ''}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+                      Erfasst am{' '}
+                      {new Date(d.created_at).toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                      {!isEmergency && ` · Priorität: ${PRIORITY_LABEL[d.priority] ?? d.priority}`}
+                    </p>
+                    {d.category && (
+                      <div className="mt-2">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-0.5 text-xs text-[var(--color-muted-foreground)]">
+                          <Tag className="h-3 w-3" aria-hidden />
+                          {d.category}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      STATUS_TONE[d.status] ?? 'bg-[var(--color-muted)] text-[var(--color-foreground)]'
+                    }`}
+                  >
+                    {STATUS_LABEL[d.status] ?? d.status}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
