@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { requireResidentContext } from '@/lib/portal/current';
 import { isAnnouncementUnread } from '@/lib/portal/announcement-read-state';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 const idSchema = z.object({
   id: z.string().uuid('Ungültige Ankündigungs-ID.'),
@@ -52,15 +53,17 @@ export async function markAllPortalAnnouncementsReadAction(): Promise<void> {
       .select('announcement_id, read_at, acknowledged_at')
       .eq('user_id', ctx.userId),
   ]);
-  if (annRes.error) throw new Error(annRes.error.message);
-  if (recRes.error) throw new Error(recRes.error.message);
-
+  // Sprint 103: War hier schon korrekt (expliziter throw je Result) und ist
+  // jetzt nur noch auf denselben Helper wie der Rest des Portals umgestellt.
   const receiptMap = new Map(
-    (recRes.data ?? []).map((r) => [r.announcement_id, r]),
+    unwrapRows(recRes, 'Portal: Lesebestätigungen (Alle-gelesen)').map((r) => [
+      r.announcement_id,
+      r,
+    ]),
   );
 
   const now = new Date().toISOString();
-  const toUpsert = (annRes.data ?? [])
+  const toUpsert = unwrapRows(annRes, 'Portal: Ankündigungen (Alle-gelesen)')
     .filter((a) => isAnnouncementUnread(receiptMap.get(a.id)))
     .map((a) => ({
       announcement_id: a.id,

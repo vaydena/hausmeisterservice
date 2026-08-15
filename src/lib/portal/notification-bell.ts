@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { loadPortalUnreadThreadsSummary } from './unread-messages';
 import { isThreadUnread } from './thread-read-state';
 import { isAnnouncementUnread, needsAcknowledgement } from './announcement-read-state';
@@ -80,9 +81,15 @@ export const loadPortalNotificationBellFeed = cache(
     ]);
 
     const lastReadMap = new Map(
-      (participationRes.data ?? []).map((p) => [p.thread_id, p.last_read_at]),
+      unwrapRows(participationRes, 'Portal-Glocke: Lesezustand').map((p) => [
+        p.thread_id,
+        p.last_read_at,
+      ]),
     );
-    const unreadThreads: PortalBellItem[] = (threadsRes.data ?? [])
+    const unreadThreads: PortalBellItem[] = unwrapRows(
+      threadsRes,
+      'Portal-Glocke: Nachrichten-Threads',
+    )
       .filter((t) => isThreadUnread(t.last_message_at, lastReadMap.get(t.id)))
       .slice(0, TOP_N_PER_KIND)
       .map((t) => ({
@@ -95,9 +102,15 @@ export const loadPortalNotificationBellFeed = cache(
       }));
 
     const receiptMap = new Map(
-      (receiptsRes.data ?? []).map((r) => [r.announcement_id, r]),
+      unwrapRows(receiptsRes, 'Portal-Glocke: Lesebestätigungen').map((r) => [
+        r.announcement_id,
+        r,
+      ]),
     );
-    const unreadAnnouncements: PortalBellItem[] = (announcementsRes.data ?? [])
+    const unreadAnnouncements: PortalBellItem[] = unwrapRows(
+      announcementsRes,
+      'Portal-Glocke: Ankündigungen',
+    )
       .filter((a) => isAnnouncementUnread(receiptMap.get(a.id)))
       .slice(0, TOP_N_PER_KIND)
       .map((a) => ({

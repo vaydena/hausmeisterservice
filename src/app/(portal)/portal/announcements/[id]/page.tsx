@@ -9,6 +9,7 @@ import {
 } from '@/lib/portal/announcement-read-state';
 import { formatRelativeGerman } from '@/lib/schemas/notifications';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { portalAcknowledgeAnnouncementAction } from '../actions';
 
 export const metadata: Metadata = {
@@ -65,9 +66,9 @@ export default async function PortalAnnouncementDetailPage({
       .maybeSingle(),
   ]);
 
-  if (!annRes.data) notFound();
-  const a = annRes.data;
-  const r = receiptRes.data;
+  const a = unwrapMaybeRow(annRes, 'Portal: Ankündigung');
+  if (!a) notFound();
+  const r = unwrapMaybeRow(receiptRes, 'Portal: Lesebestätigung');
 
   // Sprint 95: Zielgruppen-Info fuer den Bewohner. Bei 'property' zusaetzlich
   // den Objekt-Namen aufloesen — Bewohner sieht so, warum ihn diese
@@ -78,11 +79,14 @@ export default async function PortalAnnouncementDetailPage({
   if (a.target_type === 'all' || a.target_type === 'residents') {
     audienceLabel = 'Für alle Bewohner';
   } else if (a.target_type === 'property' && a.target_property_id) {
-    const { data: prop } = await supabase
-      .from('properties')
-      .select('name')
-      .eq('id', a.target_property_id)
-      .maybeSingle();
+    const prop = unwrapMaybeRow(
+      await supabase
+        .from('properties')
+        .select('name')
+        .eq('id', a.target_property_id)
+        .maybeSingle(),
+      'Portal: Objektname zur Ankündigung',
+    );
     audienceLabel = prop?.name ? `Für alle Bewohner von ${prop.name}` : 'Für alle Bewohner Ihres Objekts';
   }
 

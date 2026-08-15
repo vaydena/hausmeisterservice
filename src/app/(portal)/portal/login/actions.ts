@@ -52,13 +52,29 @@ export async function portalSignInAction(
   }
 
   // Prüfen, dass wirklich ein aktiver Resident-Record existiert
-  const { data: resident } = await supabase
+  const residentRes = await supabase
     .from('residents')
     .select('id, tenant_id, portal_activated_at')
     .eq('user_id', data.user.id)
     .is('deleted_at', null)
     .limit(1)
     .maybeSingle();
+
+  // Sprint 103: Fehlgeschlagene Query und "kein Bewohner" strikt trennen.
+  // Vorher lief beides in denselben Zweig, und eine kaputte RLS oder eine
+  // nicht erreichbare DB hat dem Bewohner gesagt, sein Zugang sei nicht
+  // hinterlegt — eine Falschauskunft, die im Support als Datenproblem
+  // ankommt statt als Stoerung. Hier bewusst kein throw: in einem
+  // Login-Formular ist eine verstaendliche Meldung mehr wert als eine
+  // Fehlerseite.
+  if (residentRes.error) {
+    await supabase.auth.signOut();
+    return {
+      error:
+        'Die Anmeldung ist derzeit technisch nicht möglich. Bitte versuchen Sie es in einigen Minuten erneut.',
+    };
+  }
+  const resident = residentRes.data;
 
   if (!resident) {
     await supabase.auth.signOut();

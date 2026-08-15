@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { PortalReplyForm } from './portal-reply-form';
 
 export const metadata: Metadata = {
@@ -71,18 +72,26 @@ export default async function PortalMessageThreadPage({
       .eq('thread_id', id),
   ]);
 
-  if (!threadRes.data) notFound();
+  // Sprint 103: unwrapMaybeRow statt `!threadRes.data`. Bei kaputter RLS kam
+  // hier vorher ebenfalls null an, und der Bewohner bekam ein "Seite nicht
+  // gefunden" fuer einen Thread, den es sehr wohl gab. Ein echter Nicht-
+  // Treffer (data null, error null) fuehrt weiterhin zu notFound().
+  const thread = unwrapMaybeRow(threadRes, 'Portal: Thread-Kopf');
+  if (!thread) notFound();
 
-  const messages = messagesRes.data ?? [];
-  const participants = participantsRes.data ?? [];
+  const messages = unwrapRows(messagesRes, 'Portal: Nachrichten im Thread');
+  const participants = unwrapRows(participantsRes, 'Portal: Thread-Teilnehmer');
   const authorIds = Array.from(
     new Set(messages.map((m) => m.author_user_id).concat(participants.map((p) => p.user_id))),
   );
 
-  const { data: users } = authorIds.length
-    ? await supabase.from('users').select('id, display_name').in('id', authorIds)
-    : { data: [] as { id: string; display_name: string | null }[] };
-  const displayNameMap = new Map((users ?? []).map((u) => [u.id, u.display_name ?? '—']));
+  const users = authorIds.length
+    ? unwrapRows(
+        await supabase.from('users').select('id, display_name').in('id', authorIds),
+        'Portal: Anzeigenamen der Beteiligten',
+      )
+    : [];
+  const displayNameMap = new Map(users.map((u) => [u.id, u.display_name ?? '—']));
 
   // Best-effort: last_read_at hochsetzen (kein blocking, kein revalidate hier – nur State)
   const nowIso = new Date().toISOString();
@@ -112,7 +121,7 @@ export default async function PortalMessageThreadPage({
         >
           ← alle Nachrichten
         </Link>
-        <h1 className="mt-2 text-xl font-semibold">{threadRes.data.subject}</h1>
+        <h1 className="mt-2 text-xl font-semibold">{thread.subject}</h1>
         {messages.length > 0 && (
           <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
             {messages.length === 1 ? '1 Nachricht' : `${messages.length} Nachrichten`}

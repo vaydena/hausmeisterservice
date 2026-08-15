@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { isAnnouncementUnread, needsAcknowledgement } from './announcement-read-state';
 
 export interface PortalUnreadAnnouncementsSummary {
@@ -43,8 +44,8 @@ export const loadPortalUnreadAnnouncementsSummary = cache(
         .eq('user_id', userId),
     ]);
 
-    const announcements = announcementsRes.data ?? [];
-    const receipts = receiptsRes.data ?? [];
+    const announcements = unwrapRows(announcementsRes, 'Portal-Badge: Ankündigungen');
+    const receipts = unwrapRows(receiptsRes, 'Portal-Badge: Lesebestätigungen');
     const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
 
     let unreadCount = 0;

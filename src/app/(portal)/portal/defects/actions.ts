@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import { requireResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import {
   DOC_ALLOWED_MIME,
   DOC_MAX_BYTES,
@@ -330,12 +331,15 @@ export async function uploadPortalDefectDocumentAction(formData: FormData): Prom
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: defect } = await supabase
-    .from('defect_reports')
-    .select('id, property_id')
-    .eq('id', parsed.data.defect_id)
-    .eq('reporter_user_id', ctx.userId)
-    .maybeSingle();
+  const defect = unwrapMaybeRow(
+    await supabase
+      .from('defect_reports')
+      .select('id, property_id')
+      .eq('id', parsed.data.defect_id)
+      .eq('reporter_user_id', ctx.userId)
+      .maybeSingle(),
+    'Portal: Meldung zum Foto-Upload',
+  );
 
   if (!defect) {
     throw new Error('Meldung nicht gefunden.');

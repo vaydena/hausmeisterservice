@@ -11,6 +11,7 @@ import {
   type DefectStatusGroup,
 } from '@/lib/portal/defect-status-groups';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 
 export const metadata: Metadata = {
@@ -124,10 +125,12 @@ export default async function PortalDefectsPage({
     countQuery = countQuery.or(searchOrExpr);
   }
 
-  const [{ data }, { data: statusRows }] = await Promise.all([query, countQuery]);
+  const [defectsRes, statusRes] = await Promise.all([query, countQuery]);
 
-  const defects = data ?? [];
-  const counts = countDefectGroups((statusRows ?? []).map((row) => row.status));
+  const defects = unwrapRows(defectsRes, 'Portal: Meldungen');
+  const counts = countDefectGroups(
+    unwrapRows(statusRes, 'Portal: Meldungs-Status für die Tab-Zähler').map((row) => row.status),
+  );
 
   // Sprint 69: Anhang-Zaehler pro Meldung als Signal fuer den Bewohner,
   // dass hochgeladene Fotos/Dokumente tatsaechlich angekommen sind.
@@ -137,15 +140,18 @@ export default async function PortalDefectsPage({
   // hier. Gruppieren client-seitig, weil PostgREST kein
   // count() group by unterstuetzt.
   const defectIds = defects.map((d) => d.id);
-  const { data: attachmentRows } = defectIds.length
-    ? await supabase
-        .from('documents')
-        .select('entity_id')
-        .eq('entity_type', 'defect_report')
-        .in('entity_id', defectIds)
-    : { data: [] as { entity_id: string }[] };
+  const attachmentRows = defectIds.length
+    ? unwrapRows(
+        await supabase
+          .from('documents')
+          .select('entity_id')
+          .eq('entity_type', 'defect_report')
+          .in('entity_id', defectIds),
+        'Portal: Anhang-Zähler der Meldungen',
+      )
+    : [];
   const attachmentCountMap = new Map<string, number>();
-  for (const row of attachmentRows ?? []) {
+  for (const row of attachmentRows) {
     attachmentCountMap.set(row.entity_id, (attachmentCountMap.get(row.entity_id) ?? 0) + 1);
   }
 
@@ -158,14 +164,14 @@ export default async function PortalDefectsPage({
   const workOrderIds = defects
     .map((d) => d.converted_work_order_id)
     .filter((id): id is string => id !== null);
-  const { data: workOrderRows } = workOrderIds.length
-    ? await supabase
-        .from('work_orders')
-        .select('id, status')
-        .in('id', workOrderIds)
-    : { data: [] as { id: string; status: string }[] };
+  const workOrderRows = workOrderIds.length
+    ? unwrapRows(
+        await supabase.from('work_orders').select('id, status').in('id', workOrderIds),
+        'Portal: Auftragsstatus zu den Meldungen',
+      )
+    : [];
   const workOrderStatusMap = new Map<string, string>();
-  for (const wo of workOrderRows ?? []) {
+  for (const wo of workOrderRows) {
     workOrderStatusMap.set(wo.id, wo.status);
   }
 

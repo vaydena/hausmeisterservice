@@ -5,6 +5,7 @@ import { Plus } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { countThreadGroups, isThreadUnread } from '@/lib/portal/thread-read-state';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 
 export const metadata: Metadata = {
@@ -79,13 +80,11 @@ export default async function PortalMessagesPage({
 
   let bodyThreadIds: string[] = [];
   if (searchSafe.length > 0) {
-    const { data: bodyMatches } = await supabase
-      .from('messages')
-      .select('thread_id')
-      .ilike('body', `%${searchSafe}%`);
-    bodyThreadIds = Array.from(
-      new Set((bodyMatches ?? []).map((m) => m.thread_id)),
+    const bodyMatches = unwrapRows(
+      await supabase.from('messages').select('thread_id').ilike('body', `%${searchSafe}%`),
+      'Portal: Nachrichten-Volltextsuche',
     );
+    bodyThreadIds = Array.from(new Set(bodyMatches.map((m) => m.thread_id)));
   }
 
   let threadsQuery = supabase
@@ -101,14 +100,20 @@ export default async function PortalMessagesPage({
       threadsQuery = threadsQuery.ilike('subject', `%${searchSafe}%`);
     }
   }
-  const { data: threads } = await threadsQuery;
+  // Sprint 103: Genau diese Query lief live monatelang in 42P17 und lieferte
+  // `data: null`; das alte `threads ?? []` hat daraus einen glaubwuerdigen
+  // Leerzustand gemacht. unwrapRows laesst den Fehler jetzt durch.
+  const threads = unwrapRows(await threadsQuery, 'Portal: Nachrichten-Threads');
 
-  const { data: participation } = await supabase
-    .from('message_thread_participants')
-    .select('thread_id, last_read_at')
-    .eq('user_id', ctx.userId);
+  const participation = unwrapRows(
+    await supabase
+      .from('message_thread_participants')
+      .select('thread_id, last_read_at')
+      .eq('user_id', ctx.userId),
+    'Portal: Lesezustand der Threads',
+  );
 
-  const readMap = new Map((participation ?? []).map((p) => [p.thread_id, p.last_read_at]));
+  const readMap = new Map(participation.map((p) => [p.thread_id, p.last_read_at]));
 
   // Sprint 100: Gruppierung vor den Folge-Queries, nicht erst beim
   // Rendern — so laden Preview-Snippets und Autor-Namen nur fuer die
@@ -117,7 +122,7 @@ export default async function PortalMessagesPage({
   // verbindet (message_threads.last_message_at gegen den eigenen
   // participants-Eintrag) und RLS die Menge ohnehin auf die wenigen
   // Threads des Bewohners begrenzt.
-  const visibleThreads = (threads ?? []).filter((t) =>
+  const visibleThreads = threads.filter((t) =>
     activeGroup === 'ungelesen' ? isThreadUnread(t.last_message_at, readMap.get(t.id)) : true,
   );
 
@@ -126,26 +131,29 @@ export default async function PortalMessagesPage({
   // dem *anderen* Tab liegt. Der Nav-Badge daneben zaehlt bewusst etwas
   // anderes (alle ungelesenen Threads, ohne Suchbegriff); bei aktiver
   // Suche duerfen die beiden Zahlen deshalb auseinanderliegen.
-  const counts = countThreadGroups(threads ?? [], readMap);
+  const counts = countThreadGroups(threads, readMap);
 
   // Sprint 62: Preview-Snippet + Autor-Label je Thread. Fuer den Bewohner
   // sind das i. d. R. wenige Threads (RLS limitiert), daher lohnt sich
   // eine `.in()`-Query gegen messages statt N maybeSingle()-Roundtrips.
   // Client-seitig picken wir pro thread_id die spaeteste Message.
   const threadIds = visibleThreads.map((t) => t.id);
-  const { data: allMessages } = threadIds.length
-    ? await supabase
-        .from('messages')
-        .select('thread_id, body, author_user_id, sent_at')
-        .in('thread_id', threadIds)
-        .order('sent_at', { ascending: false })
-    : { data: [] as { thread_id: string; body: string; author_user_id: string; sent_at: string }[] };
+  const allMessages = threadIds.length
+    ? unwrapRows(
+        await supabase
+          .from('messages')
+          .select('thread_id, body, author_user_id, sent_at')
+          .in('thread_id', threadIds)
+          .order('sent_at', { ascending: false }),
+        'Portal: Nachrichten-Vorschau',
+      )
+    : [];
 
   const latestByThread = new Map<
     string,
     { body: string; author_user_id: string; sent_at: string }
   >();
-  for (const m of allMessages ?? []) {
+  for (const m of allMessages) {
     if (!latestByThread.has(m.thread_id)) {
       latestByThread.set(m.thread_id, {
         body: m.body,
@@ -162,10 +170,13 @@ export default async function PortalMessagesPage({
         .filter((uid) => uid !== ctx.userId),
     ),
   );
-  const { data: authorRows } = otherAuthorIds.length
-    ? await supabase.from('users').select('id, display_name').in('id', otherAuthorIds)
-    : { data: [] as { id: string; display_name: string | null }[] };
-  const authorNameMap = new Map((authorRows ?? []).map((u) => [u.id, u.display_name ?? 'Verwaltung']));
+  const authorRows = otherAuthorIds.length
+    ? unwrapRows(
+        await supabase.from('users').select('id, display_name').in('id', otherAuthorIds),
+        'Portal: Absendernamen',
+      )
+    : [];
+  const authorNameMap = new Map(authorRows.map((u) => [u.id, u.display_name ?? 'Verwaltung']));
 
   return (
     <div className="flex flex-col gap-6">

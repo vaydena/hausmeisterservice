@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { getResidentContext } from '@/lib/portal/current';
 import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import { parseUserSessions } from '@/lib/auth/user-sessions';
@@ -48,17 +49,18 @@ export default async function PortalAccountPage({
   // aus authenticated-Kontext nicht lesbar ist; die SECURITY-DEFINER-Function
   // list_user_sessions scoped selbst auf p_user_id = ctx.userId.
   const service = createSupabaseServiceClient();
-  const { data: sessionsRaw } = await service.rpc('list_user_sessions', {
-    p_user_id: ctx.userId,
-  });
+  const sessionsRaw = unwrapMaybeRow(
+    await service.rpc('list_user_sessions', { p_user_id: ctx.userId }),
+    'Portal-Konto: Aktive Sitzungen',
+  );
   const sessions = parseUserSessions(sessionsRaw);
   const currentSessionId = await getCurrentSessionId(supabase);
 
   // Sprint 35: Recovery-Codes-Zaehler. Function ist SECURITY DEFINER mit
   // execute-Grant nur auf service_role (Sprint 21 Lockdown).
-  const { data: unusedCountData } = await service.rpc(
-    'count_unused_mfa_recovery_codes',
-    { p_user_id: ctx.userId },
+  const unusedCountData = unwrapMaybeRow(
+    await service.rpc('count_unused_mfa_recovery_codes', { p_user_id: ctx.userId }),
+    'Portal-Konto: Anzahl offener Recovery-Codes',
   );
   const unusedRecoveryCodes = typeof unusedCountData === 'number' ? unusedCountData : 0;
 
@@ -68,12 +70,14 @@ export default async function PortalAccountPage({
   // explizitem user_id-Filter (gleiches Muster wie list_user_sessions
   // oben). Die zugehoerigen API-Routes /api/portal/push/{subscribe,
   // unsubscribe} arbeiten aus demselben Grund via Service-Role.
-  const { data: pushSubsData } = await service
-    .from('push_subscriptions')
-    .select('id, endpoint, user_agent, created_at, last_used_at, last_error')
-    .eq('user_id', ctx.userId)
-    .order('created_at', { ascending: false });
-  const pushSubs = pushSubsData ?? [];
+  const pushSubs = unwrapRows(
+    await service
+      .from('push_subscriptions')
+      .select('id, endpoint, user_agent, created_at, last_used_at, last_error')
+      .eq('user_id', ctx.userId)
+      .order('created_at', { ascending: false }),
+    'Portal-Konto: Push-Anmeldungen',
+  );
 
   const pushConfigured = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
 
@@ -81,13 +85,15 @@ export default async function PortalAccountPage({
   // eigenen Rows in auth_login_events — daher anon Server-Client, kein
   // service_role noetig. Portal-Logins landen dort seit Sprint 29 mit
   // endpoint = 'portal-login'; die List-Komponente formatiert das lesbar.
-  const { data: loginEventsData } = await supabase
-    .from('auth_login_events')
-    .select('id, at, ip, user_agent, endpoint')
-    .eq('user_id', ctx.userId)
-    .order('at', { ascending: false })
-    .limit(20);
-  const loginEvents = (loginEventsData ?? []).map((e) => ({
+  const loginEvents = unwrapRows(
+    await supabase
+      .from('auth_login_events')
+      .select('id, at, ip, user_agent, endpoint')
+      .eq('user_id', ctx.userId)
+      .order('at', { ascending: false })
+      .limit(20),
+    'Portal-Konto: Anmeldeverlauf',
+  ).map((e) => ({
     id: e.id,
     at: e.at,
     ip: e.ip,

@@ -9,6 +9,7 @@ import {
 } from '@/lib/portal/announcement-read-state';
 import { loadPortalUnreadAnnouncementsSummary } from '@/lib/portal/unread-announcements';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 import { markAllPortalAnnouncementsReadAction } from './actions';
 
@@ -91,8 +92,8 @@ export default async function PortalAnnouncementsPage({
     loadPortalUnreadAnnouncementsSummary(ctx.userId),
   ]);
 
-  const announcements = announcementsRes.data ?? [];
-  const receipts = receiptsRes.data ?? [];
+  const announcements = unwrapRows(announcementsRes, 'Portal: Ankündigungen');
+  const receipts = unwrapRows(receiptsRes, 'Portal: Lesebestätigungen');
   const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
 
   // Sprint 102: Zahlen an den Tabs. Gezaehlt wird ueber `announcements` —

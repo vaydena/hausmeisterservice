@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { isThreadUnread } from './thread-read-state';
 
 export interface PortalUnreadThreadsSummary {
@@ -29,8 +30,10 @@ export const loadPortalUnreadThreadsSummary = cache(
         .eq('user_id', userId),
     ]);
 
-    const threads = threadsRes.data ?? [];
-    const participation = participationRes.data ?? [];
+    // Sprint 103: Der Nav-Badge war beim 42P17-Bug die zweite stille Luege —
+    // er zeigte einfach nichts an, statt dass irgendwo ein Fehler auftauchte.
+    const threads = unwrapRows(threadsRes, 'Portal-Badge: Nachrichten-Threads');
+    const participation = unwrapRows(participationRes, 'Portal-Badge: Lesezustand');
     const lastReadMap = new Map(participation.map((p) => [p.thread_id, p.last_read_at]));
 
     const unreadCount = threads.filter((t) =>

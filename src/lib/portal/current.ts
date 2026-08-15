@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export interface ResidentContext {
   userId: string;
@@ -40,16 +41,27 @@ export const getResidentContext = cache(async (): Promise<ResidentContext | null
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: resident } = await supabase
-    .from('residents')
-    .select(
-      'id, tenant_id, first_name, last_name, property_id, building_id, unit_id, moved_in, moved_out',
-    )
-    .eq('user_id', user.id)
-    .is('deleted_at', null)
-    .order('moved_in', { ascending: false, nullsFirst: false })
-    .limit(1)
-    .maybeSingle();
+  // Sprint 103: Von allen Portal-Queries ist das die folgenreichste. Jede
+  // Portal-Seite macht `if (!ctx) redirect('/portal/login')` — eine
+  // gescheiterte Query hier hat den Bewohner also auf die Login-Seite
+  // geworfen, von der er gerade kam. Aus einem DB-Fehler wurde so eine
+  // Endlosschleife, die wie "Ihr Zugang funktioniert nicht" aussieht.
+  // unwrapMaybeRow trennt das: "kein Resident" bleibt null (und damit
+  // Redirect), ein echter Fehler wird geworfen und landet sichtbar in
+  // error.tsx + Sentry.
+  const resident = unwrapMaybeRow(
+    await supabase
+      .from('residents')
+      .select(
+        'id, tenant_id, first_name, last_name, property_id, building_id, unit_id, moved_in, moved_out',
+      )
+      .eq('user_id', user.id)
+      .is('deleted_at', null)
+      .order('moved_in', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle(),
+    'Portal: Bewohner-Kontext',
+  );
 
   if (!resident || !resident.property_id) return null;
   const propertyId = resident.property_id;

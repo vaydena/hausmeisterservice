@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Calendar, Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows, unwrapRowsWithCount } from '@/lib/supabase/unwrap';
 import { getResidentContext } from '@/lib/portal/current';
 import { loadPortalUnreadThreadsSummary } from '@/lib/portal/unread-messages';
 import { loadPortalUnreadAnnouncementsSummary } from '@/lib/portal/unread-announcements';
@@ -85,11 +86,14 @@ export default async function PortalDashboardPage() {
   // Sprint 40: Willkommens-Overlay einmalig fuer neue Bewohner. Wir
   // lesen das Flag direkt hier statt via getResidentContext, um den
   // geteilten Helper nicht um ein rein UI-relevantes Feld aufzublaehen.
-  const { data: onboardingRow } = await supabase
-    .from('residents')
-    .select('portal_onboarding_completed_at')
-    .eq('id', ctx.residentId)
-    .maybeSingle();
+  const onboardingRow = unwrapMaybeRow(
+    await supabase
+      .from('residents')
+      .select('portal_onboarding_completed_at')
+      .eq('id', ctx.residentId)
+      .maybeSingle(),
+    'Portal: Onboarding-Status',
+  );
   const showWelcomeOverlay = !onboardingRow?.portal_onboarding_completed_at;
 
   const [
@@ -156,7 +160,7 @@ export default async function PortalDashboardPage() {
   // planned_end bedeutet "Ende offen" — solche Auftraege bleiben sichtbar.
   const nowMs = Date.now();
   const upcomingWorkOrder =
-    (upcomingWorkOrdersRes.data ?? []).find(
+    unwrapRows(upcomingWorkOrdersRes, 'Portal: Anstehende Termine').find(
       (wo) => !wo.planned_end || new Date(wo.planned_end).getTime() >= nowMs,
     ) ?? null;
 
@@ -164,13 +168,15 @@ export default async function PortalDashboardPage() {
   // — spart im Normalfall (kein anstehender Termin) den zweiten Roundtrip.
   let upcomingDefect: { id: string; title: string } | null = null;
   if (upcomingWorkOrder) {
-    const { data: defectData } = await supabase
-      .from('defect_reports')
-      .select('id, title')
-      .eq('converted_work_order_id', upcomingWorkOrder.id)
-      .eq('reporter_user_id', ctx.userId)
-      .maybeSingle();
-    upcomingDefect = defectData ?? null;
+    upcomingDefect = unwrapMaybeRow(
+      await supabase
+        .from('defect_reports')
+        .select('id, title')
+        .eq('converted_work_order_id', upcomingWorkOrder.id)
+        .eq('reporter_user_id', ctx.userId)
+        .maybeSingle(),
+      'Portal: Meldung zum anstehenden Termin',
+    );
   }
 
   // Sprint 68: Notfaelle zuerst, dann rest in SQL-Reihenfolge
@@ -180,7 +186,11 @@ export default async function PortalDashboardPage() {
   // Vergleich brauchen. priority ist ein text-Feld (kein enum),
   // deshalb liefert eine SQL-order priority DESC die falsche
   // alphabetische Reihenfolge — daher client-seitig.
-  const defects = (defectsRes.data ?? [])
+  const { rows: defectRows, count: defectsTotalCount } = unwrapRowsWithCount(
+    defectsRes,
+    'Portal: Offene Meldungen',
+  );
+  const defects = defectRows
     .slice()
     .sort((a, b) => {
       const aEmergency = a.priority === 'emergency' ? 0 : 1;
@@ -188,8 +198,7 @@ export default async function PortalDashboardPage() {
       return aEmergency - bEmergency;
     })
     .slice(0, 5);
-  const defectsTotalCount = defectsRes.count ?? 0;
-  const receipts = receiptsRes.data ?? [];
+  const receipts = unwrapRows(receiptsRes, 'Portal: Lesebestätigungen');
   const { totalCount: threadsTotalCount, unreadCount: unreadThreadsCount } = threadsSummary;
   // Sprint 47: SummaryCard-Zahlen kommen aus dem Helper, damit sie ueber
   // ALLE Ankuendigungen zaehlen und nicht nur ueber die hier gerenderten
@@ -206,7 +215,7 @@ export default async function PortalDashboardPage() {
   // zu-quittierende Ankuendigung aus der Vorschau fallen, obwohl die
   // SummaryCard "X noch zu quittieren" anzeigt. Stable sort erhaelt die
   // Server-Reihenfolge (published_at DESC) innerhalb der beiden Gruppen.
-  const announcements = (announcementsRes.data ?? [])
+  const announcements = unwrapRows(announcementsRes, 'Portal: Ankündigungen')
     .slice()
     .sort((a, b) => {
       const needsAckA = needsAcknowledgement(a.requires_acknowledgement, receiptMap.get(a.id));

@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Circle, PartyPopper, XCircle } from 'lucid
 import { getResidentContext } from '@/lib/portal/current';
 import { formatRelativeGerman } from '@/lib/schemas/notifications';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { WithdrawDefectButton } from './withdraw-defect-button';
 import { PortalDefectUploadForm } from './portal-defect-upload-form';
 
@@ -85,14 +86,17 @@ export default async function PortalDefectDetailPage({
   const { id } = await params;
   const { info } = await searchParams;
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
-    .from('defect_reports')
-    .select(
-      'id, code, title, description, location_details, priority, status, category, created_at, reviewed_at, updated_at, rejection_reason, converted_work_order_id',
-    )
-    .eq('id', id)
-    .eq('reporter_user_id', ctx.userId)
-    .maybeSingle();
+  const data = unwrapMaybeRow(
+    await supabase
+      .from('defect_reports')
+      .select(
+        'id, code, title, description, location_details, priority, status, category, created_at, reviewed_at, updated_at, rejection_reason, converted_work_order_id',
+      )
+      .eq('id', id)
+      .eq('reporter_user_id', ctx.userId)
+      .maybeSingle(),
+    'Portal: Meldung',
+  );
 
   if (!data) notFound();
 
@@ -108,15 +112,24 @@ export default async function PortalDefectDetailPage({
   // filtert auf reporter_user_id = auth.uid(), daher ist ein zusaetzlicher
   // Filter hier redundant. Signed URLs mit 1-Stunden-TTL — reicht fuer die
   // Session-Betrachtung, Reload generiert neue.
-  const { data: docs } = await supabase
-    .from('documents')
-    .select('id, storage_path, original_filename, mime_type, byte_size, caption, kind, created_at')
-    .eq('entity_type', 'defect_report')
-    .eq('entity_id', id)
-    .order('created_at', { ascending: true });
+  const docs = unwrapRows(
+    await supabase
+      .from('documents')
+      .select(
+        'id, storage_path, original_filename, mime_type, byte_size, caption, kind, created_at',
+      )
+      .eq('entity_type', 'defect_report')
+      .eq('entity_id', id)
+      .order('created_at', { ascending: true }),
+    'Portal: Anhänge der Meldung',
+  );
 
   const attachments = await Promise.all(
-    (docs ?? []).map(async (d) => {
+    // createSignedUrl bleibt bewusst ungeprueft: eine fehlgeschlagene URL
+    // heisst hier "keine Vorschau fuer diesen einen Anhang" und wird unten
+    // als url: null gerendert. Das ist ein echter Teilausfall, kein Grund,
+    // die ganze Meldung wegzuwerfen.
+    docs.map(async (d) => {
       const { data: signed } = await supabase.storage
         .from('attachments')
         .createSignedUrl(d.storage_path, 3600);
