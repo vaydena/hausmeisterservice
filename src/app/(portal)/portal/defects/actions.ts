@@ -8,6 +8,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const PRIORITIES = ['low', 'normal', 'high', 'emergency'] as const;
 
+const withdrawSchema = z.object({
+  id: z.string().uuid('Ungültige Meldungs-ID.'),
+});
+
 const defectSchema = z.object({
   title: z.string().trim().min(3, 'Bitte einen aussagekräftigen Titel angeben.').max(200),
   description: z
@@ -91,4 +95,57 @@ export async function createPortalDefectAction(
   revalidatePath('/portal/defects');
   revalidatePath('/portal/dashboard');
   redirect(`/portal/defects/${inserted.data.id}`);
+}
+
+/**
+ * Sprint 52: Bewohner zieht eine eigene Meldung zurueck, solange die
+ * Hausverwaltung sie noch nicht in Bearbeitung genommen hat (status='new').
+ * Sobald der Status auf 'reviewing', 'converted' oder 'rejected' gewechselt
+ * ist, gibt es typischerweise bereits eine Reaktion oder einen daraus
+ * abgeleiteten Vorgang (Work-Order via converted_work_order_id), der nicht
+ * durch einen einseitigen Bewohner-Rueckzug abgewickelt werden darf.
+ *
+ * Hard-DELETE ist semantisch bewusst gewaehlt: eine zurueckgezogene Meldung
+ * war (aus Sicht der Verwaltung, die noch nichts damit gemacht hat) nie
+ * relevant. Es gibt keine FK-Kinder auf defect_reports und keinen Audit-
+ * Trigger auf der Tabelle (Sprint 30 hat Audit nur auf sensiblen Auth/
+ * Membership-Tabellen aktiviert), also entstehen keine verwaisten Refs.
+ * Automatisierungen (defect_report.created) haben ggf. schon gefeuert;
+ * der zurueckgezogene Zustand invalidiert die Notification nicht rueckwirkend,
+ * aber das ist gewuenscht — die Verwaltung hat evtl. schon reagiert und
+ * kommuniziert das dann direkt mit dem Bewohner ueber /portal/messages.
+ *
+ * Die Guards laufen als Query-Filter (reporter_user_id + status='new') statt
+ * als separate SELECT-check-DELETE-Sequenz: RLS auf defect_reports erlaubt
+ * dem Bewohner ohnehin nur seine eigenen Rows (portal_reader_select-Policy),
+ * und der WHERE-Filter macht daraus ein atomares "no-op wenn Voraussetzung
+ * fehlt". count-Rueckgabe zeigt an, ob wirklich geloescht wurde.
+ */
+export async function withdrawPortalDefectAction(formData: FormData): Promise<void> {
+  const ctx = await requireResidentContext();
+  const parsed = withdrawSchema.safeParse({ id: formData.get('id') });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? 'Ungültige Meldungs-ID.');
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error, count } = await supabase
+    .from('defect_reports')
+    .delete({ count: 'exact' })
+    .eq('id', parsed.data.id)
+    .eq('reporter_user_id', ctx.userId)
+    .eq('status', 'new');
+
+  if (error) {
+    throw new Error('Zurückziehen fehlgeschlagen. Bitte erneut versuchen.');
+  }
+  if (!count) {
+    throw new Error(
+      'Diese Meldung kann nicht mehr zurückgezogen werden. Sie wurde bereits bearbeitet.',
+    );
+  }
+
+  revalidatePath('/portal/defects');
+  revalidatePath('/portal/dashboard');
+  redirect('/portal/defects?info=withdrawn');
 }

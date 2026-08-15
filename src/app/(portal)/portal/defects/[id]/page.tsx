@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { WithdrawDefectButton } from './withdraw-defect-button';
 
 export const metadata: Metadata = {
   title: 'Meldung · Bewohner-Portal',
@@ -99,6 +100,25 @@ export default async function PortalDefectDetailPage({
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
             <p className="text-xs font-medium uppercase tracking-wider">Grund der Ablehnung</p>
             <p className="mt-1">{data.rejection_reason}</p>
+          </div>
+        )}
+
+        {/*
+         * Sprint 52: Zurueckziehen nur solange die Hausverwaltung noch nicht
+         * reagiert hat (status='new'). Sobald der Status auf 'reviewing'
+         * wechselt, bleibt die Meldung erhalten — der Bewohner soll die
+         * Verwaltung ueber /portal/messages ansprechen, falls sich etwas
+         * geaendert hat. reporter_user_id ist implizit ctx.userId (Query
+         * oben filtert bereits darauf), keine zusaetzliche Owner-Pruefung
+         * hier noetig.
+         */}
+        {data.status === 'new' && (
+          <div className="mt-2 border-t border-[var(--color-border)] pt-4">
+            <WithdrawDefectButton defectId={data.id} code={data.code} />
+            <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
+              Sie können diese Meldung noch zurückziehen, weil die Hausverwaltung sie
+              noch nicht in Bearbeitung genommen hat.
+            </p>
           </div>
         )}
       </article>

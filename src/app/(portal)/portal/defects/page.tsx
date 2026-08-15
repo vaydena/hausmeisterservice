@@ -30,9 +30,14 @@ const PRIORITY_LABEL: Record<string, string> = {
   emergency: 'Notfall',
 };
 
-export default async function PortalDefectsPage() {
+export default async function PortalDefectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ info?: string }>;
+}) {
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
+  const { info } = await searchParams;
 
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
@@ -60,6 +65,19 @@ export default async function PortalDefectsPage() {
           Neue Meldung
         </Link>
       </div>
+
+      {info === 'withdrawn' && (
+        <div
+          role="status"
+          className="rounded-md border border-[var(--color-success)]/40 bg-[var(--color-success)]/5 p-4 text-sm"
+        >
+          <p className="font-medium">Meldung zurückgezogen.</p>
+          <p className="mt-1 text-[var(--color-muted-foreground)]">
+            Die Meldung wurde vollständig entfernt. Falls Sie den Mangel weiterhin
+            gemeldet wissen möchten, erstellen Sie bitte eine neue Meldung.
+          </p>
+        </div>
+      )}
 
       {defects.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-10 text-center">
