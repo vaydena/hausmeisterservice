@@ -135,7 +135,7 @@ export default async function PortalDefectDetailPage({
     ? (
         await supabase
           .from('work_orders')
-          .select('id, code, status, planned_start, planned_end, closed_at')
+          .select('id, code, status, planned_start, planned_end, closed_at, deadline')
           .eq('id', data.converted_work_order_id)
           .maybeSingle()
       ).data
@@ -391,6 +391,7 @@ function buildTimeline(
     planned_start: string | null;
     planned_end: string | null;
     closed_at: string | null;
+    deadline: string | null;
   } | null,
 ): TimelineStep[] {
   const steps: TimelineStep[] = [
@@ -434,6 +435,15 @@ function buildTimeline(
       workOrder?.planned_end,
     );
     if (planned) parts.push(planned);
+    // Sprint 91: Frist zeigen, wenn Verwaltung eine gesetzt hat und die
+    // Angabe nicht schon durch planned_end abgedeckt ist. Bei nur
+    // planned_start ("Beginn am ...") hat der Bewohner sonst keinen
+    // Endzeitpunkt. Wenn deadline und planned_end beide gesetzt sind,
+    // dominiert planned_end (das ist der zugesagte Termin), deadline
+    // ist verwaltungsintern.
+    if (workOrder?.deadline && !workOrder?.planned_end) {
+      parts.push(`Frist bis ${formatDateOnly(workOrder.deadline)}`);
+    }
     // Sprint 79: Wenn der Auftrag bereits abgeschlossen ist, wechselt der
     // converted-Step in state 'done' und ein Folge-Step "Auftrag
     // abgeschlossen" wird ergaenzt. Der defect-Status bleibt bei der
@@ -493,6 +503,7 @@ function StatusTimeline({
     planned_start: string | null;
     planned_end: string | null;
     closed_at: string | null;
+    deadline: string | null;
   } | null;
 }) {
   const steps = buildTimeline(data, workOrder);
