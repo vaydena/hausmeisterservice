@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, Plus, Tag } from 'lucide-react';
+import { AlertTriangle, Paperclip, Plus, Tag } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -86,6 +86,26 @@ export default async function PortalDefectsPage({
 
   const defects = data ?? [];
 
+  // Sprint 69: Anhang-Zaehler pro Meldung als Signal fuer den Bewohner,
+  // dass hochgeladene Fotos/Dokumente tatsaechlich angekommen sind.
+  // Ein einzelner batch-Fetch reicht — RLS
+  // (documents_select_resident_own_defect aus Sprint 55) filtert bereits
+  // auf reporter_user_id = auth.uid(), daher kein zusaetzlicher WHERE
+  // hier. Gruppieren client-seitig, weil PostgREST kein
+  // count() group by unterstuetzt.
+  const defectIds = defects.map((d) => d.id);
+  const { data: attachmentRows } = defectIds.length
+    ? await supabase
+        .from('documents')
+        .select('entity_id')
+        .eq('entity_type', 'defect_report')
+        .in('entity_id', defectIds)
+    : { data: [] as { entity_id: string }[] };
+  const attachmentCountMap = new Map<string, number>();
+  for (const row of attachmentRows ?? []) {
+    attachmentCountMap.set(row.entity_id, (attachmentCountMap.get(row.entity_id) ?? 0) + 1);
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
@@ -154,6 +174,7 @@ export default async function PortalDefectsPage({
         <ul className="flex flex-col gap-3">
           {defects.map((d) => {
             const isEmergency = d.priority === 'emergency';
+            const attachmentCount = attachmentCountMap.get(d.id) ?? 0;
             return (
               <li key={d.id}>
                 <Link
@@ -186,12 +207,23 @@ export default async function PortalDefectsPage({
                       })}
                       {!isEmergency && ` · Priorität: ${PRIORITY_LABEL[d.priority] ?? d.priority}`}
                     </p>
-                    {d.category && (
-                      <div className="mt-2">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-0.5 text-xs text-[var(--color-muted-foreground)]">
-                          <Tag className="h-3 w-3" aria-hidden />
-                          {d.category}
-                        </span>
+                    {(d.category || attachmentCount > 0) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {d.category && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-0.5 text-xs text-[var(--color-muted-foreground)]">
+                            <Tag className="h-3 w-3" aria-hidden />
+                            {d.category}
+                          </span>
+                        )}
+                        {attachmentCount > 0 && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-0.5 text-xs text-[var(--color-muted-foreground)]"
+                            aria-label={`${attachmentCount} ${attachmentCount === 1 ? 'Anhang' : 'Anhänge'}`}
+                          >
+                            <Paperclip className="h-3 w-3" aria-hidden />
+                            {attachmentCount}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
