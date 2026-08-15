@@ -44,24 +44,37 @@ function formatDate(iso: string | null | undefined): string {
 export default async function PortalAnnouncementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; q?: string }>;
 }) {
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
 
-  const { status: statusParam } = await searchParams;
+  const { status: statusParam, q: qParam } = await searchParams;
   const activeGroup: AnnouncementGroup = isGroup(statusParam) ? statusParam : 'alle';
+
+  // Sprint 73: Text-Suche analog Meldungen-Liste (Sprint 72). Ankuendigungen
+  // wachsen ueber Zeit an — nach ein paar Monaten will der Bewohner z. B.
+  // die Heizungs-Absprache aus dem Winter wiederfinden. Wildcards und
+  // PostgREST-or()-Trenner aus dem Query entfernen; Bewohner-Input soll
+  // keine ILIKE-Wildcards enthalten und den Filter nicht aufbrechen.
+  const searchTerm = (qParam ?? '').trim();
+  const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
 
   const supabase = await createSupabaseServerClient();
 
+  let annQuery = supabase
+    .from('announcements')
+    .select(
+      'id, title, body, published_at, expires_at, requires_acknowledgement, target_type',
+    )
+    .eq('status', 'published')
+    .order('published_at', { ascending: false, nullsFirst: false });
+  if (searchSafe.length > 0) {
+    annQuery = annQuery.or(`title.ilike.%${searchSafe}%,body.ilike.%${searchSafe}%`);
+  }
+
   const [announcementsRes, receiptsRes] = await Promise.all([
-    supabase
-      .from('announcements')
-      .select(
-        'id, title, body, published_at, expires_at, requires_acknowledgement, target_type',
-      )
-      .eq('status', 'published')
-      .order('published_at', { ascending: false, nullsFirst: false }),
+    annQuery,
     supabase
       .from('announcement_receipts')
       .select('announcement_id, read_at, acknowledged_at')
@@ -108,11 +121,41 @@ export default async function PortalAnnouncementsPage({
         )}
       </div>
 
+      <form method="get" action="/portal/announcements" className="flex gap-2" role="search">
+        <input
+          type="search"
+          name="q"
+          defaultValue={searchTerm}
+          placeholder="Nach Titel oder Text suchen"
+          aria-label="Ankündigungen durchsuchen"
+          className="h-9 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none focus:border-[var(--color-primary)]"
+        />
+        {activeGroup !== 'alle' && (
+          <input type="hidden" name="status" value={activeGroup} />
+        )}
+        <button
+          type="submit"
+          className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+        >
+          Suchen
+        </button>
+        {searchTerm.length > 0 && (
+          <Link
+            href={activeGroup === 'alle' ? '/portal/announcements' : `/portal/announcements?status=${activeGroup}`}
+            className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+          >
+            Zurücksetzen
+          </Link>
+        )}
+      </form>
+
       <nav aria-label="Nach Status filtern" className="flex flex-wrap gap-2">
         {GROUP_TABS.map((tab) => {
           const isActive = tab.key === activeGroup;
-          const href =
-            tab.key === 'alle' ? '/portal/announcements' : `/portal/announcements?status=${tab.key}`;
+          const qParamPart = searchTerm.length > 0 ? `q=${encodeURIComponent(searchTerm)}` : '';
+          const statusParamPart = tab.key === 'alle' ? '' : `status=${tab.key}`;
+          const queryString = [statusParamPart, qParamPart].filter(Boolean).join('&');
+          const href = queryString ? `/portal/announcements?${queryString}` : '/portal/announcements';
           return (
             <Link
               key={tab.key}
@@ -132,7 +175,9 @@ export default async function PortalAnnouncementsPage({
 
       {visible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-8 text-center text-sm text-[var(--color-muted-foreground)]">
-          {EMPTY_STATE_TEXT[activeGroup]}
+          {searchTerm.length > 0
+            ? `Keine Ankündigungen gefunden für „${searchTerm}“.`
+            : EMPTY_STATE_TEXT[activeGroup]}
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
