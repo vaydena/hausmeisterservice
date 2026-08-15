@@ -314,9 +314,19 @@ export default async function PortalDefectDetailPage({
           </div>
         )}
 
-        <div className="rounded-lg border border-dashed border-[var(--color-border)] p-4">
-          <PortalDefectUploadForm defectId={data.id} />
-        </div>
+        {/*
+         * Sprint 83: Upload-Formular verstecken, sobald der Auftrag
+         * abgeschlossen ist. Weitere Fotos/Dokumente helfen nach Abschluss
+         * niemandem — die bereits hochgeladenen Belege bleiben oberhalb
+         * sichtbar. Bei laufenden Auftraegen (in_progress, blocked) bleibt
+         * der Upload aktiv, damit der Bewohner z. B. Nachbesserungsbedarf
+         * dokumentieren kann.
+         */}
+        {workOrder?.status !== 'done' && (
+          <div className="rounded-lg border border-dashed border-[var(--color-border)] p-4">
+            <PortalDefectUploadForm defectId={data.id} />
+          </div>
+        )}
 
         {/*
          * Sprint 52: Zurueckziehen nur solange die Hausverwaltung noch nicht
