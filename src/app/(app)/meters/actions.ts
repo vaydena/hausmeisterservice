@@ -5,11 +5,13 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import {
   meterInputSchema,
   meterStatusUpdateSchema,
   readingInputSchema,
 } from '@/lib/schemas/meters';
+import { checkReadingPlacement, describePlacementProblem } from '@/lib/meters/consumption';
 
 export type MeterFormState = {
   error?: string;
@@ -128,6 +130,24 @@ export async function softDeleteMeterAction(formData: FormData): Promise<void> {
   if (!meterId) throw new Error('Zähler fehlt.');
 
   const supabase = await createSupabaseServerClient();
+
+  // Sprint 111: "Nur moeglich, wenn noch keine Ablesungen erfasst wurden"
+  // stand bisher nur im Hinweistext neben dem Knopf — die Regel wurde
+  // ausschliesslich im JSX durchgesetzt (readings.length === 0). Damit hing
+  // sie an derselben Query, die den Verlauf laedt: faellt die aus, erscheint
+  // der Knopf, und der Zaehler mitsamt seiner Ablesehistorie verschwindet aus
+  // allen Listen. Dieselbe Umkehrung wie beim Loeschknopf der Schluessel in
+  // Sprint 110, hier zusaetzlich ohne serverseitige Absicherung.
+  const existingReadings = unwrapRows(
+    await supabase.from('meter_readings').select('id').eq('meter_id', meterId).limit(1),
+    'Zähler entfernen: vorhandene Ablesungen',
+  );
+  if (existingReadings.length > 0) {
+    throw new Error(
+      'Für diesen Zähler sind bereits Ablesungen erfasst. Er kann nicht entfernt werden — bitte stattdessen auf „Inaktiv" oder „Getauscht" setzen.',
+    );
+  }
+
   const { error } = await supabase
     .from('meters')
     .update({ deleted_at: new Date().toISOString(), updated_by: ctx.userId })
@@ -141,7 +161,22 @@ export async function softDeleteMeterAction(formData: FormData): Promise<void> {
 
 /**
  * Neue Ablesung — read_at kommt als lokales datetime-local aus dem Form, wird
- * zu ISO konvertiert. Sanity: reading muss >= letzte Ablesung, außer is_reset.
+ * zu ISO konvertiert.
+ *
+ * Sprint 111, Plausibilitaet: ein Zaehler laeuft nicht rueckwaerts. Diese
+ * Regel stand vorher auf zwei wackligen Beinen.
+ *
+ * Erstens wurde der Vergleichswert ohne Fehlerpruefung gelesen
+ * (`const { data: last } = ...`). supabase-js wirft nicht — bei einer
+ * gescheiterten Query war `last` null und die Bedingung `if (last && ...)`
+ * damit false. Die Pruefung ist also nicht mit einem Fehler abgebrochen,
+ * sondern ausgefallen, und der Wert landete kommentarlos in der Tabelle.
+ *
+ * Zweitens sah sie nur nach hinten. Dass Ablesungen nachgetragen werden, war
+ * eingeplant (`.lte('read_at', readIso)`) — nur eben in eine Richtung. Ein
+ * nachgetragener Stand ueber der bereits erfassten NAECHSTEN Ablesung kam
+ * durch und machte deren Verbrauch negativ. Beide Nachbarn werden jetzt
+ * geprueft, und beide Abfragen laufen durch unwrapMaybeRow.
  */
 export async function addReadingAction(formData: FormData): Promise<void> {
   const ctx = await requireTenantContext();
@@ -159,29 +194,58 @@ export async function addReadingAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: meter, error: meterErr } = await supabase
-    .from('meters')
-    .select('property_id, label')
-    .eq('id', parsed.data.meter_id)
-    .maybeSingle();
-  if (meterErr || !meter) throw new Error('Zähler nicht gefunden.');
+  // Getrennt von "nicht gefunden": eine gescheiterte Query hat den Zähler
+  // nicht widerlegt, sie hat ihn nicht gelesen.
+  const meter = unwrapMaybeRow(
+    await supabase
+      .from('meters')
+      .select('property_id, label, unit_of_measure')
+      .eq('id', parsed.data.meter_id)
+      .maybeSingle(),
+    'Ablesung: Zählerstammdaten',
+  );
+  if (!meter) throw new Error('Zähler nicht gefunden.');
 
   const readIso = new Date(parsed.data.read_at).toISOString();
 
-  if (!parsed.data.is_reset) {
-    const { data: last } = await supabase
+  // Nur die beiden direkten Nachbarn, nicht die ganze Reihe: mit
+  // source 'gateway' ist eine hochfrequente Ablesehistorie vorgesehen, und
+  // dann waere "alles laden und im Speicher sortieren" die falsche Form. Der
+  // Unique-Index auf (meter_id, read_at) traegt den Zugriff.
+  const [previous, next] = await Promise.all([
+    supabase
       .from('meter_readings')
-      .select('reading, read_at')
+      .select('reading, read_at, is_reset')
       .eq('meter_id', parsed.data.meter_id)
-      .lte('read_at', readIso)
+      .lt('read_at', readIso)
       .order('read_at', { ascending: false })
       .limit(1)
-      .maybeSingle();
-    if (last && Number(last.reading) > parsed.data.reading) {
-      throw new Error(
-        `Neuer Stand (${parsed.data.reading}) liegt unter dem letzten (${last.reading}). Bei Zählertausch bitte „Reset" markieren.`,
-      );
-    }
+      .maybeSingle()
+      .then((r) => unwrapMaybeRow(r, 'Ablesung: vorherige Ablesung')),
+    supabase
+      .from('meter_readings')
+      .select('reading, read_at, is_reset')
+      .eq('meter_id', parsed.data.meter_id)
+      .gt('read_at', readIso)
+      .order('read_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+      .then((r) => unwrapMaybeRow(r, 'Ablesung: nachfolgende Ablesung')),
+  ]);
+
+  // Strikt lt/gt statt lte: eine Ablesung auf denselben Zeitpunkt ist keine
+  // Plausibilitaetsfrage, sondern ein Duplikat. Das meldet der Unique-Index
+  // mit einer eigenen, passenderen Meldung.
+  const problem = checkReadingPlacement({
+    reading: parsed.data.reading,
+    isReset: parsed.data.is_reset,
+    previous,
+    next,
+  });
+  if (problem) {
+    throw new Error(
+      describePlacementProblem(problem, parsed.data.reading, meter.unit_of_measure),
+    );
   }
 
   const { error } = await supabase.from('meter_readings').insert({

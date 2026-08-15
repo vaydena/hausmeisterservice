@@ -240,6 +240,43 @@ const KEY_FILES = [
   'src/app/(app)/keys/actions.ts',         // -> Nachfertigung still nicht ausgefuehrt
 ];
 
+/**
+ * Die Zaehlerstaende (Sprint 111).
+ *
+ * Die neunte Folge-Klasse. Wie in 107 endet sie in einer falschen Zahl auf
+ * einer Abrechnung — hier aber nicht, weil eine Summe falsch gebildet wurde,
+ * sondern weil eine SCHUTZREGEL ausgefallen ist und den falschen Wert
+ * ueberhaupt erst hineingelassen hat.
+ *
+ * `addReadingAction` prueft, dass ein Zaehlerstand nicht unter seinem
+ * Vorgaenger liegt. Der Vergleichswert kam aus einer Query ohne
+ * Fehlerpruefung, und die Bedingung lautete `if (last && ...)`. Faellt die
+ * Query aus, ist `last` null — die Pruefung bricht dann nicht mit einem
+ * Fehler ab, sie wird uebersprungen. Ein rueckwaerts laufender Stand landet
+ * kommentarlos in der Tabelle, und die Differenz zweier Zaehlerstaende ist
+ * der Verbrauch in der Betriebskostenabrechnung. Dieselbe Umkehrung wie beim
+ * Km-Stand in Sprint 109, nur teurer.
+ *
+ * Auf der Detailseite haengt an der Ablese-Query ausserdem, ob "Zähler
+ * entfernen" freigeschaltet wird — der Hinweistext daneben lautet "Nur
+ * moeglich, wenn noch keine Ablesungen erfasst wurden". Wie beim Loeschknopf
+ * der Schluessel in Sprint 110 oeffnete ein verschluckter Lesefehler genau
+ * die Schranke, die auf dieser Information sitzt. Die Regel stand
+ * zusaetzlich NUR im JSX; softDeleteMeterAction prueft sie seit diesem
+ * Sprint auch serverseitig.
+ *
+ * Die Listenseite meldete bei einer gescheiterten Query neben jedem Zaehler
+ * "Keine Ablesung" — eine Aussage ueber die eigene Ablesepraxis, nach der
+ * jemand einen zweiten Wert fuer denselben Zeitraum eintraegt.
+ */
+const METER_FILES = [
+  'src/app/(app)/meters/page.tsx',           // -> "Keine Ablesung" an jedem Zaehler
+  'src/app/(app)/meters/[id]/page.tsx',      // -> Stand, Verbrauch und Loeschknopf zugleich
+  'src/app/(app)/meters/[id]/edit/page.tsx', // -> "Zähler existiert nicht"
+  'src/app/(app)/meters/new/page.tsx',       // -> Objektliste leer, Formular nicht absendbar
+  'src/app/(app)/meters/actions.ts',         // -> Plausibilitaetsregel faellt aus
+];
+
 /** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
 const LISTED_FILES = [
   ...GUARD_FILES,
@@ -249,6 +286,7 @@ const LISTED_FILES = [
   ...TIME_TRACKING_FILES,
   ...DEADLINE_FILES,
   ...KEY_FILES,
+  ...METER_FILES,
 ];
 
 function walk(dir: string): string[] {
@@ -344,7 +382,7 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung + Fristen + Schlüssel: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung + Fristen + Schlüssel + Zähler: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
@@ -359,7 +397,7 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung
       expect(
         existsSync(join(process.cwd(), listed)),
         `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES, BILLING_FILES, ` +
-          `TIME_TRACKING_FILES, DEADLINE_FILES bzw. KEY_FILES, ` +
+          `TIME_TRACKING_FILES, DEADLINE_FILES, KEY_FILES bzw. METER_FILES, ` +
           `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
           `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);

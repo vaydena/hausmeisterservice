@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
+import { parseReading } from '@/lib/meters/consumption';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
@@ -30,11 +32,10 @@ export default async function MetersPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: propertiesForFilter } = await supabase
-    .from('properties')
-    .select('id, name')
-    .is('deleted_at', null)
-    .order('name');
+  const propertiesForFilter = unwrapRows(
+    await supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
+    'Zähler: Objektfilter',
+  );
 
   let query = supabase
     .from('meters')
@@ -48,34 +49,42 @@ export default async function MetersPage({
   if (params.utility) query = query.eq('utility_kind', params.utility);
   if (params.status) query = query.eq('status', params.status);
 
-  const { data: meters } = await query;
-  const items = meters ?? [];
+  const items = unwrapRows(await query, 'Zählerstamm');
 
-  // Letzte Ablesung pro Zähler
+  // Letzte Ablesung pro Zähler. Sprint 111: fiel diese Abfrage aus, stand
+  // neben JEDEM Zähler "Keine Ablesung" — eine Aussage über die eigene
+  // Ablesepraxis, nicht über eine Störung. Wer daraufhin nachliest, traegt
+  // einen zweiten Wert für denselben Zeitraum ein.
   const meterIds = items.map((m) => m.id);
   const lastReadingByMeter = new Map<string, { reading: number; read_at: string }>();
   if (meterIds.length > 0) {
-    const { data: readings } = await supabase
-      .from('meter_readings')
-      .select('meter_id, reading, read_at')
-      .in('meter_id', meterIds)
-      .order('read_at', { ascending: false });
-    for (const r of readings ?? []) {
-      if (!lastReadingByMeter.has(r.meter_id)) {
-        lastReadingByMeter.set(r.meter_id, {
-          reading: Number(r.reading),
-          read_at: r.read_at,
-        });
-      }
+    const readings = unwrapRows(
+      await supabase
+        .from('meter_readings')
+        .select('meter_id, reading, read_at')
+        .in('meter_id', meterIds)
+        .order('read_at', { ascending: false }),
+      'Zähler: letzte Ablesungen',
+    );
+    for (const r of readings) {
+      if (lastReadingByMeter.has(r.meter_id)) continue;
+      // NUMERIC kommt als String; ein unlesbarer Wert bleibt weg, statt als
+      // 0 in der Liste zu stehen.
+      const reading = parseReading(r.reading);
+      if (reading === null) continue;
+      lastReadingByMeter.set(r.meter_id, { reading, read_at: r.read_at });
     }
   }
 
   const propertyIds = [...new Set(items.map((m) => m.property_id))];
-  const { data: props } =
+  const props =
     propertyIds.length > 0
-      ? await supabase.from('properties').select('id, name, code').in('id', propertyIds)
-      : { data: [] };
-  const propertyById = new Map((props ?? []).map((p) => [p.id, p]));
+      ? unwrapRows(
+          await supabase.from('properties').select('id, name, code').in('id', propertyIds),
+          'Zähler: Objektnamen',
+        )
+      : [];
+  const propertyById = new Map(props.map((p) => [p.id, p]));
 
   const canCreate = permissions.has('meters.create');
 
@@ -100,9 +109,9 @@ export default async function MetersPage({
         }
       />
 
-      {(propertiesForFilter?.length ?? 0) > 0 && (
+      {propertiesForFilter.length > 0 && (
         <MetersFilter
-          properties={propertiesForFilter ?? []}
+          properties={propertiesForFilter}
           currentPropertyId={params.property_id}
           currentUtility={params.utility}
           currentStatus={params.status}

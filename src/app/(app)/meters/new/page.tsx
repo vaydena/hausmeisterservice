@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { MeterForm } from '../meter-form';
@@ -20,10 +21,26 @@ export default async function NewMeterPage({
   if (!permissions.has('meters.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: properties }, { data: buildings }, { data: units }] = await Promise.all([
-    supabase.from('properties').select('id, name, code').is('deleted_at', null).order('name'),
-    supabase.from('buildings').select('id, property_id, name').order('name'),
-    supabase.from('units').select('id, building_id, property_id, code').order('code'),
+  // Sprint 111: ohne Objektliste ist das Formular nicht absendbar
+  // (property_id ist Pflicht). Ein leeres Select sah aus wie "noch keine
+  // Objekte angelegt" statt nach einer Störung.
+  const [properties, buildings, units] = await Promise.all([
+    supabase
+      .from('properties')
+      .select('id, name, code')
+      .is('deleted_at', null)
+      .order('name')
+      .then((r) => unwrapRows(r, 'Neuer Zähler: Objekte')),
+    supabase
+      .from('buildings')
+      .select('id, property_id, name')
+      .order('name')
+      .then((r) => unwrapRows(r, 'Neuer Zähler: Gebäude')),
+    supabase
+      .from('units')
+      .select('id, building_id, property_id, code')
+      .order('code')
+      .then((r) => unwrapRows(r, 'Neuer Zähler: Einheiten')),
   ]);
 
   return (
@@ -36,9 +53,9 @@ export default async function NewMeterPage({
         action={createMeterAction}
         cancelHref="/meters"
         submitLabel="Zähler anlegen"
-        properties={properties ?? []}
-        buildings={buildings ?? []}
-        units={units ?? []}
+        properties={properties}
+        buildings={buildings}
+        units={units}
         defaultPropertyId={params.property_id}
       />
     </div>

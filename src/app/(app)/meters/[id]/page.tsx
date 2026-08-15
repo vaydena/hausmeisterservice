@@ -3,6 +3,14 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
+import {
+  buildConsumptionChain,
+  describeImplausibleChain,
+  formatDelta,
+  latestConsumptionState,
+  latestEntry,
+} from '@/lib/meters/consumption';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
@@ -23,16 +31,6 @@ import { softDeleteMeterAction } from '../actions';
 
 export const metadata: Metadata = { title: 'Zähler' };
 
-type ReadingRow = {
-  id: string;
-  read_at: string;
-  reading: number;
-  source: string;
-  is_reset: boolean;
-  note: string | null;
-  created_by: string | null;
-};
-
 export default async function MeterDetailPage({
   params,
 }: {
@@ -43,65 +41,74 @@ export default async function MeterDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: meter } = await supabase
-    .from('meters')
-    .select(
-      'id, code, label, meter_number, utility_kind, unit_of_measure, status, property_id, building_id, unit_id, location_note, digits_before, digits_after, installed_at, last_replacement_at, notes, deleted_at, created_at, updated_at',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 111: getrennt von notFound(). Ein verschluckter Lesefehler hat
+  // vorher behauptet, den Zähler gebe es nicht.
+  const meter = unwrapMaybeRow(
+    await supabase
+      .from('meters')
+      .select(
+        'id, code, label, meter_number, utility_kind, unit_of_measure, status, property_id, building_id, unit_id, location_note, digits_before, digits_after, installed_at, last_replacement_at, notes, deleted_at, created_at, updated_at',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Zähler: Stammdaten',
+  );
 
   if (!meter) notFound();
 
-  const [{ data: property }, { data: building }, { data: unit }, { data: readingsRaw }] =
-    await Promise.all([
-      supabase.from('properties').select('id, code, name').eq('id', meter.property_id).maybeSingle(),
-      meter.building_id
-        ? supabase.from('buildings').select('id, name').eq('id', meter.building_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      meter.unit_id
-        ? supabase.from('units').select('id, code').eq('id', meter.unit_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      supabase
-        .from('meter_readings')
-        .select('id, read_at, reading, source, is_reset, note, created_by')
-        .eq('meter_id', id)
-        .order('read_at', { ascending: false }),
-    ]);
+  const [property, building, unit, readingRows] = await Promise.all([
+    supabase
+      .from('properties')
+      .select('id, code, name')
+      .eq('id', meter.property_id)
+      .maybeSingle()
+      .then((r) => unwrapMaybeRow(r, 'Zähler: Objekt')),
+    meter.building_id
+      ? supabase
+          .from('buildings')
+          .select('id, name')
+          .eq('id', meter.building_id)
+          .maybeSingle()
+          .then((r) => unwrapMaybeRow(r, 'Zähler: Gebäude'))
+      : Promise.resolve(null),
+    meter.unit_id
+      ? supabase
+          .from('units')
+          .select('id, code')
+          .eq('id', meter.unit_id)
+          .maybeSingle()
+          .then((r) => unwrapMaybeRow(r, 'Zähler: Einheit'))
+      : Promise.resolve(null),
+    // Diese eine Abfrage traegt auf dieser Seite drei Aussagen: den aktuellen
+    // Stand, den letzten Verbrauch — und ob "Zähler entfernen" freigeschaltet
+    // wird. Ein `?? []` hat alle drei gleichzeitig gekippt, und die dritte in
+    // die gefaehrliche Richtung.
+    supabase
+      .from('meter_readings')
+      .select('id, read_at, reading, source, is_reset, note, created_by')
+      .eq('meter_id', id)
+      .order('read_at', { ascending: false })
+      .then((r) => unwrapRows(r, 'Zähler: Ablesungen')),
+  ]);
 
-  const readings: ReadingRow[] = (readingsRaw ?? []).map((r) => ({
-    ...r,
-    reading: Number(r.reading),
-  }));
+  const chain = buildConsumptionChain(readingRows);
+  const rowById = new Map(readingRows.map((r) => [r.id, r]));
+  // Die Kette rechnet chronologisch, die Tabelle zeigt neueste zuerst.
+  const historyDesc = [...chain].reverse();
+  const currentReading = latestEntry(chain);
+  const consumption = latestConsumptionState(chain);
+  const implausibleNote = describeImplausibleChain(chain);
 
-  // Historie berechnen: für jede Ablesung Δ zur vorherigen (chronologisch)
-  const chronological = [...readings].reverse();
-  const deltaById = new Map<string, number | null>();
-  let previous: number | null = null;
-  for (const r of chronological) {
-    if (previous !== null && !r.is_reset) {
-      deltaById.set(r.id, Number((r.reading - previous).toFixed(4)));
-    } else {
-      deltaById.set(r.id, null);
-    }
-    previous = r.reading;
-  }
-
-  const currentReading = readings[0] ?? null;
-  const lastConsumption = (() => {
-    if (readings.length < 2) return null;
-    const [latest, previousReading] = readings;
-    if (!latest || !previousReading || latest.is_reset) return null;
-    return Number((latest.reading - previousReading.reading).toFixed(4));
-  })();
-
-  const userIds = readings.map((r) => r.created_by).filter((v): v is string => Boolean(v));
+  const userIds = readingRows.map((r) => r.created_by).filter((v): v is string => Boolean(v));
   const uniqueUserIds = [...new Set(userIds)];
-  const { data: users } =
+  const users =
     uniqueUserIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', uniqueUserIds)
-      : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', uniqueUserIds),
+          'Zähler: Namen der Erfasser',
+        )
+      : [];
+  const displayById = new Map(users.map((u) => [u.id, u.display_name]));
 
   const canEdit = permissions.has('meters.edit');
   const canRead = permissions.has('meters.edit'); // meters.edit ist die einzige write-Permission
@@ -158,7 +165,7 @@ export default async function MeterDetailPage({
                       </span>
                     </span>
                     <span className="text-xs text-[var(--color-muted-foreground)]">
-                      Abgelesen {formatDateTime(currentReading.read_at)}
+                      Abgelesen {formatDateTime(currentReading.readAt)}
                     </span>
                   </div>
                 ) : (
@@ -174,28 +181,57 @@ export default async function MeterDetailPage({
                 <CardTitle>Letzter Verbrauch</CardTitle>
               </CardHeader>
               <CardBody>
-                {lastConsumption !== null ? (
+                {consumption.kind === 'value' ? (
                   <div className="flex flex-col gap-1">
-                    <span className="text-3xl font-semibold tabular-nums">
-                      {lastConsumption.toLocaleString('de-DE')}{' '}
+                    <span
+                      className={`text-3xl font-semibold tabular-nums${
+                        consumption.implausible ? ' text-[var(--color-destructive)]' : ''
+                      }`}
+                    >
+                      {consumption.delta.toLocaleString('de-DE')}{' '}
                       <span className="text-lg font-normal text-[var(--color-muted-foreground)]">
                         {meter.unit_of_measure}
                       </span>
                     </span>
+                    {/*
+                      Ein negativer Verbrauch wurde vorher wie jede andere Zahl
+                      ausgegeben. Genau diese Zahl wird in die
+                      Betriebskostenabrechnung uebernommen — sie darf nicht
+                      unkommentiert dastehen.
+                    */}
                     <span className="text-xs text-[var(--color-muted-foreground)]">
-                      Zwischen den letzten beiden Ablesungen
+                      {consumption.implausible
+                        ? 'Negativer Verbrauch — der Zähler kann nicht rückwärts gelaufen sein.'
+                        : 'Zwischen den letzten beiden Ablesungen'}
                     </span>
                   </div>
                 ) : (
                   <p className="text-sm text-[var(--color-muted-foreground)]">
-                    {readings.length < 2
-                      ? 'Zu wenig Daten für Verbrauch.'
-                      : 'Letzte Ablesung war ein Reset.'}
+                    {consumption.kind === 'after_reset'
+                      ? 'Letzte Ablesung war ein Zählertausch.'
+                      : 'Zu wenig Daten für Verbrauch.'}
                   </p>
                 )}
               </CardBody>
             </Card>
           </div>
+
+          {/*
+            Sprint 111: Diese Warnung kann nur Zeilen betreffen, die vor der
+            beidseitigen Plausibilitaetspruefung entstanden sind — neue laesst
+            addReadingAction nicht mehr zu. Sie steht hier trotzdem, weil ein
+            negativer Verbrauch sonst nur als Zahl in der Historie auftaucht
+            und von dort in die Abrechnung wandert.
+          */}
+          {implausibleNote && (
+            <div
+              className="rounded-lg border border-[var(--color-destructive)]/40 bg-[var(--color-destructive)]/10 p-4 text-sm"
+              role="status"
+            >
+              <p className="font-medium">Unplausibler Verbrauch</p>
+              <p className="mt-1 text-[var(--color-muted-foreground)]">{implausibleNote}</p>
+            </div>
+          )}
 
           {canRead && !isReplaced && (
             <Card>
@@ -212,10 +248,10 @@ export default async function MeterDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle>Historie ({readings.length})</CardTitle>
+              <CardTitle>Historie ({chain.length})</CardTitle>
             </CardHeader>
             <CardBody>
-              {readings.length === 0 ? (
+              {chain.length === 0 ? (
                 <p className="text-sm text-[var(--color-muted-foreground)]">
                   Noch keine Ablesungen erfasst.
                 </p>
@@ -232,37 +268,45 @@ export default async function MeterDetailPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {readings.map((r) => {
-                        const delta = deltaById.get(r.id) ?? null;
+                      {historyDesc.map((entry) => {
+                        // Quelle, Notiz und Erfasser stehen nur in der Rohzeile;
+                        // Reihenfolge und Verbrauch kommen aus der Kette.
+                        const row = rowById.get(entry.id);
                         return (
                           <tr
-                            key={r.id}
+                            key={entry.id}
                             className="border-b border-[var(--color-border)] last:border-b-0"
                           >
                             <td className="py-2 pr-3">
-                              {formatDateTime(r.read_at)}
-                              {r.is_reset && (
+                              {formatDateTime(entry.readAt)}
+                              {entry.isReset && (
                                 <Badge tone="warning" className="ml-2">
                                   Reset
                                 </Badge>
                               )}
                             </td>
                             <td className="py-2 pr-3 text-right font-mono tabular-nums">
-                              {r.reading.toLocaleString('de-DE')}
+                              {entry.reading.toLocaleString('de-DE')}
                             </td>
-                            <td className="py-2 pr-3 text-right font-mono tabular-nums text-[var(--color-muted-foreground)]">
-                              {delta !== null ? `+${delta.toLocaleString('de-DE')}` : '—'}
+                            <td
+                              className={`py-2 pr-3 text-right font-mono tabular-nums ${
+                                entry.implausible
+                                  ? 'font-semibold text-[var(--color-destructive)]'
+                                  : 'text-[var(--color-muted-foreground)]'
+                              }`}
+                            >
+                              {entry.delta !== null ? formatDelta(entry.delta) : '—'}
                             </td>
                             <td className="py-2 pr-3 text-[var(--color-muted-foreground)]">
-                              {SOURCE_LABEL[r.source as ReadingSource] ?? r.source}
-                              {r.created_by && (
+                              {row ? SOURCE_LABEL[row.source as ReadingSource] ?? row.source : '—'}
+                              {row?.created_by && (
                                 <div className="text-xs">
-                                  {displayById.get(r.created_by) ?? '(unbekannt)'}
+                                  {displayById.get(row.created_by) ?? '(unbekannt)'}
                                 </div>
                               )}
                             </td>
                             <td className="py-2 text-[var(--color-muted-foreground)]">
-                              {r.note ?? ''}
+                              {row?.note ?? ''}
                             </td>
                           </tr>
                         );
@@ -362,7 +406,13 @@ export default async function MeterDetailPage({
             </Card>
           )}
 
-          {canEdit && !meter.deleted_at && readings.length === 0 && (
+          {/*
+            Die Bedingung steht jetzt auf einer Query, die bei einem Fehler
+            wirft, statt auf einem stillen `?? []`. Dieselbe Regel prueft
+            softDeleteMeterAction zusaetzlich serverseitig — vorher stand sie
+            ausschliesslich hier im JSX.
+          */}
+          {canEdit && !meter.deleted_at && readingRows.length === 0 && (
             <Card>
               <CardBody>
                 <details className="rounded-md">
