@@ -26,15 +26,33 @@ function truncate(text: string, max: number): string {
   return s.slice(0, max - 1).trimEnd() + '…';
 }
 
-export default async function PortalMessagesPage() {
+export default async function PortalMessagesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
 
+  // Sprint 84: Text-Suche im Betreff analog zu Sprint 72 (Meldungen) und
+  // Sprint 73 (Ankuendigungen). Wildcards (%/_) und PostgREST-or()-Trenner
+  // aus dem Query entfernen — Bewohner-Input soll keine ILIKE-Wildcards
+  // enthalten und die Query nicht aufbrechen. Kein Body-Search, weil das
+  // eine zusaetzliche JOIN/DISTINCT-Query erfordern wuerde und Betreff
+  // fuer den Wiederfindungs-Fall meist reicht.
+  const { q: qParam } = await searchParams;
+  const searchTerm = (qParam ?? '').trim();
+  const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
+
   const supabase = await createSupabaseServerClient();
-  const { data: threads } = await supabase
+  let threadsQuery = supabase
     .from('message_threads')
     .select('id, subject, last_message_at')
     .order('last_message_at', { ascending: false });
+  if (searchSafe.length > 0) {
+    threadsQuery = threadsQuery.ilike('subject', `%${searchSafe}%`);
+  }
+  const { data: threads } = await threadsQuery;
 
   const { data: participation } = await supabase
     .from('message_thread_participants')
@@ -100,17 +118,46 @@ export default async function PortalMessagesPage() {
         </Link>
       </div>
 
+      <form method="get" action="/portal/messages" className="flex gap-2" role="search">
+        <input
+          type="search"
+          name="q"
+          defaultValue={searchTerm}
+          placeholder="Nach Betreff suchen"
+          aria-label="Nachrichten durchsuchen"
+          className="h-9 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none focus:border-[var(--color-primary)]"
+        />
+        <button
+          type="submit"
+          className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+        >
+          Suchen
+        </button>
+        {searchTerm.length > 0 && (
+          <Link
+            href="/portal/messages"
+            className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+          >
+            Zurücksetzen
+          </Link>
+        )}
+      </form>
+
       {(threads ?? []).length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-10 text-center">
           <p className="text-sm text-[var(--color-muted-foreground)]">
-            Sie haben noch keine Nachrichten.
+            {searchTerm.length > 0
+              ? `Keine Nachrichten gefunden für „${searchTerm}“.`
+              : 'Sie haben noch keine Nachrichten.'}
           </p>
-          <Link
-            href="/portal/messages/new"
-            className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-muted)]"
-          >
-            Erste Nachricht schreiben
-          </Link>
+          {searchTerm.length === 0 && (
+            <Link
+              href="/portal/messages/new"
+              className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-muted)]"
+            >
+              Erste Nachricht schreiben
+            </Link>
+          )}
         </div>
       ) : (
         <ul className="flex flex-col divide-y divide-[var(--color-border)] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)]">
