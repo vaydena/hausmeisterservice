@@ -9,12 +9,9 @@ export const metadata: Metadata = {
   title: 'Konversation · Bewohner-Portal',
 };
 
-function formatDateTime(iso: string | null | undefined): string {
+function formatTimeOnly(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+  return new Date(iso).toLocaleTimeString('de-DE', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -189,7 +186,7 @@ export default async function PortalMessageThreadPage({
                 >
                   <p className="mb-1 text-xs opacity-75">
                     {isMe ? 'Sie' : displayNameMap.get(m.author_user_id) ?? 'Verwaltung'} ·{' '}
-                    {formatDateTime(m.sent_at)}
+                    {formatTimeOnly(m.sent_at)}
                   </p>
                   <p className="whitespace-pre-wrap">{m.body}</p>
                 </div>
