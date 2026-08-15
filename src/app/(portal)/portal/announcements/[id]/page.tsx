@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
+import { formatRelativeGerman } from '@/lib/schemas/notifications';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { portalAcknowledgeAnnouncementAction } from '../actions';
 
@@ -19,6 +20,18 @@ function formatDate(iso: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+// Sprint 75: Relative Zeit analog Sprint 74 (Meldungen-Detail). Bei
+// juengeren Ankuendigungen hilft "vor 3 Tagen" beim Einordnen. Der
+// Zusatz erscheint nur solange formatRelativeGerman einen relativen
+// Text liefert; ab >7 Tagen wird ohnehin nur das Datum ausgegeben.
+function formatDateWithRelative(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const absolute = formatDate(iso);
+  const relative = formatRelativeGerman(iso);
+  const isRelative = relative === 'gerade eben' || relative.startsWith('vor ');
+  return isRelative ? `${absolute} · ${relative}` : absolute;
 }
 
 export default async function PortalAnnouncementDetailPage({
@@ -95,7 +108,7 @@ export default async function PortalAnnouncementDetailPage({
         <header className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">{a.title}</h1>
           <p className="text-xs text-[var(--color-muted-foreground)]">
-            Veröffentlicht {formatDate(a.published_at)}
+            Veröffentlicht {formatDateWithRelative(a.published_at)}
             {a.expires_at
               ? isExpired
                 ? ` · war gültig bis ${formatDate(a.expires_at)}`
