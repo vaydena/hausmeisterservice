@@ -1,0 +1,79 @@
+'use client';
+
+import { useActionState } from 'react';
+import Link from 'next/link';
+import { createPortalThreadAction, type PortalCreateThreadFormState } from '../actions';
+
+const INITIAL: PortalCreateThreadFormState = {};
+
+export function PortalNewThreadForm() {
+  const [state, formAction, pending] = useActionState(createPortalThreadAction, INITIAL);
+  const err = state.fieldErrors ?? {};
+
+  return (
+    <form action={formAction} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="subject" className="text-sm font-medium">
+          Betreff
+        </label>
+        <input
+          id="subject"
+          name="subject"
+          type="text"
+          required
+          autoFocus
+          maxLength={200}
+          placeholder="Worum geht es?"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+        />
+        {err.subject && (
+          <p role="alert" className="text-xs text-[var(--color-destructive)]">
+            {err.subject}
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="body" className="text-sm font-medium">
+          Nachricht
+        </label>
+        <textarea
+          id="body"
+          name="body"
+          required
+          rows={6}
+          maxLength={4000}
+          placeholder="Ihre Nachricht an die Hausverwaltung …"
+          className="resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 py-2 text-sm outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20"
+        />
+        {err.body && (
+          <p role="alert" className="text-xs text-[var(--color-destructive)]">
+            {err.body}
+          </p>
+        )}
+      </div>
+
+      {state.error && !state.fieldErrors && (
+        <p role="alert" className="text-sm text-[var(--color-destructive)]">
+          {state.error}
+        </p>
+      )}
+
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <Link
+          href="/portal/messages"
+          className="inline-flex h-9 items-center rounded-md px-3 text-sm font-medium text-[var(--color-muted-foreground)] hover:bg-[var(--color-muted)]"
+        >
+          Abbrechen
+        </Link>
+        <button
+          type="submit"
+          disabled={pending}
+          className="inline-flex h-9 items-center rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {pending ? 'Senden …' : 'Nachricht senden'}
+        </button>
+      </div>
+    </form>
+  );
+}

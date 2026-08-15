@@ -217,6 +217,24 @@ const INTENTIONALLY_DEFINER_OUTSIDE_APP_AUTH = new Set<string>([
   //   durch und nimmt p_session_id aus einer Zod-validierten Formular-
   //   Payload; aal2-Guard vorgeschaltet.
   'public.revoke_user_session',
+  // public.create_portal_message_thread:
+  //   Sprint 53. Portal-Bewohner startet einen neuen Message-Thread mit der
+  //   Hausverwaltung. Muss in `public` fuer PostgREST-RPC vom Portal-Server-
+  //   Client (src/app/(portal)/portal/messages/actions.ts createPortalThreadAction).
+  //   SECURITY DEFINER ist noetig, weil (a) die RLS-Policy auf
+  //   message_threads.insert has_permission('messaging.create') verlangt (Bewohner
+  //   haben diese Permission nicht) und (b) die Policy auf
+  //   message_thread_participants.insert erwartet, dass der Caller bereits
+  //   Participant ist — Henne-Ei-Problem beim initialen Anlegen weiterer
+  //   Empfaenger. Sicherheitseigenschaften: v_tenant_id wird aus dem aktiven
+  //   residents-Record des Callers gelesen, nicht aus einem Parameter — kein
+  //   Cross-Tenant-Missbrauch. Empfaenger werden ausschliesslich aus
+  //   memberships im gleichen Tenant gewaehlt, weiter gefiltert auf
+  //   messaging.create-Permission — kein Bewohner-zu-Bewohner-Threading. Kein
+  //   dynamisches SQL, keine caller-abhaengige Interpolation. Execute-Right
+  //   ist an authenticated freigegeben (nicht anon), weil auth.uid() im Body
+  //   die eigentliche Gate ist.
+  'public.create_portal_message_thread',
 ]);
 
 describe('Function security-definer scope coverage', () => {

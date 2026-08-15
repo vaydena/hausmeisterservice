@@ -3753,6 +3753,10 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: number
       }
+      create_portal_message_thread: {
+        Args: { p_body: string; p_subject: string }
+        Returns: string
+      }
       enqueue_notification: {
         Args: {
           p_body?: string

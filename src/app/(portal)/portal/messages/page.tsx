@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { Plus } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -38,18 +39,34 @@ export default async function PortalMessagesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold">Nachrichten</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-          Direkter Kontakt mit Ihrer Hausverwaltung.
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Nachrichten</h1>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Direkter Kontakt mit Ihrer Hausverwaltung.
+          </p>
+        </div>
+        <Link
+          href="/portal/messages/new"
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)] hover:opacity-90"
+        >
+          <Plus className="size-4" aria-hidden />
+          Neue Nachricht
+        </Link>
       </div>
 
       {(threads ?? []).length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-8 text-center text-sm text-[var(--color-muted-foreground)]">
-          Sie haben noch keine Nachrichten. Ihre Hausverwaltung kann neue Konversationen mit Ihnen
-          starten.
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-10 text-center">
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            Sie haben noch keine Nachrichten.
+          </p>
+          <Link
+            href="/portal/messages/new"
+            className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-muted)]"
+          >
+            Erste Nachricht schreiben
+          </Link>
+        </div>
       ) : (
         <ul className="flex flex-col divide-y divide-[var(--color-border)] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)]">
           {(threads ?? []).map((t) => {
