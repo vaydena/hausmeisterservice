@@ -81,9 +81,13 @@ export default async function PortalDefectsPage({
   const activeGroup: StatusGroup = isStatusGroup(statusParam) ? statusParam : 'alle';
   const groupFilter = STATUS_GROUPS[activeGroup];
 
-  // Sprint 72: Text-Suche nach Titel oder Code. RLS filtert bereits
-  // auf reporter_user_id, hier nur zusaetzliche ILIKE-Bedingung. Wildcards
-  // (%/_) und PostgREST-or()-Trennzeichen (,()) aus dem Query entfernen —
+  // Sprint 72 + 86: Text-Suche nach Titel, Code ODER Beschreibung.
+  // Sprint 86 erweitert um description-Match — Bewohner sucht typischerweise
+  // nach dem, was er beschrieben hat ("Wasserschaden am Fensterrahmen"),
+  // und findet dann seine Meldung wieder ohne den exakten Titel zu kennen.
+  // Alle drei Felder liegen auf derselben Tabelle, daher genügt ein
+  // einziger .or()-Ausdruck ohne zusätzlichen Roundtrip. Wildcards (%/_)
+  // und PostgREST-or()-Trennzeichen (,()) aus dem Query entfernen —
   // Bewohner suchen mit normalen Woertern; Sonderzeichen sollen weder
   // als Wildcard funktionieren noch den Filterausdruck aufbrechen.
   const searchTerm = (qParam ?? '').trim();
@@ -99,7 +103,9 @@ export default async function PortalDefectsPage({
     query = query.in('status', groupFilter);
   }
   if (searchSafe.length > 0) {
-    query = query.or(`title.ilike.%${searchSafe}%,code.ilike.%${searchSafe}%`);
+    query = query.or(
+      `title.ilike.%${searchSafe}%,code.ilike.%${searchSafe}%,description.ilike.%${searchSafe}%`,
+    );
   }
   const { data } = await query;
 
@@ -168,7 +174,7 @@ export default async function PortalDefectsPage({
           type="search"
           name="q"
           defaultValue={searchTerm}
-          placeholder="Nach Titel oder Code suchen"
+          placeholder="Nach Titel, Code oder Beschreibung suchen"
           aria-label="Meldungen durchsuchen"
           className="h-9 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none focus:border-[var(--color-primary)]"
         />
