@@ -6,7 +6,7 @@ import { Home, Megaphone, Wrench, MessageSquare, HelpCircle } from 'lucide-react
 
 const ITEMS = [
   { href: '/portal/dashboard', label: 'Übersicht', icon: Home, badgeKey: null },
-  { href: '/portal/announcements', label: 'Ankündigungen', icon: Megaphone, badgeKey: null },
+  { href: '/portal/announcements', label: 'Ankündigungen', icon: Megaphone, badgeKey: 'announcements' },
   { href: '/portal/defects', label: 'Meldungen', icon: Wrench, badgeKey: null },
   { href: '/portal/messages', label: 'Nachrichten', icon: MessageSquare, badgeKey: 'messages' },
   { href: '/portal/hilfe', label: 'Hilfe', icon: HelpCircle, badgeKey: null },

@@ -6,6 +6,7 @@ import { Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-rea
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
 import { loadPortalUnreadThreadsSummary } from '@/lib/portal/unread-messages';
+import { loadPortalUnreadAnnouncementsSummary } from '@/lib/portal/unread-announcements';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { PortalMfaReminderBanner } from './portal-mfa-reminder-banner';
 import { PortalWelcomeOverlay } from './portal-welcome-overlay';
@@ -50,39 +51,43 @@ export default async function PortalDashboardPage() {
     .maybeSingle();
   const showWelcomeOverlay = !onboardingRow?.portal_onboarding_completed_at;
 
-  const [announcementsRes, defectsRes, receiptsRes, threadsSummary] = await Promise.all([
-    supabase
-      .from('announcements')
-      .select('id, title, published_at, requires_acknowledgement, target_type')
-      .eq('status', 'published')
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(5),
-    supabase
-      .from('defect_reports')
-      .select('id, code, title, status, priority, created_at')
-      .eq('reporter_user_id', ctx.userId)
-      .in('status', ['new', 'reviewing'])
-      .order('created_at', { ascending: false })
-      .limit(5),
-    supabase
-      .from('announcement_receipts')
-      .select('announcement_id, read_at, acknowledged_at')
-      .eq('user_id', ctx.userId),
-    // Sprint 46: gemeinsame Zaehlung mit dem Layout-Nav-Badge — der
-    // Helper ist via React cache() dedupliziert.
-    loadPortalUnreadThreadsSummary(ctx.userId),
-  ]);
+  const [announcementsRes, defectsRes, receiptsRes, threadsSummary, announcementsSummary] =
+    await Promise.all([
+      supabase
+        .from('announcements')
+        .select('id, title, published_at, requires_acknowledgement, target_type')
+        .eq('status', 'published')
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(5),
+      supabase
+        .from('defect_reports')
+        .select('id, code, title, status, priority, created_at')
+        .eq('reporter_user_id', ctx.userId)
+        .in('status', ['new', 'reviewing'])
+        .order('created_at', { ascending: false })
+        .limit(5),
+      supabase
+        .from('announcement_receipts')
+        .select('announcement_id, read_at, acknowledged_at')
+        .eq('user_id', ctx.userId),
+      // Sprint 46/47: gemeinsame Zaehlung mit dem Layout-Nav-Badge —
+      // beide Helper sind via React cache() dedupliziert.
+      loadPortalUnreadThreadsSummary(ctx.userId),
+      loadPortalUnreadAnnouncementsSummary(ctx.userId),
+    ]);
 
   const announcements = announcementsRes.data ?? [];
   const defects = defectsRes.data ?? [];
   const receipts = receiptsRes.data ?? [];
   const { totalCount: threadsTotalCount, unreadCount: unreadThreadsCount } = threadsSummary;
+  // Sprint 47: SummaryCard-Zahlen kommen aus dem Helper, damit sie ueber
+  // ALLE Ankuendigungen zaehlen und nicht nur ueber die hier gerenderten
+  // Top-5. Die per-announcement receiptMap-Marker bleiben davon
+  // unberuehrt, weil sie sich weiterhin nur auf die angezeigten Karten
+  // beziehen.
+  const { unreadCount, openAckCount } = announcementsSummary;
 
   const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
-  const unreadCount = announcements.filter((a) => !receiptMap.get(a.id)?.read_at).length;
-  const openAckCount = announcements.filter(
-    (a) => a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at,
-  ).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,7 +115,13 @@ export default async function PortalDashboardPage() {
           href="/portal/announcements"
           label="Ankündigungen"
           value={unreadCount}
-          hint={openAckCount > 0 ? `${openAckCount} noch zu quittieren` : 'alle gelesen'}
+          hint={
+            announcementsSummary.totalCount === 0
+              ? 'keine Ankündigungen'
+              : openAckCount > 0
+                ? `${openAckCount} noch zu quittieren`
+                : 'alle gelesen'
+          }
           icon={<Megaphone className="size-5" aria-hidden />}
           tone={openAckCount > 0 ? 'warning' : 'default'}
         />
