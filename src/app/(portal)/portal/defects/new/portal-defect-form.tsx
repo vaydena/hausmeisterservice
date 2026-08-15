@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
+import { Paperclip } from 'lucide-react';
 import { createPortalDefectAction, type PortalDefectFormState } from '../actions';
 
 const INITIAL: PortalDefectFormState = {};
@@ -12,8 +13,12 @@ const PRIORITY_OPTIONS = [
   { value: 'emergency', label: 'Notfall — sofort erforderlich' },
 ];
 
+const ATTACHMENT_ACCEPT =
+  'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,text/plain,text/csv';
+
 export function PortalDefectForm() {
   const [state, formAction, pending] = useActionState(createPortalDefectAction, INITIAL);
+  const [file, setFile] = useState<File | null>(null);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -62,6 +67,35 @@ export function PortalDefectForm() {
           ))}
         </select>
       </label>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Foto oder Datei (optional)</span>
+        <label
+          htmlFor="portal-defect-new-file"
+          className="inline-flex cursor-pointer items-center gap-2 self-start rounded-md border border-dashed border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-muted)]"
+        >
+          <Paperclip className="h-4 w-4" aria-hidden />
+          <span>{file ? file.name : 'Datei auswählen'}</span>
+        </label>
+        <input
+          id="portal-defect-new-file"
+          type="file"
+          name="file"
+          accept={ATTACHMENT_ACCEPT}
+          className="sr-only"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+        <p className="text-xs text-[var(--color-muted-foreground)]">
+          JPG/PNG/WebP/HEIC oder PDF/Text · max. 25 MB. EXIF-Daten werden vor
+          dem Speichern entfernt. Sie können später weitere Anhänge auf der
+          Meldungs-Detailseite hinzufügen.
+        </p>
+        {state.fieldErrors?.file && (
+          <span className="text-xs text-[var(--color-destructive)]">
+            {state.fieldErrors.file}
+          </span>
+        )}
+      </div>
 
       {state.error && (
         <p role="alert" className="text-sm text-[var(--color-destructive)]">

@@ -87,6 +87,28 @@ export async function createPortalDefectAction(
     return { fieldErrors, error: 'Bitte prüfen Sie die Eingaben.' };
   }
 
+  // Sprint 57: optionale Datei aus dem selben Formular — pre-flight validieren,
+  // bevor die Meldung angelegt wird. So bekommt der User einen sauberen
+  // Fehler, statt einer bereits erstellten Meldung ohne Anhang plus
+  // Fehler-Banner (halbfertiger Zustand nervt mehr als Frust am Formular).
+  const file = formData.get('file');
+  let attachment: File | null = null;
+  if (file instanceof File && file.size > 0) {
+    if (file.size > DOC_MAX_BYTES) {
+      return {
+        error: 'Anhang ist zu groß.',
+        fieldErrors: { file: 'Datei ist zu groß (max. 25 MB).' },
+      };
+    }
+    if (!DOC_ALLOWED_MIME.includes(file.type)) {
+      return {
+        error: 'Anhang-Format nicht erlaubt.',
+        fieldErrors: { file: 'Dateityp wird nicht unterstützt.' },
+      };
+    }
+    attachment = file;
+  }
+
   const supabase = await createSupabaseServerClient();
   const inserted = await supabase
     .from('defect_reports')
@@ -106,16 +128,38 @@ export async function createPortalDefectAction(
       reporter_contact: ctx.email,
       code: '',
     })
-    .select('id')
+    .select('id, property_id')
     .single();
 
   if (inserted.error || !inserted.data) {
     return { error: friendly(inserted.error?.message) };
   }
 
+  let redirectInfo: string | null = null;
+  if (attachment) {
+    try {
+      await uploadDefectAttachment({
+        supabase,
+        tenantId: ctx.tenantId,
+        userId: ctx.userId,
+        defectId: inserted.data.id,
+        propertyId: inserted.data.property_id,
+        file: attachment,
+        caption: null,
+      });
+    } catch {
+      // Meldung existiert bereits, Anhang schlug fehl — der Bewohner soll auf
+      // der Detail-Seite nachreichen koennen. Der Detail-Route zeigt via
+      // ?info=upload-failed einen Warn-Banner.
+      redirectInfo = 'upload-failed';
+    }
+  }
+
   revalidatePath('/portal/defects');
   revalidatePath('/portal/dashboard');
-  redirect(`/portal/defects/${inserted.data.id}`);
+  redirect(
+    `/portal/defects/${inserted.data.id}${redirectInfo ? `?info=${redirectInfo}` : ''}`,
+  );
 }
 
 /**
@@ -172,16 +216,95 @@ export async function withdrawPortalDefectAction(formData: FormData): Promise<vo
 }
 
 /**
+ * Interner Helper: Foto/Datei an eine bestehende defect_report anhaengen.
+ * Enthaelt Ownership-Guard-Vertrauensbereich: der Aufrufer MUSS defectId +
+ * propertyId aus einer bereits RLS-gefilterten Query holen (createPortal-
+ * DefectAction hat gerade selbst inserted, uploadPortalDefectDocumentAction
+ * macht davor einen reporter_user_id-Match). Fehler werfen throw — Aufrufer
+ * entscheidet, ob als form-error zurueckgegeben oder als Redirect-Query.
+ *
+ * EXIF/GPS wird bei Bildern durch sharp re-encode entfernt (analog zum Staff-
+ * Pfad in @/lib/documents/actions.ts). HEIC/HEIF → JPEG, damit Browser sie
+ * direkt anzeigen koennen. Kein Rollback bei documents-Insert-Fehler auf den
+ * Storage-Blob mehr — der Storage-Upload wird explizit revert (remove).
+ */
+async function uploadDefectAttachment(params: {
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  tenantId: string;
+  userId: string;
+  defectId: string;
+  propertyId: string | null;
+  file: File;
+  caption: string | null;
+}): Promise<void> {
+  const { supabase, tenantId, userId, defectId, propertyId, file, caption } = params;
+
+  let buffer: Buffer = Buffer.from(await file.arrayBuffer());
+  let effectiveMime = file.type;
+  let effectiveExt = pickExtension(file.name, file.type);
+
+  if (isImageMime(file.type)) {
+    const img = sharp(buffer, { failOn: 'none' }).rotate();
+    if (file.type === 'image/png') {
+      buffer = await img.png().toBuffer();
+      effectiveMime = 'image/png';
+      effectiveExt = 'png';
+    } else if (file.type === 'image/webp') {
+      buffer = await img.webp({ quality: 88 }).toBuffer();
+      effectiveMime = 'image/webp';
+      effectiveExt = 'webp';
+    } else {
+      buffer = await img.jpeg({ quality: 88 }).toBuffer();
+      effectiveMime = 'image/jpeg';
+      effectiveExt = 'jpg';
+    }
+  }
+
+  const documentId = crypto.randomUUID();
+  const storagePath = buildStoragePath({
+    tenantId,
+    entityType: 'defect_report',
+    entityId: defectId,
+    documentId,
+    ext: effectiveExt,
+  });
+
+  const uploadBlob = new Blob([new Uint8Array(buffer)], { type: effectiveMime });
+  const { error: uploadErr } = await supabase.storage
+    .from(ATTACHMENTS_BUCKET)
+    .upload(storagePath, uploadBlob, { contentType: effectiveMime, upsert: false });
+  if (uploadErr) {
+    throw new Error('Upload fehlgeschlagen. Bitte erneut versuchen.');
+  }
+
+  const { error: insertErr } = await supabase.from('documents').insert({
+    id: documentId,
+    tenant_id: tenantId,
+    entity_type: 'defect_report',
+    entity_id: defectId,
+    property_id: propertyId,
+    kind: inferKind(effectiveMime),
+    storage_path: storagePath,
+    original_filename: file.name.slice(0, 255),
+    mime_type: effectiveMime,
+    byte_size: uploadBlob.size,
+    caption,
+    uploaded_by: userId,
+  });
+
+  if (insertErr) {
+    await supabase.storage.from(ATTACHMENTS_BUCKET).remove([storagePath]);
+    throw new Error('Speichern fehlgeschlagen. Bitte erneut versuchen.');
+  }
+}
+
+/**
  * Sprint 56: Portal-Bewohner haengt Foto oder Datei an eine eigene Meldung an.
  * Ownership-Guard laeuft implizit ueber die documents_insert_resident_own_defect
  * RLS-Policy (WHERE dr.reporter_user_id = auth.uid()); wir laden hier
  * property_id via defect_reports-Select, der ebenfalls RLS-gefiltert ist. Wenn
  * die defect_report nicht dem Bewohner gehoert, sieht er sie nicht → early
  * error mit Rollback.
- *
- * EXIF/GPS wird bei Bildern durch sharp re-encode entfernt (analog zum Staff-
- * Pfad in @/lib/documents/actions.ts). HEIC/HEIF → JPEG, damit Browser sie
- * direkt anzeigen koennen.
  */
 export async function uploadPortalDefectDocumentAction(formData: FormData): Promise<void> {
   const ctx = await requireResidentContext();
@@ -218,63 +341,15 @@ export async function uploadPortalDefectDocumentAction(formData: FormData): Prom
     throw new Error('Meldung nicht gefunden.');
   }
 
-  let buffer: Buffer = Buffer.from(await file.arrayBuffer());
-  let effectiveMime = file.type;
-  let effectiveExt = pickExtension(file.name, file.type);
-
-  if (isImageMime(file.type)) {
-    const img = sharp(buffer, { failOn: 'none' }).rotate();
-    if (file.type === 'image/png') {
-      buffer = await img.png().toBuffer();
-      effectiveMime = 'image/png';
-      effectiveExt = 'png';
-    } else if (file.type === 'image/webp') {
-      buffer = await img.webp({ quality: 88 }).toBuffer();
-      effectiveMime = 'image/webp';
-      effectiveExt = 'webp';
-    } else {
-      buffer = await img.jpeg({ quality: 88 }).toBuffer();
-      effectiveMime = 'image/jpeg';
-      effectiveExt = 'jpg';
-    }
-  }
-
-  const documentId = crypto.randomUUID();
-  const storagePath = buildStoragePath({
+  await uploadDefectAttachment({
+    supabase,
     tenantId: ctx.tenantId,
-    entityType: 'defect_report',
-    entityId: parsed.data.defect_id,
-    documentId,
-    ext: effectiveExt,
-  });
-
-  const uploadBlob = new Blob([new Uint8Array(buffer)], { type: effectiveMime });
-  const { error: uploadErr } = await supabase.storage
-    .from(ATTACHMENTS_BUCKET)
-    .upload(storagePath, uploadBlob, { contentType: effectiveMime, upsert: false });
-  if (uploadErr) {
-    throw new Error('Upload fehlgeschlagen. Bitte erneut versuchen.');
-  }
-
-  const { error: insertErr } = await supabase.from('documents').insert({
-    id: documentId,
-    tenant_id: ctx.tenantId,
-    entity_type: 'defect_report',
-    entity_id: parsed.data.defect_id,
-    property_id: defect.property_id,
-    kind: inferKind(effectiveMime),
-    storage_path: storagePath,
-    original_filename: file.name.slice(0, 255),
-    mime_type: effectiveMime,
-    byte_size: uploadBlob.size,
+    userId: ctx.userId,
+    defectId: defect.id,
+    propertyId: defect.property_id,
+    file,
     caption: parsed.data.caption,
-    uploaded_by: ctx.userId,
   });
-
-  if (insertErr) {
-    await supabase.storage.from(ATTACHMENTS_BUCKET).remove([storagePath]);
-    throw new Error('Speichern fehlgeschlagen. Bitte erneut versuchen.');
-  }
 
   revalidatePath(`/portal/defects/${parsed.data.defect_id}`);
 }

@@ -37,13 +37,16 @@ function formatDateTime(iso: string | null | undefined): string {
 
 export default async function PortalDefectDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ info?: string }>;
 }) {
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
 
   const { id } = await params;
+  const { info } = await searchParams;
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase
     .from('defect_reports')
@@ -87,6 +90,19 @@ export default async function PortalDefectDetailPage({
           ← zurück zu meinen Meldungen
         </Link>
       </div>
+
+      {info === 'upload-failed' && (
+        <div
+          role="alert"
+          className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+          <p className="font-medium">Meldung erstellt, Anhang konnte nicht gespeichert werden.</p>
+          <p className="mt-1">
+            Die Meldung wurde übernommen, aber die Datei hat es nicht in die
+            Ablage geschafft. Sie können den Anhang unten erneut hochladen.
+          </p>
+        </div>
+      )}
 
       <article className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-6">
         <header className="flex flex-col gap-1">
