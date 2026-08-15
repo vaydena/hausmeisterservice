@@ -1,5 +1,6 @@
 import 'server-only';
 import type { User } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/nextjs';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
 
@@ -55,20 +56,56 @@ export async function ensureTenantForUser(
 
   // Plan-Vorauswahl aus Signup nachziehen — provision_signup_tenant setzt nur
   // die Kern-Felder, das SaaS-Modell hängt dran.
+  //
+  // Sprint 104: Hier wird bewusst NICHT geworfen, anders als in der uebrigen
+  // Guard-Schicht. Der Tenant ist an dieser Stelle bereits angelegt; eine
+  // Exception wuerde dem Kunden eine Fehlerseite zeigen, obwohl sein Konto
+  // erfolgreich entstanden ist. Schlimmer noch: beim naechsten Versuch
+  // liefert die RPC `created: false`, dieser Block wird uebersprungen — die
+  // Planwahl waere dann dauerhaft verloren UND der Kunde haette einen Fehler
+  // gesehen. Ohne Plan landet er dagegen im Trial und kann den Tarif unter
+  // Einstellungen→Abo selbst waehlen; das ist reparierbar.
+  //
+  // Sichtbar muss es trotzdem werden, denn der Kunde hat einen Tarif
+  // ausgewaehlt und bekommt still einen anderen. console.error reicht dafuer
+  // nicht: Sentry haengt nur an unbehandelten Exceptions, geloggte Zeilen
+  // landen ausschliesslich im Server-Log, das niemand liest. Deshalb
+  // captureException — Meldung ohne Abbruch.
   if (created && planCode && result?.tenant_id) {
-    const { data: plan } = await createPlatformServiceClient()
+    const { data: plan, error: planError } = await createPlatformServiceClient()
       .from('subscription_plans')
       .select('id')
       .eq('code', planCode)
       .maybeSingle();
-    if (plan) {
-      await service
+
+    if (planError) {
+      Sentry.captureException(
+        new Error(`Signup: Tarif "${planCode}" konnte nicht aufgeloest werden: ${planError.message}`),
+        { extra: { tenantId: result.tenant_id, planCode, planInterval } },
+      );
+    } else if (!plan) {
+      // Kein Fehler, aber auch kein Treffer: der im Signup mitgegebene
+      // Plan-Code existiert nicht (mehr). Das ist ein Datenfehler in der
+      // Plan-Tabelle bzw. im Signup-Formular und faellt sonst niemandem auf.
+      Sentry.captureException(
+        new Error(`Signup: Tarif "${planCode}" existiert nicht in subscription_plans`),
+        { extra: { tenantId: result.tenant_id, planCode } },
+      );
+    } else {
+      const { error: updateError } = await service
         .from('tenants')
         .update({
           subscription_plan_id: plan.id,
           subscription_interval: planInterval,
         })
         .eq('id', result.tenant_id);
+
+      if (updateError) {
+        Sentry.captureException(
+          new Error(`Signup: Tarif konnte dem Mandanten nicht zugewiesen werden: ${updateError.message}`),
+          { extra: { tenantId: result.tenant_id, planCode, planInterval } },
+        );
+      }
     }
   }
 

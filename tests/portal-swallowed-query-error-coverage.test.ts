@@ -15,19 +15,48 @@ import { join, relative } from 'node:path';
  * besonders teuer: der Bewohner liest "Sie haben keine Nachrichten" und
  * glaubt, seine Verwaltung habe sich nicht gemeldet.
  *
- * Der Test deckt bewusst NUR das Bewohner-Portal ab (src/app/(portal) und
- * src/lib/portal). Der Staff-Bereich nutzt dasselbe Muster an ueber 200
- * Stellen; das in einem Sprint umzustellen waere eine Blindueberholung des
- * halben Codebestands. Das Portal ist der Bereich, der den Bug produziert
- * hat, der seit Sprint 102 tatsaechlich mit einem Login gegengeprueft wird
- * und dessen Leser keinen Support-Kanal haben, um nachzufragen. Die
- * Ausweitung auf (app) ist ein eigener Scope — siehe README/Backlog, nicht
- * ein stiller Anhang an diesen Test.
+ * Abgedeckt sind das Bewohner-Portal (src/app/(portal), src/lib/portal) und
+ * die Guard-Schicht (GUARD_FILES, siehe unten). Der restliche Staff-Bereich
+ * nutzt dasselbe Muster an rund 240 Stellen; das in einem Sprint umzustellen
+ * waere eine Blindueberholung des halben Codebestands. Die Ausweitung auf
+ * (app) ist ein eigener Scope — siehe README/Backlog, nicht ein stiller
+ * Anhang an diesen Test.
+ *
+ * Bekannte Luecke der Detektoren: verschachtelte Destrukturierung der Form
+ * `const { data: { user } } = await ...` wird von DESTRUCTURE_STATEMENT
+ * nicht erfasst, weil das Muster nicht ueber die innere `}` hinweg matcht.
+ * In der Praxis ist das ausschliesslich `supabase.auth.getUser()`, das
+ * ohnehin auf der Ausnahmeliste steht — aber es ist eine Luecke und keine
+ * Garantie.
  */
 
 const PORTAL_DIRS = [
   join(process.cwd(), 'src', 'app', '(portal)'),
   join(process.cwd(), 'src', 'lib', 'portal'),
+];
+
+/**
+ * Die Guard-Schicht (Sprint 104).
+ *
+ * Diese Dateien sind einzeln aufgefuehrt statt ueber ein Verzeichnis
+ * eingesammelt, weil sie sich nicht durch ihren Ort auszeichnen, sondern
+ * durch ihre Wirkung: sie beantworten keine Datenfrage, sondern eine
+ * Berechtigungsfrage. Ein verschluckter Fehler wird hier nicht zu einer
+ * leeren Liste, sondern zu einer falschen Antwort — "kein Zugang", "keine
+ * Rechte", "Abo gesperrt", "bitte upgraden". Alle scheitern fail-closed und
+ * alle schieben die Schuld auf den Kunden statt auf die Stoerung.
+ *
+ * Die Liste wird unten auf Existenz geprueft: wird eine Datei umbenannt oder
+ * verschoben, faellt der Test auf, statt die Abdeckung still zu verlieren.
+ */
+const GUARD_FILES = [
+  'src/lib/tenant/current.ts',            // -> /no-access
+  'src/lib/tenant/subscription-guard.ts', // -> /zahlung-erforderlich
+  'src/lib/tenant/features.ts',           // -> /settings/subscription?upgrade=
+  'src/lib/permissions/effective.ts',     // -> leeres Rechte-Set
+  'src/lib/modules/enabled.ts',           // -> Navigation ohne Zusatzmodule
+  'src/lib/platform/require-admin.ts',    // -> /no-access
+  'src/lib/auth/ensure-tenant.ts',        // -> Tarifwahl geht still verloren
 ];
 
 function walk(dir: string): string[] {
@@ -41,12 +70,16 @@ function walk(dir: string): string[] {
   return out;
 }
 
-interface PortalFile {
+interface ScannedFile {
   file: string;
   source: string;
 }
 
-const PORTAL_FILES: PortalFile[] = PORTAL_DIRS.flatMap(walk)
+const SCANNED_FILES: ScannedFile[] = [
+  ...PORTAL_DIRS.flatMap(walk),
+  ...GUARD_FILES.map((f) => join(process.cwd(), f)),
+]
+  .filter((abs) => existsSync(abs))
   .map((abs) => ({
     file: relative(process.cwd(), abs).replace(/\\/g, '/'),
     source: readFileSync(abs, 'utf8'),
@@ -119,10 +152,24 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
-      expect(PORTAL_FILES.length).toBeGreaterThan(20);
+      expect(SCANNED_FILES.length).toBeGreaterThan(20);
+    });
+
+    it.each(GUARD_FILES)('Guard-Datei existiert noch: %s', (guard) => {
+      // Ohne diese Pruefung wuerde ein Umbenennen oder Verschieben die
+      // Abdeckung dieser Datei still entfernen: SCANNED_FILES filtert
+      // nicht-existente Pfade heraus, und ein Test, der nichts scannt,
+      // ist gruen. Die Guard-Schicht ist genau die Stelle, an der
+      // stiller Erfolg am teuersten ist.
+      expect(
+        existsSync(join(process.cwd(), guard)),
+        `${guard} steht in GUARD_FILES, existiert aber nicht (mehr). Pfad in der ` +
+          `Liste korrigieren — oder wenn der Guard wirklich weg ist, den Eintrag ` +
+          `mitsamt Begruendung entfernen.`,
+      ).toBe(true);
     });
 
     it('erkennt beide Fehlmuster in einem Negativbeispiel', () => {
@@ -164,7 +211,7 @@ describe('Portal: keine verschluckten Query-Fehler', () => {
   });
 
   describe('kein `.data ?? []` / `.count ?? 0` auf einem Query-Result', () => {
-    for (const f of PORTAL_FILES) {
+    for (const f of SCANNED_FILES) {
       it(`${f.file}`, () => {
         const hits = findEmptyFallbacks(f.source);
         expect(
@@ -178,7 +225,7 @@ describe('Portal: keine verschluckten Query-Fehler', () => {
   });
 
   describe('kein `const { data }` ohne `error`', () => {
-    for (const f of PORTAL_FILES) {
+    for (const f of SCANNED_FILES) {
       it(`${f.file}`, () => {
         const hits = findBareDestructures(f.source);
         expect(

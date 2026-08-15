@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export interface PlatformAdminContext {
   userId: string;
@@ -20,19 +21,26 @@ export const getPlatformAdminContext = cache(async (): Promise<PlatformAdminCont
   if (!user) return null;
 
   const service = createSupabaseServiceClient();
-  const { data: admin } = await createPlatformServiceClient()
-    .from('admins')
-    .select('user_id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  // Sprint 104: `null` bedeutet hier "kein Plattform-Admin" und fuehrt in
+  // requirePlatformAdmin() direkt zu /no-access. Bei verschlucktem Fehler
+  // war der Betreiber also aus seiner eigenen Verwaltungsoberflaeche
+  // ausgesperrt — und zwar mit einer Begruendung, die auf ein
+  // Rechteproblem zeigt statt auf die Stoerung, die es wirklich war.
+  const admin = unwrapMaybeRow(
+    await createPlatformServiceClient()
+      .from('admins')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    'Plattform-Admin: Berechtigung',
+  );
 
   if (!admin) return null;
 
-  const { data: profile } = await service
-    .from('users')
-    .select('display_name')
-    .eq('id', user.id)
-    .maybeSingle();
+  const profile = unwrapMaybeRow(
+    await service.from('users').select('display_name').eq('id', user.id).maybeSingle(),
+    'Plattform-Admin: Anzeigename',
+  );
 
   return {
     userId: user.id,

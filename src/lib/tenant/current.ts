@@ -2,6 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export interface TenantContext {
   userId: string;
@@ -27,22 +28,32 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: membership } = await supabase
-    .from('memberships')
-    .select('id, tenant_id, is_owner')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // Sprint 104: Von allen Staff-Queries ist das die folgenreichste — das
+  // Gegenstueck zu getResidentContext() im Portal. `null` heisst hier
+  // "dieser User gehoert zu keinem Mandanten", und requireTenantContext()
+  // bzw. das App-Layout schicken ihn daraufhin auf /no-access. Solange der
+  // Fehler verschluckt wurde, hat also jede Stoerung an dieser einen Query
+  // einem zahlenden Kunden mitgeteilt, er habe keinen Zugang zu seiner
+  // eigenen Firma. unwrapMaybeRow trennt die beiden Faelle: kein Treffer
+  // liefert weiterhin null, ein Query-Fehler wirft.
+  const membership = unwrapMaybeRow(
+    await supabase
+      .from('memberships')
+      .select('id, tenant_id, is_owner')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    'Tenant-Kontext: Membership',
+  );
 
   if (!membership) return null;
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('display_name')
-    .eq('id', user.id)
-    .maybeSingle();
+  const profile = unwrapMaybeRow(
+    await supabase.from('users').select('display_name').eq('id', user.id).maybeSingle(),
+    'Tenant-Kontext: Anzeigename',
+  );
 
   return {
     userId: user.id,

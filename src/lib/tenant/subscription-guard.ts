@@ -1,5 +1,6 @@
 import 'server-only';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export type SubscriptionAccess =
   | { access: 'allowed' }
@@ -13,11 +14,21 @@ export type SubscriptionAccess =
  */
 export async function evaluateSubscriptionAccess(tenantId: string): Promise<SubscriptionAccess> {
   const service = createSupabaseServiceClient();
-  const { data: tenant } = await service
-    .from('tenants')
-    .select('subscription_status, trial_ends_at, current_period_end')
-    .eq('id', tenantId)
-    .maybeSingle();
+  // Sprint 104: Der teuerste verschluckte Fehler im ganzen Projekt. `!tenant`
+  // fuehrt zu `blocked/suspended`, und das App-Layout schickt den Kunden
+  // daraufhin auf /zahlung-erforderlich. Ein Timeout auf dieser Query hat
+  // einem bezahlenden Mandanten also gemeldet, sein Konto sei gesperrt — und
+  // ihn gleichzeitig aus der gesamten Anwendung ausgesperrt, weil die
+  // Sperrseite nur noch Abo und Logout durchlaesst. Jetzt bleibt `suspended`
+  // dem echten Fall vorbehalten, dass es die Tenant-Zeile nicht gibt.
+  const tenant = unwrapMaybeRow(
+    await service
+      .from('tenants')
+      .select('subscription_status, trial_ends_at, current_period_end')
+      .eq('id', tenantId)
+      .maybeSingle(),
+    'Abo-Status des Mandanten',
+  );
   if (!tenant) return { access: 'blocked', reason: 'suspended' };
 
   const now = Date.now();
