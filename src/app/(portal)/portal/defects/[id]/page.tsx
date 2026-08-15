@@ -135,7 +135,7 @@ export default async function PortalDefectDetailPage({
     ? (
         await supabase
           .from('work_orders')
-          .select('id, code, status, planned_start, planned_end')
+          .select('id, code, status, planned_start, planned_end, closed_at')
           .eq('id', data.converted_work_order_id)
           .maybeSingle()
       ).data
@@ -352,8 +352,10 @@ function buildTimeline(
   },
   workOrder: {
     code: string | null;
+    status: string | null;
     planned_start: string | null;
     planned_end: string | null;
+    closed_at: string | null;
   } | null,
 ): TimelineStep[] {
   const steps: TimelineStep[] = [
@@ -397,13 +399,29 @@ function buildTimeline(
       workOrder?.planned_end,
     );
     if (planned) parts.push(planned);
+    // Sprint 79: Wenn der Auftrag bereits abgeschlossen ist, wechselt der
+    // converted-Step in state 'done' und ein Folge-Step "Auftrag
+    // abgeschlossen" wird ergaenzt. Der defect-Status bleibt bei der
+    // Verwaltung oft weiterhin 'converted' bis er manuell geschlossen wird
+    // — der Bewohner soll trotzdem sofort sehen, dass die Arbeiten fertig
+    // sind. closed_at kann NULL sein, wenn der Auftrag nur ueber Status
+    // gesetzt wurde ohne Trigger — dann bleibt es beim active-State.
+    const isDone = workOrder?.status === 'done';
     steps.push({
       key: 'converted',
       label: 'In Bearbeitung als Auftrag',
       timestamp: data.updated_at,
       detail: parts.length > 0 ? parts.join(' · ') : null,
-      state: 'active',
+      state: isDone ? 'done' : 'active',
     });
+    if (isDone) {
+      steps.push({
+        key: 'work_order_done',
+        label: 'Auftrag abgeschlossen',
+        timestamp: workOrder?.closed_at ?? null,
+        state: 'done',
+      });
+    }
   } else if (data.status === 'rejected') {
     steps.push({
       key: 'rejected',
@@ -436,8 +454,10 @@ function StatusTimeline({
   };
   workOrder: {
     code: string | null;
+    status: string | null;
     planned_start: string | null;
     planned_end: string | null;
+    closed_at: string | null;
   } | null;
 }) {
   const steps = buildTimeline(data, workOrder);
