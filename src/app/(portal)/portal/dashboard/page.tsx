@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
 import { loadPortalUnreadThreadsSummary } from '@/lib/portal/unread-messages';
@@ -19,6 +19,16 @@ const PORTAL_MFA_REMINDER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const metadata: Metadata = {
   title: 'Bewohner-Portal',
+};
+
+// Sprint 64: Konsistent mit /portal/defects — der Bewohner sieht auf dem
+// Dashboard denselben Status-Wortlaut wie in der Liste und erkennt
+// Notfaelle sofort am Badge.
+const STATUS_LABEL: Record<string, string> = {
+  new: 'Neu eingereicht',
+  reviewing: 'In Prüfung',
+  converted: 'In Bearbeitung',
+  rejected: 'Abgelehnt',
 };
 
 export default async function PortalDashboardPage() {
@@ -217,25 +227,37 @@ export default async function PortalDashboardPage() {
             </div>
           ) : (
             <ul className="flex flex-col divide-y divide-[var(--color-border)]">
-              {defects.map((d) => (
-                <li key={d.id} className="py-2.5">
-                  <Link
-                    href={`/portal/defects/${d.id}`}
-                    className="flex items-center justify-between gap-3 rounded-md hover:bg-[var(--color-muted)] -m-1 p-1"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{d.title}</p>
-                      <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
-                        {d.code ?? '—'} · Status: {d.status}
-                      </p>
-                    </div>
-                    <ChevronRight
-                      className="size-4 text-[var(--color-muted-foreground)]"
-                      aria-hidden
-                    />
-                  </Link>
-                </li>
-              ))}
+              {defects.map((d) => {
+                const isEmergency = d.priority === 'emergency';
+                const statusLabel = STATUS_LABEL[d.status] ?? d.status;
+                return (
+                  <li key={d.id} className="py-2.5">
+                    <Link
+                      href={`/portal/defects/${d.id}`}
+                      className="flex items-center justify-between gap-3 rounded-md hover:bg-[var(--color-muted)] -m-1 p-1"
+                    >
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isEmergency && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950 dark:text-red-200">
+                              <AlertTriangle className="h-3 w-3" aria-hidden />
+                              Notfall
+                            </span>
+                          )}
+                          <span className="text-sm font-medium">{d.title}</span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
+                          {d.code ?? '—'} · {statusLabel}
+                        </p>
+                      </div>
+                      <ChevronRight
+                        className="size-4 text-[var(--color-muted-foreground)]"
+                        aria-hidden
+                      />
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Panel>
