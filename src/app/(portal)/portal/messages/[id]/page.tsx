@@ -148,7 +148,7 @@ export default async function PortalMessageThreadPage({
       </ul>
 
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4">
-        <PortalReplyForm threadId={id} />
+        <PortalReplyForm threadId={id} hasRecipients={staffRecipients.length > 0} />
       </div>
     </div>
   );
