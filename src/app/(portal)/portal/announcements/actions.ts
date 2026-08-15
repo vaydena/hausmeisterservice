@@ -9,27 +9,6 @@ const idSchema = z.object({
   id: z.string().uuid('Ungültige Ankündigungs-ID.'),
 });
 
-export async function portalMarkAnnouncementReadAction(formData: FormData): Promise<void> {
-  const ctx = await requireResidentContext();
-  const parsed = idSchema.safeParse({ id: formData.get('id') });
-  if (!parsed.success) throw new Error('Ungültige Ankündigungs-ID.');
-
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.from('announcement_receipts').upsert(
-    {
-      announcement_id: parsed.data.id,
-      user_id: ctx.userId,
-      read_at: new Date().toISOString(),
-    },
-    { onConflict: 'announcement_id,user_id', ignoreDuplicates: false },
-  );
-  if (error) throw new Error(error.message);
-
-  revalidatePath('/portal/announcements');
-  revalidatePath(`/portal/announcements/${parsed.data.id}`);
-  revalidatePath('/portal/dashboard');
-}
-
 export async function portalAcknowledgeAnnouncementAction(formData: FormData): Promise<void> {
   const ctx = await requireResidentContext();
   const parsed = idSchema.safeParse({ id: formData.get('id') });

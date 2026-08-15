@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { markPortalThreadReadAction } from '../actions';
 import { PortalReplyForm } from './portal-reply-form';
 
 export const metadata: Metadata = {
@@ -116,10 +115,6 @@ export default async function PortalMessageThreadPage({
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4">
         <PortalReplyForm threadId={id} />
       </div>
-
-      <form action={markPortalThreadReadAction} className="hidden">
-        <input type="hidden" name="thread_id" value={id} />
-      </form>
     </div>
   );
 }

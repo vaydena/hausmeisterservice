@@ -3,10 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import {
-  portalAcknowledgeAnnouncementAction,
-  portalMarkAnnouncementReadAction,
-} from '../actions';
+import { portalAcknowledgeAnnouncementAction } from '../actions';
 
 export const metadata: Metadata = {
   title: 'Ankündigung · Bewohner-Portal',
@@ -53,7 +50,26 @@ export default async function PortalAnnouncementDetailPage({
   if (!annRes.data) notFound();
   const a = annRes.data;
   const r = receiptRes.data;
-  const isUnread = !r?.read_at;
+
+  // Sprint 51: Auto-Mark-Read analog zum Messages-Detail-Page. Der
+  // vorherige "Als gelesen markieren"-Button hat einen Klick verlangt,
+  // damit die Bell/Dashboard-Zaehler sinken — was viele Bewohner nicht
+  // taten. Beim Server-Render setzen wir read_at jetzt implizit auf jetzt,
+  // wenn noch kein Wert vorhanden ist. Die Ack-Semantik bleibt strikt
+  // getrennt (weiterhin expliziter Button-Klick).
+  const nowIso = new Date().toISOString();
+  const readAt = r?.read_at ?? nowIso;
+  if (!r?.read_at) {
+    await supabase.from('announcement_receipts').upsert(
+      {
+        announcement_id: id,
+        user_id: ctx.userId,
+        read_at: nowIso,
+      },
+      { onConflict: 'announcement_id,user_id', ignoreDuplicates: false },
+    );
+  }
+
   const needsAck = a.requires_acknowledgement && !r?.acknowledged_at;
 
   return (
@@ -78,17 +94,6 @@ export default async function PortalAnnouncementDetailPage({
         <div className="whitespace-pre-wrap text-sm leading-relaxed">{a.body}</div>
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          {isUnread && (
-            <form action={portalMarkAnnouncementReadAction}>
-              <input type="hidden" name="id" value={a.id} />
-              <button
-                type="submit"
-                className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
-              >
-                Als gelesen markieren
-              </button>
-            </form>
-          )}
           {needsAck && (
             <form action={portalAcknowledgeAnnouncementAction}>
               <input type="hidden" name="id" value={a.id} />
@@ -100,12 +105,10 @@ export default async function PortalAnnouncementDetailPage({
               </button>
             </form>
           )}
-          {!isUnread && (
-            <p className="text-xs text-[var(--color-muted-foreground)]">
-              Gelesen am {formatDate(r?.read_at)}
-              {r?.acknowledged_at ? ` · quittiert am ${formatDate(r.acknowledged_at)}` : ''}
-            </p>
-          )}
+          <p className="text-xs text-[var(--color-muted-foreground)]">
+            Gelesen am {formatDate(readAt)}
+            {r?.acknowledged_at ? ` · quittiert am ${formatDate(r.acknowledged_at)}` : ''}
+          </p>
         </div>
       </article>
     </div>

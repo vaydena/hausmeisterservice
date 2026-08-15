@@ -45,18 +45,3 @@ export async function postPortalMessageAction(
   return {};
 }
 
-export async function markPortalThreadReadAction(formData: FormData): Promise<void> {
-  const ctx = await requireResidentContext();
-  const threadId = formData.get('thread_id');
-  if (typeof threadId !== 'string' || threadId.length === 0) return;
-
-  const supabase = await createSupabaseServerClient();
-  await supabase
-    .from('message_thread_participants')
-    .update({ last_read_at: new Date().toISOString() })
-    .eq('thread_id', threadId)
-    .eq('user_id', ctx.userId);
-
-  revalidatePath('/portal/messages');
-  revalidatePath(`/portal/messages/${threadId}`);
-}
