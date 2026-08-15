@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { sanitizeLikeTerm } from '@/lib/utils/search';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -37,8 +38,11 @@ export default async function ToursPage({
   if (params.status) query = query.eq('status', params.status);
   if (params.from) query = query.gte('planned_date', params.from);
   if (params.to) query = query.lte('planned_date', params.to);
-  if (params.q && params.q.trim().length > 0) {
-    query = query.ilike('title', `%${params.q.trim()}%`);
+  // Sprint 98: siehe materials/page.tsx — LIKE-Wildcards entfernen und den
+  // Guard auf dem sanitisierten Term ziehen.
+  const tourSearch = sanitizeLikeTerm(params.q);
+  if (tourSearch.length > 0) {
+    query = query.ilike('title', `%${tourSearch}%`);
   }
 
   const { data: toursRaw } = await query;

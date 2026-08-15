@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -41,9 +42,16 @@ export default async function VehiclesPage({
 
   if (params.type) query = query.eq('vehicle_type', params.type);
   if (params.status) query = query.eq('status', params.status);
-  if (params.q && params.q.trim().length > 0) {
-    const t = params.q.trim();
-    query = query.or(`license_plate.ilike.%${t}%,make.ilike.%${t}%,model.ilike.%${t}%`);
+  // Sprint 98: q ging bis hierher ungefiltert in den .or()-Ausdruck. Ein
+  // Komma im Suchbegriff haengte damit einen zusaetzlichen OR-Zweig an —
+  // die Mandantengrenze haelt (RLS), die beabsichtigte Einschraenkung
+  // dagegen nicht. Laenge auf dem sanitisierten Term pruefen, sonst bliebe
+  // bei q="%%" ein ilike.%% stehen, das jede Zeile matcht.
+  const vehicleSearch = sanitizeOrFilterTerm(params.q);
+  if (vehicleSearch.length > 0) {
+    query = query.or(
+      `license_plate.ilike.%${vehicleSearch}%,make.ilike.%${vehicleSearch}%,model.ilike.%${vehicleSearch}%`,
+    );
   }
 
   const { data: vehiclesRaw } = await query;

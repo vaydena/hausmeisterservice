@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 
 export const metadata: Metadata = {
   title: 'Nachrichten · Bewohner-Portal',
@@ -38,12 +39,14 @@ export default async function PortalMessagesPage({
   // messages.body per ILIKE durchsuchen (RLS begrenzt auf sichtbare
   // Threads), daraus distinct thread_ids sammeln, dann in der Haupt-Query
   // per .or() sowohl Betreff-ILike als auch matching thread-ids
-  // beruecksichtigen. Wildcards (%/_) und PostgREST-or()-Trenner (,())
-  // aus dem Query entfernen — Bewohner-Input soll keine ILIKE-Wildcards
-  // enthalten und die Query-Struktur nicht aufbrechen koennen.
+  // beruecksichtigen. Sprint 98: Entschaerfung ueber lib/utils/search.
+  // Auch der reine ilike()-Zweig unten bekommt den sanitisierten Term —
+  // sonst wirkte ein getipptes % dort still als Wildcard, waehrend es im
+  // or()-Zweig entfernt wird, und dieselbe Suche haette je nach
+  // Body-Treffer zwei verschiedene Bedeutungen.
   const { q: qParam } = await searchParams;
   const searchTerm = (qParam ?? '').trim();
-  const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
+  const searchSafe = sanitizeOrFilterTerm(searchTerm);
 
   const supabase = await createSupabaseServerClient();
 

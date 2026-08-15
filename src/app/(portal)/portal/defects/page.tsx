@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { AlertTriangle, Paperclip, Plus, Tag } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 
 export const metadata: Metadata = {
   title: 'Meldungen · Bewohner-Portal',
@@ -86,12 +87,12 @@ export default async function PortalDefectsPage({
   // nach dem, was er beschrieben hat ("Wasserschaden am Fensterrahmen"),
   // und findet dann seine Meldung wieder ohne den exakten Titel zu kennen.
   // Alle drei Felder liegen auf derselben Tabelle, daher genügt ein
-  // einziger .or()-Ausdruck ohne zusätzlichen Roundtrip. Wildcards (%/_)
-  // und PostgREST-or()-Trennzeichen (,()) aus dem Query entfernen —
-  // Bewohner suchen mit normalen Woertern; Sonderzeichen sollen weder
-  // als Wildcard funktionieren noch den Filterausdruck aufbrechen.
+  // einziger .or()-Ausdruck ohne zusätzlichen Roundtrip. Sprint 98: die
+  // Entschaerfung des Begriffs liegt jetzt in lib/utils/search — searchTerm
+  // bleibt roh, weil er dem Bewohner im Suchfeld und im Leer-Zustand
+  // wieder angezeigt wird.
   const searchTerm = (qParam ?? '').trim();
-  const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
+  const searchSafe = sanitizeOrFilterTerm(searchTerm);
 
   const supabase = await createSupabaseServerClient();
   let query = supabase

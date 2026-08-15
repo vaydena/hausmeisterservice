@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { sanitizeLikeTerm } from '@/lib/utils/search';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,8 +40,12 @@ export default async function MaterialsPage({
 
   if (params.category) query = query.eq('category', params.category);
   if (params.status) query = query.eq('status', params.status);
-  if (params.q && params.q.trim().length > 0) {
-    query = query.ilike('label', `%${params.q.trim()}%`);
+  // Sprint 98: LIKE-Wildcards aus dem Suchbegriff nehmen — ein getipptes %
+  // wirkte hier sonst als Muster statt als Zeichen. Guard auf dem
+  // sanitisierten Term, damit q="%" nicht als ilike.%% durchrutscht.
+  const materialSearch = sanitizeLikeTerm(params.q);
+  if (materialSearch.length > 0) {
+    query = query.ilike('label', `%${materialSearch}%`);
   }
 
   const { data: materialsRaw } = await query;

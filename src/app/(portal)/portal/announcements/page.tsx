@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 import { markAllPortalAnnouncementsReadAction } from './actions';
 
 export const metadata: Metadata = {
@@ -54,11 +55,10 @@ export default async function PortalAnnouncementsPage({
 
   // Sprint 73: Text-Suche analog Meldungen-Liste (Sprint 72). Ankuendigungen
   // wachsen ueber Zeit an — nach ein paar Monaten will der Bewohner z. B.
-  // die Heizungs-Absprache aus dem Winter wiederfinden. Wildcards und
-  // PostgREST-or()-Trenner aus dem Query entfernen; Bewohner-Input soll
-  // keine ILIKE-Wildcards enthalten und den Filter nicht aufbrechen.
+  // die Heizungs-Absprache aus dem Winter wiederfinden. Sprint 98:
+  // Entschaerfung ueber lib/utils/search.
   const searchTerm = (qParam ?? '').trim();
-  const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
+  const searchSafe = sanitizeOrFilterTerm(searchTerm);
 
   const supabase = await createSupabaseServerClient();
 
