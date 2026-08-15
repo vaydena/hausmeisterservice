@@ -49,7 +49,7 @@ export default async function PortalAnnouncementDetailPage({
     supabase
       .from('announcements')
       .select(
-        'id, title, body, published_at, expires_at, requires_acknowledgement, status',
+        'id, title, body, published_at, expires_at, requires_acknowledgement, status, target_type, target_property_id',
       )
       .eq('id', id)
       .maybeSingle(),
@@ -64,6 +64,23 @@ export default async function PortalAnnouncementDetailPage({
   if (!annRes.data) notFound();
   const a = annRes.data;
   const r = receiptRes.data;
+
+  // Sprint 95: Zielgruppen-Info fuer den Bewohner. Bei 'property' zusaetzlich
+  // den Objekt-Namen aufloesen — Bewohner sieht so, warum ihn diese
+  // Ankuendigung betrifft (globaler Aushang vs. objektbezogen). 'role'/'users'
+  // filtert die RLS ohnehin heraus, daher sind das im Portal effektiv tote
+  // Zweige — Fallback laesst sie leer.
+  let audienceLabel: string | null = null;
+  if (a.target_type === 'all' || a.target_type === 'residents') {
+    audienceLabel = 'Für alle Bewohner';
+  } else if (a.target_type === 'property' && a.target_property_id) {
+    const { data: prop } = await supabase
+      .from('properties')
+      .select('name')
+      .eq('id', a.target_property_id)
+      .maybeSingle();
+    audienceLabel = prop?.name ? `Für alle Bewohner von ${prop.name}` : 'Für alle Bewohner Ihres Objekts';
+  }
 
   // Sprint 51: Auto-Mark-Read analog zum Messages-Detail-Page. Der
   // vorherige "Als gelesen markieren"-Button hat einen Klick verlangt,
@@ -115,6 +132,9 @@ export default async function PortalAnnouncementDetailPage({
                 : ` · gültig bis ${formatDate(a.expires_at)}`
               : ''}
           </p>
+          {audienceLabel && (
+            <p className="text-xs text-[var(--color-muted-foreground)]">{audienceLabel}</p>
+          )}
         </header>
         {isExpired && (
           <div
