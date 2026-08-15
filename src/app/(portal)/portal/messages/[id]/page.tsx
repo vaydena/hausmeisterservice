@@ -69,6 +69,17 @@ export default async function PortalMessageThreadPage({
     .eq('thread_id', id)
     .eq('user_id', ctx.userId);
 
+  // Sprint 54: DSGVO-Transparenz. Bewohner soll sehen, welche Mitarbeitenden
+  // seine Nachrichten mitlesen koennen. Der Bewohner selbst wird nicht in
+  // der Liste gefuehrt — die aktuelle Datenlage kennt nur 1-Bewohner-je-
+  // Thread (Threads werden immer von einem einzelnen Bewohner via RPC
+  // eroeffnet), daher ist "alle Participants ausser ctx.userId" ein
+  // hinreichender Filter fuer "Empfaenger auf Staff-Seite".
+  const staffRecipients = participants
+    .map((p) => p.user_id)
+    .filter((uid) => uid !== ctx.userId)
+    .map((uid) => displayNameMap.get(uid) ?? 'Unbekannt');
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -79,6 +90,30 @@ export default async function PortalMessageThreadPage({
           ← alle Nachrichten
         </Link>
         <h1 className="mt-2 text-xl font-semibold">{threadRes.data.subject}</h1>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4 text-sm">
+        <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          Sichtbar für
+        </p>
+        {staffRecipients.length === 0 ? (
+          <p className="mt-1 text-[var(--color-muted-foreground)]">
+            Zurzeit sind keine Mitarbeitenden Ihrer Hausverwaltung diesem Thread
+            zugeordnet. Neue Nachrichten koennen erst gelesen werden, wenn die
+            Hausverwaltung jemanden hinzufuegt.
+          </p>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {staffRecipients.map((name, i) => (
+              <span
+                key={`${name}-${i}`}
+                className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-0.5 text-xs"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <ul className="flex flex-col gap-3">
