@@ -6,6 +6,7 @@ import { loadPortalUnreadAnnouncementsSummary } from '@/lib/portal/unread-announ
 import { clientEnv } from '@/lib/env';
 import { PortalUserMenu } from './_components/portal-user-menu';
 import { PortalNav } from './_components/portal-nav';
+import { PortalNotificationBell } from './_components/portal-notification-bell';
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const ctx = await getResidentContext();
@@ -30,10 +31,13 @@ export default async function PortalLayout({ children }: { children: ReactNode }
           <span>{clientEnv.NEXT_PUBLIC_APP_NAME} — Bewohner-Portal</span>
         </Link>
         {ctx && (
-          <PortalUserMenu
-            displayName={ctx.preferredDisplayName ?? ctx.displayName}
-            email={ctx.email}
-          />
+          <div className="flex items-center gap-1">
+            <PortalNotificationBell userId={ctx.userId} />
+            <PortalUserMenu
+              displayName={ctx.preferredDisplayName ?? ctx.displayName}
+              email={ctx.email}
+            />
+          </div>
         )}
       </header>
 
