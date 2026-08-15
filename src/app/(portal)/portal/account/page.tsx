@@ -6,6 +6,7 @@ import { getResidentContext } from '@/lib/portal/current';
 import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import { parseUserSessions } from '@/lib/auth/user-sessions';
 import { ChangePortalEmailForm } from './change-email-form';
+import { PortalChangeDisplayNameForm } from './change-display-name-form';
 import { ChangePortalPasswordForm } from './change-password-form';
 import { LoginEventsList } from '@/app/(app)/settings/account/login-events-list';
 import { PortalMfaForm } from './mfa-form';
@@ -135,7 +136,7 @@ export default async function PortalAccountPage({
             Angemeldet als
           </h2>
           <p className="mt-1 text-sm">
-            <span className="font-medium">{ctx.displayName}</span>
+            <span className="font-medium">{ctx.preferredDisplayName ?? ctx.displayName}</span>
             {ctx.email && (
               <span className="text-[var(--color-muted-foreground)]"> · {ctx.email}</span>
             )}
@@ -147,6 +148,23 @@ export default async function PortalAccountPage({
             </p>
           )}
         </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Anzeigename
+          </h2>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Der Name, unter dem Sie im Bewohner-Portal angezeigt werden. Ihr
+            Vertragsname aus dem Mietvertrag bleibt unveraendert und wird
+            weiterhin in Meldungen an die Hausverwaltung uebernommen.
+          </p>
+        </div>
+        <PortalChangeDisplayNameForm
+          currentPreferredDisplayName={ctx.preferredDisplayName}
+          contractName={ctx.displayName}
+        />
       </section>
 
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">

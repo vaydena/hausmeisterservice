@@ -18,7 +18,10 @@ export default async function PortalLayout({ children }: { children: ReactNode }
           <span>{clientEnv.NEXT_PUBLIC_APP_NAME} — Bewohner-Portal</span>
         </Link>
         {ctx && (
-          <PortalUserMenu displayName={ctx.displayName} email={ctx.email} />
+          <PortalUserMenu
+            displayName={ctx.preferredDisplayName ?? ctx.displayName}
+            email={ctx.email}
+          />
         )}
       </header>
 

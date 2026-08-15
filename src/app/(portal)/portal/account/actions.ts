@@ -6,6 +6,7 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { requireResidentContext } from '@/lib/portal/current';
 import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-limit';
 import { changePasswordSchema } from '@/lib/auth/change-password-schema';
+import { changeDisplayNameSchema } from '@/lib/auth/change-display-name-schema';
 import { changeEmailSchema } from '@/lib/auth/change-email-schema';
 import { revokeSessionSchema } from '@/lib/auth/revoke-session-schema';
 import { clientEnv } from '@/lib/env';
@@ -103,6 +104,59 @@ export async function changePortalEmailAction(
     success:
       'Bestaetigungs-Mail an die neue Adresse gesendet. Falls "Secure email change" aktiv ist, muessen Sie zusaetzlich den Link in der Mail an Ihre bisherige Adresse anklicken. Die Aenderung wird erst nach Bestaetigung wirksam.',
   };
+}
+
+/**
+ * Sprint 44: Portal-Anzeigename aendern. Semantisch identisch zur Staff-
+ * Action (changeDisplayNameAction, Sprint 23): schreibt users.display_name
+ * ueber den anon+cookie Server-Client — die RLS-Policy users_update_self
+ * (id = auth.uid()) erlaubt jedem eingeloggten User das Update seiner
+ * eigenen Profilzeile, unabhaengig von Tenant-Membership.
+ *
+ * Fuer Bewohner ist users.display_name durch den auth.users-Trigger
+ * initial mit der E-Mail belegt (siehe app_auth.handle_new_auth_user).
+ * Sobald der User etwas anderes eintraegt, uebersteuert der Wert in
+ * cosmetic UIs (PortalUserMenu, /portal/account-Header) den
+ * Vertragsnamen aus residents.first_name + last_name. Audit-Kontexte
+ * (defect_reports.reporter_name etc.) verwenden weiter den Vertrags-
+ * namen aus ctx.displayName und bleiben unveraendert.
+ *
+ * Kein aal2-Guard und kein Rate-Limit: Anzeigename ist kein Angriffs-
+ * vektor fuer Account-Uebernahme (im Gegensatz zu Passwort/E-Mail).
+ */
+export async function changePortalDisplayNameAction(
+  _prev: PortalAccountActionState,
+  formData: FormData,
+): Promise<PortalAccountActionState> {
+  const ctx = await requireResidentContext();
+
+  const parsed = changeDisplayNameSchema.safeParse({
+    displayName: formData.get('displayName'),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Ungueltige Eingaben.' };
+  }
+
+  if (parsed.data.displayName === ctx.preferredDisplayName) {
+    return { success: 'Anzeigename ist bereits aktuell.' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('users')
+    .update({ display_name: parsed.data.displayName })
+    .eq('id', ctx.userId);
+  if (error) {
+    return { error: 'Anzeigename konnte nicht gespeichert werden. Bitte spaeter erneut.' };
+  }
+
+  // ResidentContext ist per Request gecacht — Portal-Layout, User-Menu
+  // und Konto-Seite ziehen den neuen Namen erst nach einer Revalidierung.
+  // '/portal' laeuft ueber alle Portal-Server-Routen und ist billiger
+  // als das gesamte Root-Layout zu invalidieren.
+  revalidatePath('/portal', 'layout');
+
+  return { success: 'Anzeigename aktualisiert.' };
 }
 
 /**
