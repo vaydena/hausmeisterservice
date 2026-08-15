@@ -59,9 +59,14 @@ export default async function PortalDashboardPage() {
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
         .limit(5),
+      // Sprint 48: count: 'exact' liefert die Gesamtzahl passender
+      // Zeilen zusaetzlich zum limitierten data-Array. Ohne diesen
+      // Zusatz zaehlte die SummaryCard nur die hier angezeigten Top-5
+      // (analog zum Bug, den Sprint 45 fuer Nachrichten und Sprint 47
+      // fuer Ankuendigungen behoben haben).
       supabase
         .from('defect_reports')
-        .select('id, code, title, status, priority, created_at')
+        .select('id, code, title, status, priority, created_at', { count: 'exact' })
         .eq('reporter_user_id', ctx.userId)
         .in('status', ['new', 'reviewing'])
         .order('created_at', { ascending: false })
@@ -78,6 +83,7 @@ export default async function PortalDashboardPage() {
 
   const announcements = announcementsRes.data ?? [];
   const defects = defectsRes.data ?? [];
+  const defectsTotalCount = defectsRes.count ?? 0;
   const receipts = receiptsRes.data ?? [];
   const { totalCount: threadsTotalCount, unreadCount: unreadThreadsCount } = threadsSummary;
   // Sprint 47: SummaryCard-Zahlen kommen aus dem Helper, damit sie ueber
@@ -128,8 +134,8 @@ export default async function PortalDashboardPage() {
         <SummaryCard
           href="/portal/defects"
           label="Offene Meldungen"
-          value={defects.length}
-          hint={defects.length === 0 ? 'keine offenen' : 'Bearbeitung läuft'}
+          value={defectsTotalCount}
+          hint={defectsTotalCount === 0 ? 'keine offenen' : 'Bearbeitung läuft'}
           icon={<Wrench className="size-5" aria-hidden />}
           tone="default"
         />
