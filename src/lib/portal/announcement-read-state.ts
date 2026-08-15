@@ -67,3 +67,51 @@ export function needsAcknowledgement(
   if (!requiresAcknowledgement) return false;
   return !receipt?.acknowledged_at;
 }
+
+export interface AnnouncementLike {
+  id: string;
+  requires_acknowledgement?: boolean | null;
+}
+
+export interface AnnouncementGroupCounts {
+  alle: number;
+  ungelesen: number;
+  zu_quittieren: number;
+}
+
+/**
+ * Sprint 102: Zaehlt die Ankuendigungen je Filter-Tab.
+ *
+ * Nutzt dieselben beiden Praedikate wie der Tab-Filter selbst — die Zahl
+ * am Tab ist damit per Konstruktion die Zeilenzahl dahinter und kann
+ * nicht davon abdriften.
+ *
+ * Erwartet genau die Liste, die der Tab-Wechsel spaeter filtert (also die
+ * bereits suchgefilterte, aber noch nicht gruppierte). Der Unterschied ist
+ * nicht akademisch: der "Alle als gelesen"-Button auf derselben Seite
+ * leitete seine Sichtbarkeit bis Sprint 101 aus der gefilterten Liste ab,
+ * waehrend die Aktion dahinter ueber alle veroeffentlichten
+ * Ankuendigungen lief — Anzeige und Wirkung fielen auseinander, sobald
+ * eine Suche aktiv war. Ein Zaehler, der ueber eine andere Menge laeuft
+ * als sein Tab, waere derselbe Fehler noch einmal.
+ */
+export function countAnnouncementGroups(
+  announcements: readonly AnnouncementLike[],
+  receipts: ReadonlyMap<string, AnnouncementReceiptLike>,
+): AnnouncementGroupCounts {
+  const counts: AnnouncementGroupCounts = {
+    alle: announcements.length,
+    ungelesen: 0,
+    zu_quittieren: 0,
+  };
+
+  for (const announcement of announcements) {
+    const receipt = receipts.get(announcement.id);
+    if (isAnnouncementUnread(receipt)) counts.ungelesen += 1;
+    if (needsAcknowledgement(announcement.requires_acknowledgement, receipt)) {
+      counts.zu_quittieren += 1;
+    }
+  }
+
+  return counts;
+}

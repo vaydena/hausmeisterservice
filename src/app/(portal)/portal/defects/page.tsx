@@ -3,6 +3,13 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Paperclip, Plus, Tag } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
+import {
+  DEFECT_STATUS_GROUPS,
+  DEFECT_STATUS_GROUP_KEYS,
+  countDefectGroups,
+  isDefectStatusGroup,
+  type DefectStatusGroup,
+} from '@/lib/portal/defect-status-groups';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 
@@ -39,32 +46,21 @@ const PRIORITY_LABEL: Record<string, string> = {
   emergency: 'Notfall',
 };
 
-// Sprint 63: Bewohner-orientierte Statusgruppen. 'offen' fasst
-// unbeantwortete Meldungen zusammen (aus Bewohnersicht "wartet auf
-// Reaktion"), 'in_bearbeitung' entspricht status='converted' (Auftrag
-// wurde erstellt), 'abgelehnt' ist rejected. 'alle' zeigt jede eigene
-// Meldung unabhaengig vom Status.
-const STATUS_GROUPS = {
-  alle: null,
-  offen: ['new', 'reviewing'],
-  in_bearbeitung: ['converted'],
-  abgelehnt: ['rejected'],
-} satisfies Record<string, string[] | null>;
+// Sprint 63 hat die bewohner-orientierten Statusgruppen eingefuehrt,
+// Sprint 102 die Zuordnung nach lib/portal/defect-status-groups.ts
+// gezogen: der Query-Filter unten und die Tab-Zaehler muessen dieselbe
+// Tabelle lesen, sonst verspricht ein Tab eine Zahl, die nach dem Klick
+// nicht mehr stimmt. Hier bleiben die Beschriftungen — als Record ueber
+// die Gruppe, damit eine spaeter ergaenzte Gruppe ohne Label und ohne
+// Leer-Text gar nicht erst kompiliert.
+const GROUP_LABELS: Record<DefectStatusGroup, string> = {
+  alle: 'Alle',
+  offen: 'Offen',
+  in_bearbeitung: 'In Bearbeitung',
+  abgelehnt: 'Abgelehnt',
+};
 
-type StatusGroup = keyof typeof STATUS_GROUPS;
-
-const GROUP_TABS: { key: StatusGroup; label: string }[] = [
-  { key: 'alle', label: 'Alle' },
-  { key: 'offen', label: 'Offen' },
-  { key: 'in_bearbeitung', label: 'In Bearbeitung' },
-  { key: 'abgelehnt', label: 'Abgelehnt' },
-];
-
-function isStatusGroup(v: string | undefined): v is StatusGroup {
-  return v === 'alle' || v === 'offen' || v === 'in_bearbeitung' || v === 'abgelehnt';
-}
-
-const EMPTY_STATE_TEXT: Record<StatusGroup, string> = {
+const EMPTY_STATE_TEXT: Record<DefectStatusGroup, string> = {
   alle: 'Sie haben bisher keine Mängel gemeldet.',
   offen: 'Aktuell warten keine Meldungen auf eine Reaktion der Hausverwaltung.',
   in_bearbeitung: 'Keine Meldungen in Bearbeitung.',
@@ -79,8 +75,8 @@ export default async function PortalDefectsPage({
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
   const { info, status: statusParam, q: qParam } = await searchParams;
-  const activeGroup: StatusGroup = isStatusGroup(statusParam) ? statusParam : 'alle';
-  const groupFilter = STATUS_GROUPS[activeGroup];
+  const activeGroup: DefectStatusGroup = isDefectStatusGroup(statusParam) ? statusParam : 'alle';
+  const groupFilter = DEFECT_STATUS_GROUPS[activeGroup];
 
   // Sprint 72 + 86: Text-Suche nach Titel, Code ODER Beschreibung.
   // Sprint 86 erweitert um description-Match — Bewohner sucht typischerweise
@@ -94,6 +90,11 @@ export default async function PortalDefectsPage({
   const searchTerm = (qParam ?? '').trim();
   const searchSafe = sanitizeOrFilterTerm(searchTerm);
 
+  // Ein Ausdruck fuer beide Queries: die Zaehler-Query unten muss exakt
+  // dasselbe suchen wie die Listen-Query, sonst zaehlt sie eine andere
+  // Menge als der Tab dann laedt.
+  const searchOrExpr = `title.ilike.%${searchSafe}%,code.ilike.%${searchSafe}%,description.ilike.%${searchSafe}%`;
+
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from('defect_reports')
@@ -104,13 +105,29 @@ export default async function PortalDefectsPage({
     query = query.in('status', groupFilter);
   }
   if (searchSafe.length > 0) {
-    query = query.or(
-      `title.ilike.%${searchSafe}%,code.ilike.%${searchSafe}%,description.ilike.%${searchSafe}%`,
-    );
+    query = query.or(searchOrExpr);
   }
-  const { data } = await query;
+
+  // Sprint 102: Zahlen an den Tabs. Anders als bei Ankuendigungen und
+  // Nachrichten laesst sich das hier nicht aus der geladenen Liste
+  // ableiten — der Status-Filter sitzt in der Query, die Liste enthaelt
+  // also nur die aktive Gruppe. Deshalb eine zweite Query mit denselben
+  // Praedikaten *ausser* dem Status, die nur die Status-Spalte holt. Das
+  // kostet einen Roundtrip; die Alternative waere, den Status-Filter
+  // client-seitig zu machen und dafuer immer alle Zeilen mit allen
+  // Spalten zu laden.
+  let countQuery = supabase
+    .from('defect_reports')
+    .select('status')
+    .eq('reporter_user_id', ctx.userId);
+  if (searchSafe.length > 0) {
+    countQuery = countQuery.or(searchOrExpr);
+  }
+
+  const [{ data }, { data: statusRows }] = await Promise.all([query, countQuery]);
 
   const defects = data ?? [];
+  const counts = countDefectGroups((statusRows ?? []).map((row) => row.status));
 
   // Sprint 69: Anhang-Zaehler pro Meldung als Signal fuer den Bewohner,
   // dass hochgeladene Fotos/Dokumente tatsaechlich angekommen sind.
@@ -199,18 +216,18 @@ export default async function PortalDefectsPage({
       </form>
 
       <nav aria-label="Nach Status filtern" className="flex flex-wrap gap-2">
-        {GROUP_TABS.map((tab) => {
-          const isActive = tab.key === activeGroup;
+        {DEFECT_STATUS_GROUP_KEYS.map((key) => {
+          const isActive = key === activeGroup;
           // Sprint 72: q bleibt beim Statuswechsel erhalten — wer nach
           // "Wasser" sucht und dann zu "Offen" wechselt, verliert seinen
           // Suchbegriff sonst und muss neu tippen.
           const qParamPart = searchTerm.length > 0 ? `q=${encodeURIComponent(searchTerm)}` : '';
-          const statusParamPart = tab.key === 'alle' ? '' : `status=${tab.key}`;
+          const statusParamPart = key === 'alle' ? '' : `status=${key}`;
           const queryString = [statusParamPart, qParamPart].filter(Boolean).join('&');
           const href = queryString ? `/portal/defects?${queryString}` : '/portal/defects';
           return (
             <Link
-              key={tab.key}
+              key={key}
               href={href}
               aria-current={isActive ? 'page' : undefined}
               className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition ${
@@ -219,7 +236,14 @@ export default async function PortalDefectsPage({
                   : 'border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-foreground)] hover:bg-[var(--color-muted)]'
               }`}
             >
-              {tab.label}
+              {GROUP_LABELS[key]}
+              <span
+                className={`ml-1.5 tabular-nums ${
+                  isActive ? 'opacity-70' : 'text-[var(--color-muted-foreground)]'
+                }`}
+              >
+                {counts[key]}
+              </span>
             </Link>
           );
         })}

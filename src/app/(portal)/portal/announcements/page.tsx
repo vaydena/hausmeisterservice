@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import {
+  countAnnouncementGroups,
   isAnnouncementUnread,
   needsAcknowledgement,
 } from '@/lib/portal/announcement-read-state';
@@ -93,6 +94,13 @@ export default async function PortalAnnouncementsPage({
   const announcements = announcementsRes.data ?? [];
   const receipts = receiptsRes.data ?? [];
   const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
+
+  // Sprint 102: Zahlen an den Tabs. Gezaehlt wird ueber `announcements` —
+  // also ueber genau die Menge, die der Tab-Wechsel danach filtert, samt
+  // aktivem Suchbegriff. Waeren es die globalen Zahlen aus dem
+  // Summary-Helper (der den Nav-Badge speist), stuende bei aktiver Suche
+  // eine 3 an einem Tab, der dann eine Zeile zeigt.
+  const counts = countAnnouncementGroups(announcements, receiptMap);
 
   const visible = announcements.filter((a) => {
     if (activeGroup === 'alle') return true;
@@ -200,6 +208,13 @@ export default async function PortalAnnouncementsPage({
               }`}
             >
               {tab.label}
+              <span
+                className={`ml-1.5 tabular-nums ${
+                  isActive ? 'opacity-70' : 'text-[var(--color-muted-foreground)]'
+                }`}
+              >
+                {counts[tab.key]}
+              </span>
             </Link>
           );
         })}

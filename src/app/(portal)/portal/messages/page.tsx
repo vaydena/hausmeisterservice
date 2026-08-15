@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
-import { isThreadUnread } from '@/lib/portal/thread-read-state';
+import { countThreadGroups, isThreadUnread } from '@/lib/portal/thread-read-state';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 
@@ -121,6 +121,13 @@ export default async function PortalMessagesPage({
     activeGroup === 'ungelesen' ? isThreadUnread(t.last_message_at, readMap.get(t.id)) : true,
   );
 
+  // Sprint 102: Zahlen an den Tabs. Gezaehlt wird ueber `threads`, nicht
+  // ueber `visibleThreads` — die Zahl soll ja gerade sagen, was hinter
+  // dem *anderen* Tab liegt. Der Nav-Badge daneben zaehlt bewusst etwas
+  // anderes (alle ungelesenen Threads, ohne Suchbegriff); bei aktiver
+  // Suche duerfen die beiden Zahlen deshalb auseinanderliegen.
+  const counts = countThreadGroups(threads ?? [], readMap);
+
   // Sprint 62: Preview-Snippet + Autor-Label je Thread. Fuer den Bewohner
   // sind das i. d. R. wenige Threads (RLS limitiert), daher lohnt sich
   // eine `.in()`-Query gegen messages statt N maybeSingle()-Roundtrips.
@@ -229,6 +236,13 @@ export default async function PortalMessagesPage({
               }`}
             >
               {tab.label}
+              <span
+                className={`ml-1.5 tabular-nums ${
+                  isActive ? 'opacity-70' : 'text-[var(--color-muted-foreground)]'
+                }`}
+              >
+                {counts[tab.key]}
+              </span>
             </Link>
           );
         })}

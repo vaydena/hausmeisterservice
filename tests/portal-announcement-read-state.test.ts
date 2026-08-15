@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  countAnnouncementGroups,
   isAnnouncementUnread,
   needsAcknowledgement,
   type AnnouncementReceiptLike,
@@ -112,5 +113,123 @@ describe('Zusammenspiel der beiden Praedikate', () => {
         expect(typeof needsAcknowledgement(requires, receipt)).toBe('boolean');
       }
     }
+  });
+});
+
+describe('countAnnouncementGroups', () => {
+  // Die Liste, wie sie die Page nach der Suche vorliegen hat: eine ohne
+  // Quittierungspflicht, zwei mit.
+  const ANNOUNCEMENTS = [
+    { id: 'a1', requires_acknowledgement: false },
+    { id: 'a2', requires_acknowledgement: true },
+    { id: 'a3', requires_acknowledgement: true },
+  ];
+
+  it('zaehlt eine leere Liste als lauter Nullen', () => {
+    expect(countAnnouncementGroups([], new Map())).toEqual({
+      alle: 0,
+      ungelesen: 0,
+      zu_quittieren: 0,
+    });
+  });
+
+  it('zaehlt ohne jede receipt-Zeile alles als ungelesen', () => {
+    // Der Normalfall fuer einen frisch eingeladenen Bewohner: die Map ist
+    // leer, jedes Map.get() liefert undefined.
+    expect(countAnnouncementGroups(ANNOUNCEMENTS, new Map())).toEqual({
+      alle: 3,
+      ungelesen: 3,
+      zu_quittieren: 2,
+    });
+  });
+
+  it('trennt gelesen von quittiert', () => {
+    // a2 ist gelesen, aber noch nicht quittiert — sie faellt aus
+    // "ungelesen" raus und bleibt in "zu quittieren".
+    const receipts = new Map<string, AnnouncementReceiptLike>([
+      ['a1', READ],
+      ['a2', READ],
+    ]);
+    expect(countAnnouncementGroups(ANNOUNCEMENTS, receipts)).toEqual({
+      alle: 3,
+      ungelesen: 1,
+      zu_quittieren: 2,
+    });
+  });
+
+  it('zaehlt eine quittierte Ankuendigung in keiner der beiden Gruppen mehr', () => {
+    const receipts = new Map<string, AnnouncementReceiptLike>([
+      ['a1', READ],
+      ['a2', READ_AND_ACKED],
+      ['a3', READ_AND_ACKED],
+    ]);
+    expect(countAnnouncementGroups(ANNOUNCEMENTS, receipts)).toEqual({
+      alle: 3,
+      ungelesen: 0,
+      zu_quittieren: 0,
+    });
+  });
+
+  it('behandelt eine leere receipt-Zeile wie gar keine', () => {
+    // Kommt vor, wenn ein Upsert die Zeile angelegt hat, ohne read_at zu
+    // setzen — beide Zeitstempel null.
+    const receipts = new Map<string, AnnouncementReceiptLike>([['a2', EMPTY]]);
+    expect(countAnnouncementGroups(ANNOUNCEMENTS, receipts)).toEqual({
+      alle: 3,
+      ungelesen: 3,
+      zu_quittieren: 2,
+    });
+  });
+
+  it('ignoriert receipts zu Ankuendigungen ausserhalb der Liste', () => {
+    // Die Page laedt die receipts des Bewohners ungefiltert, die
+    // Ankuendigungen dagegen suchgefiltert — die Map enthaelt also
+    // regelmaessig mehr Eintraege als die Liste Zeilen hat.
+    const receipts = new Map<string, AnnouncementReceiptLike>([
+      ['a1', READ],
+      ['fremd-1', READ],
+      ['fremd-2', READ_AND_ACKED],
+    ]);
+    expect(countAnnouncementGroups(ANNOUNCEMENTS, receipts)).toEqual({
+      alle: 3,
+      ungelesen: 2,
+      zu_quittieren: 2,
+    });
+  });
+
+  it('zaehlt zu_quittieren unabhaengig vom Lesezustand', () => {
+    // Die beiden Gruppen ueberlappen sich bewusst: eine ungelesene
+    // Ankuendigung mit Quittierungspflicht steht unter beiden Tabs. Die
+    // Summe der Gruppen ist deshalb nicht 'alle' — anders als bei den
+    // Meldungen, deren Statusgruppen die Menge aufteilen.
+    const receipts = new Map<string, AnnouncementReceiptLike>();
+    const counts = countAnnouncementGroups(ANNOUNCEMENTS, receipts);
+    expect(counts.ungelesen + counts.zu_quittieren).toBeGreaterThan(counts.alle);
+  });
+
+  it('stimmt mit dem ueberein, was die Praedikate einzeln sagen', () => {
+    // Der eigentliche Zweck der Funktion: die Zahl am Tab ist genau die
+    // Zeilenzahl, die derselbe Filter dahinter uebrig laesst.
+    const receipts = new Map<string, AnnouncementReceiptLike>([
+      ['a1', READ],
+      ['a3', READ_AND_ACKED],
+    ]);
+    const counts = countAnnouncementGroups(ANNOUNCEMENTS, receipts);
+
+    const unreadRows = ANNOUNCEMENTS.filter((a) => isAnnouncementUnread(receipts.get(a.id)));
+    const ackRows = ANNOUNCEMENTS.filter((a) =>
+      needsAcknowledgement(a.requires_acknowledgement, receipts.get(a.id)),
+    );
+
+    expect(counts.ungelesen).toBe(unreadRows.length);
+    expect(counts.zu_quittieren).toBe(ackRows.length);
+    expect(counts.alle).toBe(ANNOUNCEMENTS.length);
+  });
+
+  it('kommt ohne requires_acknowledgement aus', () => {
+    // Die Bell laedt die Spalte nicht immer mit; das Feld ist im
+    // AnnouncementLike-Typ deshalb optional.
+    const counts = countAnnouncementGroups([{ id: 'a1' }], new Map());
+    expect(counts).toEqual({ alle: 1, ungelesen: 1, zu_quittieren: 0 });
   });
 });

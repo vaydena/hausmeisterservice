@@ -58,3 +58,39 @@ export function isThreadUnread(
 
   return readTime < messageTime;
 }
+
+export interface ThreadLike {
+  id: string;
+  last_message_at?: string | null;
+}
+
+export interface ThreadGroupCounts {
+  alle: number;
+  ungelesen: number;
+}
+
+/**
+ * Sprint 102: Zaehlt die Threads je Filter-Tab.
+ *
+ * Nutzt dasselbe Praedikat wie der Tab-Filter, damit die Zahl am Tab und
+ * die Zeilenzahl dahinter nicht auseinanderlaufen koennen. Erwartet
+ * entsprechend die suchgefilterte, aber noch nicht nach Lesezustand
+ * gruppierte Liste.
+ *
+ * Der Nav-Badge daneben zaehlt bewusst etwas anderes — er ignoriert die
+ * Suche und meint alle ungelesenen Threads ueberhaupt. Bei aktiver Suche
+ * duerfen Badge und Tab also verschiedene Zahlen zeigen; die eine
+ * beantwortet "wie viel liegt insgesamt an", die andere "wie viel davon
+ * ist gerade gefunden".
+ */
+export function countThreadGroups(
+  threads: readonly ThreadLike[],
+  lastReadAt: ReadonlyMap<string, string | null>,
+): ThreadGroupCounts {
+  let unread = 0;
+  for (const thread of threads) {
+    if (isThreadUnread(thread.last_message_at, lastReadAt.get(thread.id))) unread += 1;
+  }
+
+  return { alle: threads.length, ungelesen: unread };
+}

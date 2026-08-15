@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isThreadUnread } from '@/lib/portal/thread-read-state';
+import { countThreadGroups, isThreadUnread } from '@/lib/portal/thread-read-state';
 
 // Formate wie PostgREST sie fuer timestamptz zurueckliefert.
 const READ = '2026-08-15T10:00:00+00:00';
@@ -118,5 +118,84 @@ describe('isThreadUnread', () => {
         expect(typeof isThreadUnread(lastMessageAt, lastReadAt)).toBe('boolean');
       }
     }
+  });
+});
+
+describe('countThreadGroups', () => {
+  const THREADS = [
+    { id: 't1', last_message_at: READ },
+    { id: 't2', last_message_at: AFTER_READ },
+    { id: 't3', last_message_at: BEFORE_READ },
+  ];
+
+  it('zaehlt eine leere Liste als lauter Nullen', () => {
+    expect(countThreadGroups([], new Map())).toEqual({ alle: 0, ungelesen: 0 });
+  });
+
+  it('zaehlt ohne participant-Zeilen alles als ungelesen', () => {
+    expect(countThreadGroups(THREADS, new Map())).toEqual({ alle: 3, ungelesen: 3 });
+  });
+
+  it('zaehlt nur die Threads mit neuerer Nachricht als ungelesen', () => {
+    // t2 hat eine Nachricht nach dem Lesezeitpunkt, t1 genau dazu, t3
+    // davor — nur t2 bleibt ungelesen.
+    const lastRead = new Map<string, string | null>([
+      ['t1', READ],
+      ['t2', READ],
+      ['t3', READ],
+    ]);
+    expect(countThreadGroups(THREADS, lastRead)).toEqual({ alle: 3, ungelesen: 1 });
+  });
+
+  it('behandelt ein null im last_read_at wie eine fehlende Zeile', () => {
+    const lastRead = new Map<string, string | null>([
+      ['t1', null],
+      ['t2', READ],
+      ['t3', READ],
+    ]);
+    expect(countThreadGroups(THREADS, lastRead)).toEqual({ alle: 3, ungelesen: 2 });
+  });
+
+  it('ignoriert Lesezeitpunkte zu Threads ausserhalb der Liste', () => {
+    // Die Page laedt die participants des Bewohners ungefiltert, die
+    // Threads dagegen suchgefiltert.
+    const lastRead = new Map<string, string | null>([
+      ['t1', READ],
+      ['t2', AFTER_READ],
+      ['t3', READ],
+      ['fremd', null],
+    ]);
+    expect(countThreadGroups(THREADS, lastRead)).toEqual({ alle: 3, ungelesen: 0 });
+  });
+
+  it('zaehlt einen Thread ohne Nachricht als gelesen, sobald er geoeffnet wurde', () => {
+    const threads = [{ id: 't1', last_message_at: null }];
+    expect(countThreadGroups(threads, new Map([['t1', READ]]))).toEqual({
+      alle: 1,
+      ungelesen: 0,
+    });
+  });
+
+  it('stimmt mit dem ueberein, was das Praedikat einzeln sagt', () => {
+    // Der Zweck der Funktion: die Zahl am Tab ist genau die Zeilenzahl,
+    // die derselbe Filter dahinter uebrig laesst.
+    const lastRead = new Map<string, string | null>([
+      ['t1', READ],
+      ['t3', BEFORE_READ],
+    ]);
+    const counts = countThreadGroups(THREADS, lastRead);
+    const unreadRows = THREADS.filter((t) =>
+      isThreadUnread(t.last_message_at, lastRead.get(t.id)),
+    );
+
+    expect(counts.ungelesen).toBe(unreadRows.length);
+    expect(counts.alle).toBe(THREADS.length);
+  });
+
+  it('haelt ungelesen immer kleiner oder gleich alle', () => {
+    // Ein Tab kann nie mehr Zeilen versprechen als die Liste hat.
+    const lastRead = new Map<string, string | null>([['t2', BEFORE_READ]]);
+    const counts = countThreadGroups(THREADS, lastRead);
+    expect(counts.ungelesen).toBeLessThanOrEqual(counts.alle);
   });
 });
