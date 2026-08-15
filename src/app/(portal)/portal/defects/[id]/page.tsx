@@ -183,8 +183,15 @@ export default async function PortalDefectDetailPage({
 
 
         <div>
+          {/*
+           * Sprint 76: Anzahl in die Section-Ueberschrift. Konsistent mit
+           * Sprint 69 (Anhang-Zaehler in der Meldungs-Liste). Der Bewohner
+           * sieht sofort, wie viele Belege bereits hinterlegt sind, ohne
+           * die Grid-Kacheln zu zaehlen. Bei 0 lassen wir den Zaehler
+           * weg — der Empty-State-Text erklaert die Lage bereits.
+           */}
           <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
-            Anhänge
+            Anhänge{attachments.length > 0 ? ` (${attachments.length})` : ''}
           </p>
           {attachments.length === 0 && (
             <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
