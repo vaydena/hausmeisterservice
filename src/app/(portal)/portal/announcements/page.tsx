@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { markAllPortalAnnouncementsReadAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Ankündigungen · Bewohner-Portal',
@@ -81,13 +82,30 @@ export default async function PortalAnnouncementsPage({
     return true;
   });
 
+  // Sprint 71: Button oben nur einblenden, wenn es tatsaechlich noch
+  // etwas zu markieren gibt — ein disabled Button ohne Wirkung waere
+  // fuer den Bewohner nur Rauschen.
+  const hasUnread = announcements.some((a) => !receiptMap.get(a.id)?.read_at);
+
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold">Ankündigungen</h1>
-        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-          Nachrichten der Hausverwaltung an alle Bewohner.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Ankündigungen</h1>
+          <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+            Nachrichten der Hausverwaltung an alle Bewohner.
+          </p>
+        </div>
+        {hasUnread && (
+          <form action={markAllPortalAnnouncementsReadAction}>
+            <button
+              type="submit"
+              className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+            >
+              Alle als gelesen markieren
+            </button>
+          </form>
+        )}
       </div>
 
       <nav aria-label="Nach Status filtern" className="flex flex-wrap gap-2">
