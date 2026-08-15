@@ -20,6 +20,32 @@ function formatDateTime(iso: string | null | undefined): string {
   });
 }
 
+// Sprint 93: Datums-Trenner analog Messenger-Apps. Lokale Zeitzone reicht,
+// weil Bewohner und Server-Rendering im selben Kontext denken; jahres-
+// grenzuebergreifend fallen ohnehin die alten Nachrichten in "13. Aug 2025".
+function getDayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function formatDayLabel(iso: string): string {
+  const date = new Date(iso);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dateStart = new Date(date);
+  dateStart.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (today.getTime() - dateStart.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  if (diffDays === 0) return 'Heute';
+  if (diffDays === 1) return 'Gestern';
+  return date.toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 export default async function PortalMessageThreadPage({
   params,
 }: {
@@ -127,29 +153,51 @@ export default async function PortalMessageThreadPage({
             Noch keine Nachrichten in dieser Konversation.
           </p>
         )}
-        {messages.map((m) => {
-          const isMe = m.author_user_id === ctx.userId;
-          return (
-            <li
-              key={m.id}
-              className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                  isMe
-                    ? 'bg-[var(--color-primary)] text-[var(--color-primary-foreground)]'
-                    : 'border border-[var(--color-border)] bg-[var(--color-background)]'
-                }`}
+        {(() => {
+          // Sprint 93: Datums-Trenner "Heute" / "Gestern" / "13. August 2025"
+          // zwischen Nachrichten von unterschiedlichen Tagen. In einem
+          // interleaved Array aufbauen, damit React key-stabil bleibt.
+          let lastDayKey: string | null = null;
+          const nodes: React.ReactNode[] = [];
+          for (const m of messages) {
+            const dayKey = getDayKey(m.sent_at);
+            if (dayKey !== lastDayKey) {
+              nodes.push(
+                <li
+                  key={`sep-${dayKey}`}
+                  className="flex items-center gap-3 py-1 text-xs text-[var(--color-muted-foreground)]"
+                >
+                  <div className="h-px flex-1 bg-[var(--color-border)]" />
+                  <span>{formatDayLabel(m.sent_at)}</span>
+                  <div className="h-px flex-1 bg-[var(--color-border)]" />
+                </li>,
+              );
+              lastDayKey = dayKey;
+            }
+            const isMe = m.author_user_id === ctx.userId;
+            nodes.push(
+              <li
+                key={m.id}
+                className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
               >
-                <p className="mb-1 text-xs opacity-75">
-                  {isMe ? 'Sie' : displayNameMap.get(m.author_user_id) ?? 'Verwaltung'} ·{' '}
-                  {formatDateTime(m.sent_at)}
-                </p>
-                <p className="whitespace-pre-wrap">{m.body}</p>
-              </div>
-            </li>
-          );
-        })}
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                    isMe
+                      ? 'bg-[var(--color-primary)] text-[var(--color-primary-foreground)]'
+                      : 'border border-[var(--color-border)] bg-[var(--color-background)]'
+                  }`}
+                >
+                  <p className="mb-1 text-xs opacity-75">
+                    {isMe ? 'Sie' : displayNameMap.get(m.author_user_id) ?? 'Verwaltung'} ·{' '}
+                    {formatDateTime(m.sent_at)}
+                  </p>
+                  <p className="whitespace-pre-wrap">{m.body}</p>
+                </div>
+              </li>,
+            );
+          }
+          return nodes;
+        })()}
       </ul>
 
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4">
