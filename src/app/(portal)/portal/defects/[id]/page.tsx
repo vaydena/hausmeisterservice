@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Circle, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, PartyPopper, XCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { formatRelativeGerman } from '@/lib/schemas/notifications';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -162,6 +162,31 @@ export default async function PortalDefectDetailPage({
             Die Meldung wurde übernommen, aber die Datei hat es nicht in die
             Ablage geschafft. Sie können den Anhang unten erneut hochladen.
           </p>
+        </div>
+      )}
+
+      {/*
+       * Sprint 82: Success-Panel oben, wenn der zugehoerige Auftrag bereits
+       * abgeschlossen ist. Der Bewohner sieht den Zustand sofort — auf Mobile
+       * ist die Timeline sonst erst nach dem Scrollen sichtbar. Der Text ist
+       * bewusst versoehnlich: nicht "case closed", sondern "Ihre Meldung wurde
+       * bearbeitet". closed_at ist optional — bei manuellen Status-Updates
+       * ohne Trigger bleibt er NULL, dann faellt die Datum-Zeile weg.
+       */}
+      {workOrder?.status === 'done' && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+        >
+          <PartyPopper className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+          <div>
+            <p className="font-medium">Ihre Meldung wurde bearbeitet.</p>
+            {workOrder.closed_at && (
+              <p className="mt-1">
+                Die Arbeiten wurden am {formatDateOnly(workOrder.closed_at)} abgeschlossen.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
