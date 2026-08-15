@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTime } from '@/lib/utils/format';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'E-Mail-Detail' };
 
@@ -35,11 +36,7 @@ function entityLink(entityType: string | null, entityId: string | null): string 
   return null;
 }
 
-export default async function SentEmailDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function SentEmailDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
@@ -50,24 +47,20 @@ export default async function SentEmailDetailPage({
   // Service-Client mit tenant-Guard weiter unten — RLS-Policy sent_emails.select
   // deckt automations.manage nicht ab, aber der Server-Guard oben tut das.
   const service = createSupabaseServiceClient();
-  const { data: entry } = await service
+  const entryRes = await service
     .from('sent_emails')
     .select(
       'id, tenant_id, created_at, sent_at, status, provider, provider_message_id, entity_type, entity_id, to_addresses, cc_addresses, subject, body_hash, attachment_names, error, sent_by',
     )
     .eq('id', id)
     .maybeSingle();
+  const entry = unwrapMaybeRow(entryRes, 'Einstellungen: sent_emails');
 
   if (!entry || entry.tenant_id !== ctx.tenantId) notFound();
 
   const senderName = entry.sent_by
-    ? ((
-        await service
-          .from('users')
-          .select('display_name')
-          .eq('id', entry.sent_by)
-          .maybeSingle()
-      ).data?.display_name ?? '(unbekannt)')
+    ? ((await service.from('users').select('display_name').eq('id', entry.sent_by).maybeSingle())
+        .data?.display_name ?? '(unbekannt)')
     : 'System';
 
   const link = entityLink(entry.entity_type, entry.entity_id);
@@ -110,7 +103,9 @@ export default async function SentEmailDetailPage({
               An
             </dt>
             <dd className="break-all">
-              {entry.to_addresses.length === 0 ? '—' : (
+              {entry.to_addresses.length === 0 ? (
+                '—'
+              ) : (
                 <ul className="space-y-0.5">
                   {entry.to_addresses.map((addr) => (
                     <li key={addr}>{addr}</li>
@@ -142,7 +137,9 @@ export default async function SentEmailDetailPage({
                 <dd>
                   <ul className="space-y-0.5">
                     {entry.attachment_names.map((name) => (
-                      <li key={name} className="font-mono text-xs">{name}</li>
+                      <li key={name} className="font-mono text-xs">
+                        {name}
+                      </li>
                     ))}
                   </ul>
                 </dd>
@@ -156,7 +153,8 @@ export default async function SentEmailDetailPage({
               Aus Datenschutzgründen nicht gespeichert.
               {entry.body_hash && (
                 <>
-                  {' '}Integritäts-Hash:{' '}
+                  {' '}
+                  Integritäts-Hash:{' '}
                   <code className="rounded bg-[var(--color-muted)] px-1 py-0.5 font-mono">
                     {entry.body_hash}
                   </code>

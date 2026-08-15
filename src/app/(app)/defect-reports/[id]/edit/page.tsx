@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { ReportForm } from '../../report-form';
 import { updateDefectReportAction, type DefectReportFormState } from '../../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Meldung bearbeiten' };
 
@@ -20,26 +21,26 @@ export default async function EditDefectReportPage({
   if (!permissions.has('defect_reports.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: report } = await supabase
+  const reportRes = await supabase
     .from('defect_reports')
     .select(
       'id, title, description, category, priority, property_id, building_id, unit_id, location_details, reporter_kind, reporter_name, reporter_contact, status',
     )
     .eq('id', id)
     .maybeSingle();
+  const report = unwrapMaybeRow(reportRes, 'Maengelmeldungen: defect_reports');
 
   if (!report) notFound();
   if (report.status === 'converted') notFound();
 
-  const [{ data: properties }, { data: buildings }, { data: units }] = await Promise.all([
-    supabase
-      .from('properties')
-      .select('id, name, code')
-      .is('deleted_at', null)
-      .order('name'),
+  const [propertiesRes, buildingsRes, unitsRes] = await Promise.all([
+    supabase.from('properties').select('id, name, code').is('deleted_at', null).order('name'),
     supabase.from('buildings').select('id, property_id, name').order('name'),
     supabase.from('units').select('id, building_id, property_id, code').order('code'),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Maengelmeldungen: properties');
+  const buildings = unwrapRows(buildingsRes, 'Maengelmeldungen: buildings');
+  const units = unwrapRows(unitsRes, 'Maengelmeldungen: units');
 
   const action = async (prev: DefectReportFormState, form: FormData) =>
     updateDefectReportAction(id, prev, form);
@@ -51,9 +52,9 @@ export default async function EditDefectReportPage({
         action={action}
         cancelHref={`/defect-reports/${id}`}
         submitLabel="Änderungen speichern"
-        properties={properties ?? []}
-        buildings={buildings ?? []}
-        units={units ?? []}
+        properties={properties}
+        buildings={buildings}
+        units={units}
         initial={report}
       />
     </div>

@@ -8,6 +8,7 @@ import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Mitarbeiter' };
 
@@ -35,21 +36,27 @@ export default async function EmployeesPage() {
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: employees } = await supabase
-    .from('employees')
-    .select('id, employment_status, hire_date, user_id')
-    .eq('tenant_id', ctx.tenantId)
-    .order('employment_status');
+  const employees = unwrapRows(
+    await supabase
+      .from('employees')
+      .select('id, employment_status, hire_date, user_id')
+      .eq('tenant_id', ctx.tenantId)
+      .order('employment_status'),
+    'Mitarbeiter: Liste',
+  );
 
   // Anzeigenamen aus public.users in einem zweiten Query (RLS-safe)
-  const userIds = (employees ?? []).map((e) => e.user_id);
-  const { data: users } =
+  const userIds = employees.map((e) => e.user_id);
+  const users =
     userIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const nameById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', userIds),
+          'Mitarbeiter: Anzeigenamen',
+        )
+      : [];
+  const nameById = new Map(users.map((u) => [u.id, u.display_name]));
 
-  const rows: Row[] = (employees ?? []).map((e) => ({
+  const rows: Row[] = employees.map((e) => ({
     id: e.id,
     employment_status: e.employment_status,
     hire_date: e.hire_date,
@@ -92,9 +99,7 @@ export default async function EmployeesPage() {
                   className="flex items-center justify-between gap-4 p-4 transition hover:bg-[var(--color-muted)]"
                 >
                   <div className="flex flex-col gap-1">
-                    <span className="font-medium">
-                      {row.display_name ?? '(Ohne Anzeigename)'}
-                    </span>
+                    <span className="font-medium">{row.display_name ?? '(Ohne Anzeigename)'}</span>
                     <span className="text-xs text-[var(--color-muted-foreground)]">
                       {row.hire_date ? `Eingestellt: ${row.hire_date}` : 'Ohne Einstellungsdatum'}
                     </span>

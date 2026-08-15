@@ -8,6 +8,7 @@ import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Checklisten' };
 
@@ -16,7 +17,7 @@ export default async function ChecklistTemplatesPage() {
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const [{ data: templates }, { data: itemCounts }] = await Promise.all([
+  const [templatesRes, itemCountsRes] = await Promise.all([
     supabase
       .from('checklist_templates')
       .select('id, code, title, description, category, active')
@@ -25,10 +26,11 @@ export default async function ChecklistTemplatesPage() {
       .order('title'),
     supabase.from('checklist_template_items').select('template_id'),
   ]);
+  const items = unwrapRows(templatesRes, 'Checklisten: checklist_templates');
+  const itemCounts = unwrapRows(itemCountsRes, 'Checklisten: checklist_template_items');
 
-  const items = templates ?? [];
   const countByTemplate = new Map<string, number>();
-  for (const row of itemCounts ?? [])
+  for (const row of itemCounts)
     countByTemplate.set(row.template_id, (countByTemplate.get(row.template_id) ?? 0) + 1);
 
   const canCreate = permissions.has('checklists.create');

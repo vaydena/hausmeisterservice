@@ -15,12 +15,12 @@ import { join, relative } from 'node:path';
  * besonders teuer: der Bewohner liest "Sie haben keine Nachrichten" und
  * glaubt, seine Verwaltung habe sich nicht gemeldet.
  *
- * Abgedeckt sind das Bewohner-Portal (src/app/(portal), src/lib/portal) und
- * die Guard-Schicht (GUARD_FILES, siehe unten). Der restliche Staff-Bereich
- * nutzt dasselbe Muster an rund 240 Stellen; das in einem Sprint umzustellen
- * waere eine Blindueberholung des halben Codebestands. Die Ausweitung auf
- * (app) ist ein eigener Scope — siehe README/Backlog, nicht ein stiller
- * Anhang an diesen Test.
+ * Sprint 112 stellt diesen Test von handgepflegten Dateilisten auf ein
+ * Verzeichnis um: gescannt wird jetzt der GESAMTE (app)-Bereich. Bis 111 war
+ * die Abdeckung eine Aufzaehlung, und jede neue Datei im Staff-Bereich kam
+ * ungeprueft dazu. Eine Liste, die man erweitern muss, um Abdeckung zu
+ * behalten, verliert sie still — dieselbe Fehlerart, gegen die dieser Test
+ * antritt, nur eine Ebene hoeher.
  *
  * Bekannte Luecke der Detektoren: verschachtelte Destrukturierung der Form
  * `const { data: { user } } = await ...` wird von DESTRUCTURE_STATEMENT
@@ -30,9 +30,14 @@ import { join, relative } from 'node:path';
  * Garantie.
  */
 
-const PORTAL_DIRS = [
-  join(process.cwd(), 'src', 'app', '(portal)'),
-  join(process.cwd(), 'src', 'lib', 'portal'),
+/**
+ * Ganze Verzeichnisse. Alles, was hier drunter liegt, ist abgedeckt — ohne
+ * dass jemand eine Liste pflegen muss.
+ */
+const SCANNED_DIRS = [
+  join(process.cwd(), 'src', 'app', '(portal)'), // Sprint 103
+  join(process.cwd(), 'src', 'lib', 'portal'), //   Sprint 103
+  join(process.cwd(), 'src', 'app', '(app)'), //    Sprint 112 — der ganze Staff-Bereich
 ];
 
 /**
@@ -50,27 +55,26 @@ const PORTAL_DIRS = [
  * verschoben, faellt der Test auf, statt die Abdeckung still zu verlieren.
  */
 const GUARD_FILES = [
-  'src/lib/tenant/current.ts',            // -> /no-access
+  'src/lib/tenant/current.ts', //            -> /no-access
   'src/lib/tenant/subscription-guard.ts', // -> /zahlung-erforderlich
-  'src/lib/tenant/features.ts',           // -> /settings/subscription?upgrade=
-  'src/lib/permissions/effective.ts',     // -> leeres Rechte-Set
-  'src/lib/modules/enabled.ts',           // -> Navigation ohne Zusatzmodule
-  'src/lib/platform/require-admin.ts',    // -> /no-access
-  'src/lib/auth/ensure-tenant.ts',        // -> Tarifwahl geht still verloren
+  'src/lib/tenant/features.ts', //           -> /settings/subscription?upgrade=
+  'src/lib/permissions/effective.ts', //     -> leeres Rechte-Set
+  'src/lib/modules/enabled.ts', //           -> Navigation ohne Zusatzmodule
+  'src/lib/platform/require-admin.ts', //    -> /no-access
+  'src/lib/auth/ensure-tenant.ts', //        -> Tarifwahl geht still verloren
 ];
 
 /**
  * Die DSGVO-Export-Routen (Sprint 105).
  *
- * Wieder eine andere Folge als in den beiden Schichten darueber. Hier wird
- * aus einem verschluckten Fehler kein Leerzustand und keine falsche
+ * Hier wird aus einem verschluckten Fehler kein Leerzustand und keine falsche
  * Berechtigungsantwort, sondern eine unvollstaendige Auskunft, die sich
  * selbst als vollstaendig bezeichnet: `export_meta.legal_basis` behauptet im
  * selben Dokument, es enthalte ALLE zum Konto gespeicherten Daten. Der
  * Betroffene haelt seine Art.-15-Anfrage damit fuer beantwortet.
  *
- * Beide Routen liegen ausserhalb von PORTAL_DIRS — auch die Portal-Variante,
- * die unter src/app/api/portal/ und nicht unter src/app/(portal)/ steht.
+ * Beide Routen liegen unter src/app/api/ und damit ausserhalb der beiden
+ * Route-Gruppen — auch die Portal-Variante.
  */
 const EXPORT_ROUTES = [
   'src/app/api/privacy/export/route.ts',
@@ -78,216 +82,66 @@ const EXPORT_ROUTES = [
 ];
 
 /**
- * Die Automations-Oberflaeche (Sprint 106).
+ * Serverseitige Bibliotheken ausserhalb der Route-Gruppen, deren Folgen in
+ * frueheren Sprints einzeln nachgewiesen wurden.
  *
- * Die vierte Folge-Klasse und die einzige ohne Zuschauer: die Engine laeuft
- * als Cron. Ein verschluckter Fehler wurde hier nicht zu einem Leerzustand,
- * den jemand sieht, sondern zu einem Lauf, der sich selbst als sauber
- * protokolliert — `match_count: 0`, `last_error: null`. Die Mahnung ging nie
- * raus, und die Lauf-Historie bestaetigt, dass alles funktioniert hat.
+ *  - `automations/engine.ts` (Sprint 106) ist die einzige Stelle im ganzen
+ *    Bogen ohne Zuschauer: sie laeuft als Cron. Ein verschluckter Fehler
+ *    wurde dort nicht zu einem sichtbaren Leerzustand, sondern zu einem Lauf,
+ *    der sich selbst als sauber protokolliert (`match_count: 0`,
+ *    `last_error: null`). Zwei Stellen kippten sogar in die Gegenrichtung:
+ *    `?? []` auf der Dispatch-Abfrage liess die Doppel-Versand-Sperre OFFEN
+ *    ausfallen. Das ist der einzige Fall im Bogen, in dem ein verschluckter
+ *    Fehler eine aussenwirksame, nicht ruecknehmbare Aktion ausloest statt
+ *    einer Unterlassung — versendete E-Mails holt niemand zurueck.
  *
- * Zwei Stellen kippen dabei sogar in die andere Richtung: `?? []` auf der
- * Dispatch-Abfrage laesst die Doppel-Versand-Sperre OFFEN ausfallen, und der
- * ungeprueft geschriebene Dispatch-Log erzeugt dieselbe Folge vom anderen
- * Ende. Das ist im ganzen Bogen 103–106 der einzige Fall, in dem ein
- * verschluckter Fehler eine aussenwirksame, nicht ruecknehmbare Aktion
- * ausloest statt einer Unterlassung — versendete E-Mails holt niemand zurueck.
+ *  - `pdf/loader.ts` (Sprint 107) nimmt die Summen aus dem Kopfsatz, die
+ *    Positionen und die Umsatzsteuerzeile aber aus einer eigenen Query. Fiel
+ *    die aus, stand im PDF ein Gesamtbetrag ohne eine einzige Position und
+ *    ohne ausgewiesene Steuer — nach §14 Abs. 4 UStG keine gueltige Rechnung.
+ *    Derselbe Loader haengt das PDF an die ausgehende E-Mail; anders als bei
+ *    106 ist der Schaden fuer den Empfaenger nicht einmal erkennbar, denn
+ *    eine Rechnung ueber den falschen Betrag sieht aus wie eine ueber den
+ *    richtigen.
  */
-const AUTOMATION_FILES = [
-  'src/lib/automations/engine.ts',                    // -> stille Nicht-Ausfuehrung + Doppel-Versand
-  'src/app/(app)/settings/automations/actions.ts',    // -> "Regel nicht gefunden" bei Stoerung
-];
+const LIB_FILES = ['src/lib/automations/engine.ts', 'src/lib/pdf/loader.ts'];
 
 /**
- * Der Rechnungspfad (Sprint 107).
+ * Die Folge-Klassen, die der Bogen 103–112 im (app)-Bereich nachgewiesen hat.
+ * Bis Sprint 111 stand jede davon als eigene Dateiliste in dieser Datei; seit
+ * 112 deckt der Verzeichnis-Scan sie alle ab. Die Begruendungen bleiben, weil
+ * sie das Einzige sind, was den Unterschied zwischen "Regex meckert" und
+ * "hier haengt etwas dran" festhaelt:
  *
- * Die fuenfte Folge-Klasse: hier wird aus einem verschluckten Fehler weder
- * ein Leerzustand noch eine Unterlassung, sondern eine FALSCHE ZAHL auf einem
- * rechtsverbindlichen Dokument — und zwar auf einem, das anschliessend das
- * Haus verlaesst.
+ *  - Automations-UI (106): "Regel nicht gefunden" bei einer Stoerung.
+ *  - Rechnungen (107): `recalcInvoiceTotals` rechnete bei einem Query-Fehler
+ *    aus einer leeren Liste und schrieb die Beleg-Summe auf 0 — ein
+ *    Lesefehler wurde zu einem falschen Wert IN DER DATENBANK.
+ *  - Zeiterfassung (108): `punchOutAction` antwortete "Es laeuft aktuell
+ *    keine offene Zeit", waehrend sie lief; Wochensumme, Team-Uebersicht und
+ *    der CSV-Export fuer die Lohnabrechnung wurden zu WENIGER STUNDEN. Eine
+ *    Woche mit 32 statt 38 Stunden sieht aus wie eine kurze Woche.
+ *  - Fristen (109): /maintenance meldete "Keine ueberfaelligen Wartungen",
+ *    /vehicles zeigte kein TUEV-Badge. Ein verstrichener Prueftermin ist die
+ *    einzige Folge im Bogen, die sich nachtraeglich nicht reparieren laesst.
+ *    Dazu die erste umgedrehte Schutzregel: der Km-Stand soll nur steigen,
+ *    aber bei einem Lesefehler wurde der Vergleichswert 0.
+ *  - Schluessel (110): der ausgegebene Bestand existiert nirgends als
+ *    gespeicherter Wert, er wird bei jedem Aufruf rekonstruiert. Ohne
+ *    Ausgaben sieht jeder Schluessel vollzaehlig im Kasten aus. `totalOut`
+ *    steuerte zusaetzlich den Loeschknopf.
+ *  - Zaehler (111): die Plausibilitaetsregel `if (last && ...)` wurde bei
+ *    einem Lesefehler nicht abgebrochen, sondern uebersprungen — und die
+ *    Differenz zweier Zaehlerstaende ist der Verbrauch in der
+ *    Betriebskostenabrechnung.
  *
- *   - `recalcInvoiceTotals` rechnete bei einem Query-Fehler aus einer leeren
- *     Liste und schrieb die Beleg-Summe auf 0. Ein Lesefehler wurde damit zu
- *     einem falschen Wert IN DER DATENBANK.
- *   - `loadBillingDocumentData` nimmt die Summen aus dem Kopfsatz, die
- *     Positionen und die Umsatzsteuerzeile aber aus einer eigenen Query. Fiel
- *     die aus, stand im PDF ein Gesamtbetrag ohne eine einzige Position und
- *     ohne ausgewiesene Steuer — nach §14 Abs. 4 UStG keine gueltige Rechnung.
- *     Der Fallback `tenant?.name ?? 'Ihr Unternehmen'` stellte sie zusaetzlich
- *     unter einem Absender aus, den es nicht gibt.
- *   - `addLineItemAction` liess die Positionsnummerierung bei einem Fehler
- *     wieder bei 1 beginnen.
- *
- * Derselbe Loader haengt das PDF an die ausgehende E-Mail. Wie in Sprint 106
- * ist der Schaden damit nicht mehr einzusammeln — anders als dort ist er aber
- * auch fuer den Empfaenger nicht erkennbar: eine Rechnung ueber den falschen
- * Betrag sieht aus wie eine ueber den richtigen.
+ * Zwei Muster wiederholen sich dabei quer durch alle Module und sind der
+ * Grund, warum dieser Test allein nicht reicht: eine Schranke, die NUR im
+ * JSX steht (110, 111), und eine Regel, die nur in eine Richtung prueft
+ * (109, 111). Beide bleiben gruen, wenn man nur das Fehler-Handling
+ * repariert.
  */
-const BILLING_FILES = [
-  'src/lib/pdf/loader.ts',                      // -> PDF mit Summe ohne Positionen
-  'src/app/(app)/billing/actions.ts',           // -> gespeicherte Summe auf 0
-  'src/app/(app)/billing/email-actions.ts',     // -> versandte Rechnung bleibt Entwurf
-  'src/app/(app)/billing/invoices/[id]/page.tsx',
-  'src/app/(app)/billing/offers/[id]/page.tsx',
-];
-
-/**
- * Die Zeiterfassung (Sprint 108).
- *
- * Die sechste Folge-Klasse und die erste, in der die falsche Auskunft den
- * Nutzer ueber SEINEN EIGENEN Zustand betrifft — nachpruefbar falsch in dem
- * Moment, in dem sie erscheint:
- *
- *   - `punchOutAction` antwortete bei einer gescheiterten Query "Es laeuft
- *     aktuell keine offene Zeit." Der Mitarbeiter steht davor, WEIL die Zeit
- *     laeuft. Der Eintrag blieb mit end_at NULL liegen.
- *   - `resolveOwnEmployeeId` antwortete "Kein aktiver Mitarbeiter-Datensatz
- *     fuer Ihren Account." — eine Aussage ueber das Arbeitsverhaeltnis, die
- *     den Mitarbeiter zum Chef schickt statt zum Support.
- *
- * Die zweite Haelfte ist der Rechenweg: Wochensumme, Team-Uebersicht,
- * Zeitbericht und der CSV-Export fuer die Lohnabrechnung filtern alle auf
- * `end_at`. Ein `?? []` wurde dort zu WENIGER STUNDEN — nicht zu einer
- * Fehlermeldung und nicht zu einer leeren Seite, sondern zu einer
- * plausiblen, zu niedrigen Zahl auf einem Nachweis, der Lohngrundlage ist
- * und nach §16 Abs. 2 ArbZG zwei Jahre aufzubewahren ist. Anders als beim
- * Rechnungspfad (107) gibt es hier kein Dokument, dem man den Fehler ansehen
- * koennte: eine Woche mit 32 statt 38 Stunden sieht aus wie eine kurze Woche.
- */
-const TIME_TRACKING_FILES = [
-  'src/app/(app)/time-tracking/actions.ts',              // -> "keine offene Zeit", waehrend sie laeuft
-  'src/app/(app)/time-tracking/page.tsx',                // -> Wochensumme 0:00
-  'src/app/(app)/time-tracking/team/page.tsx',           // -> Team-Uebersicht ohne Stunden
-  'src/app/(app)/time-tracking/new/page.tsx',
-  'src/app/(app)/time-tracking/[id]/edit/page.tsx',
-  'src/app/(app)/time-tracking/[id]/correction/page.tsx',
-  'src/app/(app)/reports/time/page.tsx',                 // -> zu wenig ausgewiesene Stunden
-  'src/app/(app)/reports/time/export/route.ts',          // -> CSV fuer die Lohnabrechnung
-  'src/app/(app)/time-corrections/page.tsx',             // -> "keine offenen Antraege" bei Stoerung
-  'src/app/(app)/time-corrections/[id]/page.tsx',        // -> Freigabe ohne sichtbaren Ist-Stand
-];
-
-/**
- * Wartung und Fuhrpark (Sprint 109).
- *
- * Die siebte Folge-Klasse und die einzige in diesem Bogen, die sich
- * nachtraeglich nicht mehr reparieren laesst. Eine fehlende Zeiterfassung
- * kann man nachtragen, eine falsche Rechnung stornieren — ein verstrichener
- * Prueftermin ist vorbei.
- *
- * Beide Listen sind die einzige Stelle, an der eine Frist ueberhaupt
- * auffaellt, und beide meldeten bei einer gescheiterten Query eine
- * Entwarnung:
- *
- *   - /maintenance: alle Zaehler auf 0, der Filter "Ueberfaellig" zeigt
- *     "Keine ueberfaelligen Wartungen". Am 15.08.2026 waeren das drei
- *     falsche Entwarnungen gewesen — Rauchmelder (DIN 14676), Aufzug
- *     (BetrSichV) und Gruenpflege. Die Betreiberpflicht liegt beim
- *     Hausmeisterservice, nicht bei der Software.
- *   - /vehicles: "Keine Fahrzeuge", kein TUEV- und kein
- *     Versicherungs-Badge. Im echten Bestand steht ein LKW, dessen HU seit
- *     dem 30.07.2026 abgelaufen ist (§29 StVZO).
- *
- * Dazu in vehicles/actions.ts eine Schutzregel, die sich durch den
- * verschluckten Fehler umdreht: der Km-Stand soll nur steigen, aber bei
- * einem gescheiterten Lesevorgang wurde der Vergleichswert 0 — und jeder
- * eingetragene Wert galt als groesser.
- */
-const DEADLINE_FILES = [
-  'src/app/(app)/maintenance/page.tsx',           // -> "Keine ueberfaelligen Wartungen"
-  'src/app/(app)/maintenance/[id]/page.tsx',      // -> Pruefplan "existiert nicht"
-  'src/app/(app)/maintenance/[id]/edit/page.tsx',
-  'src/app/(app)/maintenance/new/page.tsx',
-  'src/app/(app)/maintenance/actions.ts',
-  'src/app/(app)/vehicles/page.tsx',              // -> Fuhrpark ohne Fristen-Badges
-  'src/app/(app)/vehicles/[id]/page.tsx',         // -> Historie sieht aus wie "nie gewartet"
-  'src/app/(app)/vehicles/[id]/edit/page.tsx',
-  'src/app/(app)/vehicles/new/page.tsx',
-  'src/app/(app)/vehicles/actions.ts',            // -> Km-Stand wird zurueckgedreht
-];
-
-/**
- * Die Schluesselverwaltung (Sprint 110).
- *
- * Die achte Folge-Klasse: keine Zahl, keine Frist und kein Dokument, sondern
- * eine Aussage darueber, wer gerade Zutritt zu fremdem Wohneigentum hat.
- *
- * `keys.status` ist ein Lebenszyklus-Status ('active'/'lost'/'retired'), NICHT
- * "ausgegeben". Der ausgegebene Bestand existiert nirgends als gespeicherter
- * Wert — er wird bei jedem Seitenaufruf aus den Ausgabe- und
- * Rueckgabe-Vorgaengen rekonstruiert. Diese Aggregation ist damit die einzige
- * Quelle fuer die Frage "wer haelt einen Schluessel", und ein Fehler darin
- * faellt an keiner zweiten Stelle auf.
- *
- * Beide Abfragen standen ohne Fehlerpruefung da, und sie kippen in
- * entgegengesetzte Richtungen: ohne Ausgaben sieht jeder Schluessel
- * vollzaehlig im Kasten aus, ohne Rueckgaben gilt jede jemals erfolgte
- * Ausgabe wieder als offen. Die erste Richtung ist die gefaehrliche, weil
- * sie beruhigt.
- *
- * Auf der Detailseite haengt daran nicht nur die Anzeige. `totalOut` steuert
- * dort auch, ob "Schluessel entfernen" freigeschaltet wird — dessen eigener
- * Hinweistext lautet "Nur moeglich, wenn keine Exemplare ausgegeben sind".
- * Ein verschluckter Lesefehler oeffnet also genau die Schranke, die auf
- * dieser Information sitzt. Dieselbe Umkehrung wie beim Km-Stand in Sprint
- * 109, hier mit einem Loeschknopf am Ende.
- */
-const KEY_FILES = [
-  'src/app/(app)/keys/page.tsx',           // -> jeder Schluessel sieht vollzaehlig aus
-  'src/app/(app)/keys/[id]/page.tsx',      // -> "keine Exemplare ausgegeben" + Loeschknopf frei
-  'src/app/(app)/keys/[id]/edit/page.tsx', // -> "Schluessel existiert nicht"
-  'src/app/(app)/keys/new/page.tsx',       // -> Objektliste leer, Formular nicht absendbar
-  'src/app/(app)/keys/actions.ts',         // -> Nachfertigung still nicht ausgefuehrt
-];
-
-/**
- * Die Zaehlerstaende (Sprint 111).
- *
- * Die neunte Folge-Klasse. Wie in 107 endet sie in einer falschen Zahl auf
- * einer Abrechnung — hier aber nicht, weil eine Summe falsch gebildet wurde,
- * sondern weil eine SCHUTZREGEL ausgefallen ist und den falschen Wert
- * ueberhaupt erst hineingelassen hat.
- *
- * `addReadingAction` prueft, dass ein Zaehlerstand nicht unter seinem
- * Vorgaenger liegt. Der Vergleichswert kam aus einer Query ohne
- * Fehlerpruefung, und die Bedingung lautete `if (last && ...)`. Faellt die
- * Query aus, ist `last` null — die Pruefung bricht dann nicht mit einem
- * Fehler ab, sie wird uebersprungen. Ein rueckwaerts laufender Stand landet
- * kommentarlos in der Tabelle, und die Differenz zweier Zaehlerstaende ist
- * der Verbrauch in der Betriebskostenabrechnung. Dieselbe Umkehrung wie beim
- * Km-Stand in Sprint 109, nur teurer.
- *
- * Auf der Detailseite haengt an der Ablese-Query ausserdem, ob "Zähler
- * entfernen" freigeschaltet wird — der Hinweistext daneben lautet "Nur
- * moeglich, wenn noch keine Ablesungen erfasst wurden". Wie beim Loeschknopf
- * der Schluessel in Sprint 110 oeffnete ein verschluckter Lesefehler genau
- * die Schranke, die auf dieser Information sitzt. Die Regel stand
- * zusaetzlich NUR im JSX; softDeleteMeterAction prueft sie seit diesem
- * Sprint auch serverseitig.
- *
- * Die Listenseite meldete bei einer gescheiterten Query neben jedem Zaehler
- * "Keine Ablesung" — eine Aussage ueber die eigene Ablesepraxis, nach der
- * jemand einen zweiten Wert fuer denselben Zeitraum eintraegt.
- */
-const METER_FILES = [
-  'src/app/(app)/meters/page.tsx',           // -> "Keine Ablesung" an jedem Zaehler
-  'src/app/(app)/meters/[id]/page.tsx',      // -> Stand, Verbrauch und Loeschknopf zugleich
-  'src/app/(app)/meters/[id]/edit/page.tsx', // -> "Zähler existiert nicht"
-  'src/app/(app)/meters/new/page.tsx',       // -> Objektliste leer, Formular nicht absendbar
-  'src/app/(app)/meters/actions.ts',         // -> Plausibilitaetsregel faellt aus
-];
-
-/** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
-const LISTED_FILES = [
-  ...GUARD_FILES,
-  ...EXPORT_ROUTES,
-  ...AUTOMATION_FILES,
-  ...BILLING_FILES,
-  ...TIME_TRACKING_FILES,
-  ...DEADLINE_FILES,
-  ...KEY_FILES,
-  ...METER_FILES,
-];
+const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES, ...LIB_FILES];
 
 function walk(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -306,7 +160,7 @@ interface ScannedFile {
 }
 
 const SCANNED_FILES: ScannedFile[] = [
-  ...PORTAL_DIRS.flatMap(walk),
+  ...SCANNED_DIRS.flatMap(walk),
   ...LISTED_FILES.map((f) => join(process.cwd(), f)),
 ]
   .filter((abs) => existsSync(abs))
@@ -334,6 +188,21 @@ const EMPTY_FALLBACK = /\.(data|count)\s*\?\?\s*(\[\]|0)/g;
  * nicht nur an der ersten Zeile.
  */
 const DESTRUCTURE_STATEMENT = /const\s*\{\s*data[^}]*\}\s*=\s*await[\s\S]*?;/g;
+
+/**
+ * Muster 3 — dasselbe in Tupel-Schreibweise (Sprint 112).
+ *
+ *     const [{ data: a }, { data: b }] = await Promise.all([...]);
+ *
+ * Das ist im Projekt die uebliche Form fuer parallele Ladevorgaenge, und sie
+ * war bis Sprint 112 vollstaendig ungeprueft: Muster 2 verlangt eine
+ * geschweifte Klammer direkt hinter `const` und laeuft an der eckigen vorbei.
+ * Der Test war damit fuer die haeufigste Schreibweise des Fehlers blind — 40
+ * Fundstellen, quer durch fast jedes Modul. Eine Luecke im Detektor ist
+ * teurer als eine Luecke in der Abdeckung: die eine sieht man an einer roten
+ * Liste, die andere gar nicht.
+ */
+const DESTRUCTURE_TUPLE = /const\s*\[\s*\{\s*data[\s\S]*?\]\s*=\s*await[\s\S]*?;/g;
 
 /**
  * Aufrufe, bei denen `const { data }` in Ordnung ist:
@@ -367,11 +236,16 @@ function findEmptyFallbacks(source: string): string[] {
 }
 
 function findBareDestructures(source: string): string[] {
-  return Array.from(source.matchAll(DESTRUCTURE_STATEMENT))
-    .map((m) => m[0])
-    .filter((stmt) => !isAllowedStatement(stmt))
-    // Nur die erste Zeile in die Meldung, damit der Report lesbar bleibt.
-    .map((stmt) => (stmt.split('\n')[0] ?? stmt).trim());
+  return (
+    [
+      ...Array.from(source.matchAll(DESTRUCTURE_STATEMENT)),
+      ...Array.from(source.matchAll(DESTRUCTURE_TUPLE)),
+    ]
+      .map((m) => m[0])
+      .filter((stmt) => !isAllowedStatement(stmt))
+      // Nur die erste Zeile in die Meldung, damit der Report lesbar bleibt.
+      .map((stmt) => (stmt.split('\n')[0] ?? stmt).trim())
+  );
 }
 
 const FIX_HINT =
@@ -382,10 +256,26 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung + Fristen + Schlüssel + Zähler: keine verschluckten Query-Fehler', () => {
+describe('Portal + Staff-Bereich + Guards + DSGVO-Export: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
-    it('erfasst die Portal-Verzeichnisse', () => {
-      expect(SCANNED_FILES.length).toBeGreaterThan(20);
+    it.each(SCANNED_DIRS.map((d) => relative(process.cwd(), d).replace(/\\/g, '/')))(
+      'gescanntes Verzeichnis liefert Dateien: %s',
+      (rel) => {
+        // Der wunde Punkt eines Verzeichnis-Scans: wird die Route-Gruppe
+        // umbenannt oder verschoben, scannt walk() ein leeres Nichts und der
+        // Test bleibt gruen. Genau die stille Erfolgsmeldung, gegen die diese
+        // Datei antritt — nur eine Ebene hoeher.
+        expect(
+          walk(join(process.cwd(), rel)).length,
+          `${rel} enthaelt keine .ts/.tsx-Dateien. Entweder wurde das Verzeichnis ` +
+            `umbenannt/verschoben (dann SCANNED_DIRS korrigieren) oder es ist wirklich ` +
+            `leer (dann den Eintrag entfernen). Ein leerer Scan ist keine Abdeckung.`,
+        ).toBeGreaterThan(5);
+      },
+    );
+
+    it('erfasst den gesamten Staff- und Portal-Bereich', () => {
+      expect(SCANNED_FILES.length).toBeGreaterThan(150);
     });
 
     it.each(LISTED_FILES)('einzeln gelistete Datei existiert noch: %s', (listed) => {
@@ -396,10 +286,9 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung
       // an denen stiller Erfolg am teuersten ist.
       expect(
         existsSync(join(process.cwd(), listed)),
-        `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES, BILLING_FILES, ` +
-          `TIME_TRACKING_FILES, DEADLINE_FILES, KEY_FILES bzw. METER_FILES, ` +
-          `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
-          `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
+        `${listed} steht in GUARD_FILES, EXPORT_ROUTES bzw. LIB_FILES, existiert aber ` +
+          `nicht (mehr). Pfad in der Liste korrigieren — oder wenn die Datei wirklich ` +
+          `weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);
     });
 
@@ -412,12 +301,21 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung
       expect(
         findBareDestructures("const { data: t } = await supabase.from('x').select();"),
       ).toHaveLength(1);
+      // Tupel-Form (Sprint 112) — die haeufigste Schreibweise im Projekt:
+      expect(
+        findBareDestructures(
+          'const [{ data: a }, { data: b }] = await Promise.all([\n' +
+            "  supabase.from('x').select(),\n" +
+            "  supabase.from('y').select(),\n" +
+            ']);',
+        ),
+      ).toHaveLength(1);
     });
 
     it('laesst die erlaubten Faelle durch', () => {
-      expect(
-        findBareDestructures('const { data, error } = await supabase.rpc("x");'),
-      ).toHaveLength(0);
+      expect(findBareDestructures('const { data, error } = await supabase.rpc("x");')).toHaveLength(
+        0,
+      );
       expect(
         findBareDestructures('const { data: u } = await supabase.auth.getUser();'),
       ).toHaveLength(0);
@@ -438,6 +336,16 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung
       ).toHaveLength(0);
       // Bereits ausgepackte Variablen sind kein Query-Result:
       expect(findEmptyFallbacks('const xs = maybeList ?? [];')).toHaveLength(0);
+      // Tupel mit mitgenommenem error ist in Ordnung:
+      expect(
+        findBareDestructures(
+          "const [{ data: a, error: e }] = await Promise.all([supabase.from('x').select()]);",
+        ),
+      ).toHaveLength(0);
+      // Ein Tupel ohne fuehrendes `data` ist keine Query-Destrukturierung:
+      expect(
+        findBareDestructures('const [first, second] = await Promise.all([a(), b()]);'),
+      ).toHaveLength(0);
     });
   });
 

@@ -9,7 +9,13 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatDateTime } from '@/lib/utils/format';
-import { ACTIONS_BY_KEY, TRIGGERS_BY_KEY, type ActionKey, type TriggerKey } from '@/lib/automations/registry';
+import {
+  ACTIONS_BY_KEY,
+  TRIGGERS_BY_KEY,
+  type ActionKey,
+  type TriggerKey,
+} from '@/lib/automations/registry';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Automatisierungs-Lauf' };
 
@@ -50,25 +56,39 @@ export default async function AutomationRunDetailPage({
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: rule } = await supabase
-    .from('automation_rules')
-    .select('id, name, trigger_key, action_key')
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 112: Alle drei Abfragen endeten verschluckt in einem 404 bzw. in
+  // "keine Versaende in diesem Lauf" — auf der Seite, die beantworten soll,
+  // was ein automatischer Lauf tatsaechlich getan hat.
+  const rule = unwrapMaybeRow(
+    await supabase
+      .from('automation_rules')
+      .select('id, name, trigger_key, action_key')
+      .eq('id', id)
+      .maybeSingle(),
+    'Automatisierungs-Lauf: Regel',
+  );
   if (!rule) notFound();
 
-  const { data: run } = await supabase
-    .from('automation_runs')
-    .select('id, rule_id, created_at, trigger_key, match_count, action_ok_count, action_failed_count, error')
-    .eq('id', runId)
-    .maybeSingle();
+  const run = unwrapMaybeRow(
+    await supabase
+      .from('automation_runs')
+      .select(
+        'id, rule_id, created_at, trigger_key, match_count, action_ok_count, action_failed_count, error',
+      )
+      .eq('id', runId)
+      .maybeSingle(),
+    'Automatisierungs-Lauf: Lauf',
+  );
   if (!run || run.rule_id !== rule.id) notFound();
 
-  const { data: dispatches } = await supabase
-    .from('automation_dispatches')
-    .select('entity_type, entity_id, dispatch_key, dispatched_at')
-    .eq('run_id', runId)
-    .order('dispatched_at', { ascending: true });
+  const dispatches = unwrapRows(
+    await supabase
+      .from('automation_dispatches')
+      .select('entity_type, entity_id, dispatch_key, dispatched_at')
+      .eq('run_id', runId)
+      .order('dispatched_at', { ascending: true }),
+    'Automatisierungs-Lauf: ausgeloeste Versaende',
+  );
 
   const triggerDef = TRIGGERS_BY_KEY[rule.trigger_key as TriggerKey];
   const actionDef = ACTIONS_BY_KEY[rule.action_key as ActionKey];
@@ -95,15 +115,21 @@ export default async function AutomationRunDetailPage({
         <CardBody>
           <dl className="grid gap-4 text-sm sm:grid-cols-4">
             <div>
-              <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Trigger</dt>
+              <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                Trigger
+              </dt>
               <dd className="mt-1">{triggerDef?.labelDe ?? run.trigger_key}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Aktion</dt>
+              <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                Aktion
+              </dt>
               <dd className="mt-1">{actionDef?.labelDe ?? rule.action_key}</dd>
             </div>
             <div>
-              <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Treffer</dt>
+              <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                Treffer
+              </dt>
               <dd className="mt-1 text-lg font-semibold tabular-nums">{run.match_count}</dd>
             </div>
             <div>
@@ -113,7 +139,9 @@ export default async function AutomationRunDetailPage({
               <dd className="mt-1 text-lg font-semibold tabular-nums">
                 <span className="text-[var(--color-success)]">{run.action_ok_count}</span>
                 <span className="mx-1 text-[var(--color-muted-foreground)]">/</span>
-                <span className={run.action_failed_count > 0 ? 'text-[var(--color-destructive)]' : ''}>
+                <span
+                  className={run.action_failed_count > 0 ? 'text-[var(--color-destructive)]' : ''}
+                >
                   {run.action_failed_count}
                 </span>
               </dd>
@@ -132,7 +160,7 @@ export default async function AutomationRunDetailPage({
           <CardTitle>Betroffene Vorgänge</CardTitle>
         </CardHeader>
         <CardBody>
-          {!dispatches || dispatches.length === 0 ? (
+          {dispatches.length === 0 ? (
             <EmptyState
               title="Keine Dispatches verknüpft"
               description={
@@ -159,10 +187,7 @@ export default async function AutomationRunDetailPage({
                       <tr key={`${d.entity_type}-${d.entity_id}-${d.dispatch_key}`}>
                         <td className="py-2 pr-4">
                           {link ? (
-                            <Link
-                              href={link}
-                              className="underline-offset-2 hover:underline"
-                            >
+                            <Link href={link} className="underline-offset-2 hover:underline">
                               {label}
                             </Link>
                           ) : (

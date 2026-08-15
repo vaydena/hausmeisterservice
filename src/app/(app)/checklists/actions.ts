@@ -4,10 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import {
-  checklistItemInputSchema,
-  checklistTemplateInputSchema,
-} from '@/lib/schemas/checklists';
+import { checklistItemInputSchema, checklistTemplateInputSchema } from '@/lib/schemas/checklists';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export type TemplateFormState = {
   error?: string;
@@ -145,13 +143,14 @@ export async function addItemAction(
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: existing } = await supabase
+  const existingRes = await supabase
     .from('checklist_template_items')
     .select('position')
     .eq('template_id', templateId)
     .order('position', { ascending: false })
     .limit(1);
-  const nextPosition = (existing?.[0]?.position ?? 0) + 1;
+  const existing = unwrapRows(existingRes, 'Checklisten: vorhandene Positionen der Vorlage');
+  const nextPosition = (existing[0]?.position ?? 0) + 1;
 
   const { error } = await supabase.from('checklist_template_items').insert({
     tenant_id: ctx.tenantId,
@@ -229,22 +228,24 @@ export async function moveItemAction(formData: FormData): Promise<void> {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: item } = await supabase
+  const itemRes = await supabase
     .from('checklist_template_items')
     .select('id, position')
     .eq('id', itemId)
     .single();
+  const item = unwrapMaybeRow(itemRes, 'Checklisten: zu verschiebender Eintrag');
 
   if (!item) throw new Error('Item nicht gefunden.');
 
   const targetPos = direction === 'up' ? item.position - 1 : item.position + 1;
 
-  const { data: swap } = await supabase
+  const swapRes = await supabase
     .from('checklist_template_items')
     .select('id, position')
     .eq('template_id', templateId)
     .eq('position', targetPos)
     .maybeSingle();
+  const swap = unwrapMaybeRow(swapRes, 'Checklisten: Tauschpartner an der Zielposition');
 
   if (!swap) return;
 

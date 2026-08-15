@@ -20,6 +20,7 @@ import {
   toIsoDate,
   type ScheduleKind,
 } from '@/lib/schemas/scheduling';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Einsatzplanung' };
 
@@ -84,19 +85,37 @@ export default async function SchedulePage({
       .limit(1000),
   ]);
 
-  const employees = employeesRes.data ?? [];
-  const scheduleEntries = scheduleRes.data ?? [];
-  const workOrders = workOrdersRes.data ?? [];
+  // Sprint 112: Diese drei Listen sind der Wochenplan. Faellt eine
+  // verschluckt aus, bleibt das Raster leer — und ein leeres Raster ist hier
+  // eine Aussage, keine Stoerung: "diese Woche ist nichts geplant".
+  //
+  // Die Folge haengt daran, wer hinsieht. Die Einsatzleitung plant in ein
+  // scheinbar freies Raster hinein und bucht jemanden doppelt. Der
+  // Mitarbeiter sieht seine eigene Schicht nicht und faehrt nicht hin. Beides
+  // faellt erst am Einsatztag auf, also genau dann, wenn es nicht mehr zu
+  // korrigieren ist — dieselbe Mechanik wie bei den Fristen in Sprint 109,
+  // nur mit einem Tag Vorlauf statt Wochen.
+  const employees = unwrapRows(employeesRes, 'Einsatzplan: aktive Mitarbeiter');
+  const scheduleEntries = unwrapRows(scheduleRes, 'Einsatzplan: Eintraege der Woche');
+  const workOrders = unwrapRows(workOrdersRes, 'Einsatzplan: geplante Auftraege');
 
   const userIds = [...new Set(employees.map((e) => e.user_id))];
   const usersRes =
     userIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const nameByUserId = new Map((usersRes.data ?? []).map((u) => [u.id, u.display_name]));
+      : {
+          data: [] as { id: string; display_name: string | null }[],
+          error: null,
+        };
+  const nameByUserId = new Map(
+    unwrapRows(usersRes, 'Einsatzplan: Namen der Mitarbeiter').map((u) => [u.id, u.display_name]),
+  );
 
   const rows = employees
-    .map((e) => ({ id: e.id, name: nameByUserId.get(e.user_id) ?? '(Ohne Namen)' }))
+    .map((e) => ({
+      id: e.id,
+      name: nameByUserId.get(e.user_id) ?? '(Ohne Namen)',
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
   const cells = new Map<string, Cell>();
@@ -223,8 +242,11 @@ export default async function SchedulePage({
                             key={dayIdx}
                             className="min-w-40 border-r border-[var(--color-border)] px-2 py-2 align-top last:border-r-0"
                           >
-                            {(!cell || (cell.scheduleEntries.length === 0 && cell.workOrders.length === 0)) ? (
-                              <span className="text-xs text-[var(--color-muted-foreground)]">–</span>
+                            {!cell ||
+                            (cell.scheduleEntries.length === 0 && cell.workOrders.length === 0) ? (
+                              <span className="text-xs text-[var(--color-muted-foreground)]">
+                                –
+                              </span>
                             ) : (
                               <div className="flex flex-col gap-1">
                                 {cell?.workOrders.map((w) => (

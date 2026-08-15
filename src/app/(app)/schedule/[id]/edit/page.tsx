@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { toDateTimeLocalInput, type ScheduleKind } from '@/lib/schemas/scheduling';
 import { EntryForm } from '../../entry-form';
 import { deleteScheduleEntryAction, updateScheduleEntryAction } from '../../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Termin bearbeiten' };
 
@@ -23,11 +24,12 @@ export default async function EditScheduleEntryPage({
   if (!permissions.has('scheduling.view')) redirect('/dashboard');
 
   const supabase = await createSupabaseServerClient();
-  const { data: entry } = await supabase
+  const entryRes = await supabase
     .from('schedule_entries')
     .select('id, employee_id, user_id, kind, title, note, start_at, end_at, all_day')
     .eq('id', id)
     .maybeSingle();
+  const entry = unwrapMaybeRow(entryRes, 'Einsatzplan: schedule_entries');
 
   if (!entry) notFound();
 
@@ -35,18 +37,27 @@ export default async function EditScheduleEntryPage({
   const canEditThis = entry.user_id === ctx.userId || canEditOthers;
   if (!canEditThis) redirect('/schedule');
 
-  const { data: employees } = await supabase
+  const employeesRes = await supabase
     .from('employees')
     .select('id, user_id, employment_status')
     .eq('employment_status', 'active');
+  const list = unwrapRows(employeesRes, 'Einsatzplan: auswaehlbare Mitarbeiter');
 
-  const list = employees ?? [];
+  // Sprint 112: Wie auf der Neu-Seite — verschluckt bleibt die Auswahl
+  // vollstaendig, aber unbeschriftet ("(Ohne Namen)"). Beim Bearbeiten wiegt
+  // das schwerer: der bereits zugewiesene Mitarbeiter ist dann nicht mehr
+  // erkennbar, und ein Speichern kann den Termin unbemerkt umhaengen.
   const userIds = [...new Set(list.map((e) => e.user_id))];
   const usersRes =
     userIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const nameByUserId = new Map((usersRes.data ?? []).map((u) => [u.id, u.display_name]));
+      : {
+          data: [] as { id: string; display_name: string | null }[],
+          error: null,
+        };
+  const nameByUserId = new Map(
+    unwrapRows(usersRes, 'Einsatzplan: Namen der Mitarbeiter').map((u) => [u.id, u.display_name]),
+  );
 
   const options = list
     .filter((e) => canEditOthers || e.user_id === ctx.userId)
@@ -58,10 +69,7 @@ export default async function EditScheduleEntryPage({
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <PageHeader
-        title="Termin bearbeiten"
-        description={entry.title}
-      />
+      <PageHeader title="Termin bearbeiten" description={entry.title} />
       <EntryForm
         action={updateScheduleEntryAction}
         mode="edit"

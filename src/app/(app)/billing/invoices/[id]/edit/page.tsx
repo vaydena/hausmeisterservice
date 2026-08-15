@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { BillingDocumentForm } from '../../../billing-form';
 import { updateInvoiceAction } from '../../../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Rechnung bearbeiten' };
 
@@ -16,17 +17,18 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
   if (!permissions.has('billing.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: invoice } = await supabase
+  const invoiceRes = await supabase
     .from('invoices')
     .select(
       'id, title, description, status, bill_to_name, bill_to_address, property_id, owner_id, work_order_id, offer_id, issued_at, due_at, notes',
     )
     .eq('id', id)
     .maybeSingle();
+  const invoice = unwrapMaybeRow(invoiceRes, 'Abrechnung: invoices');
   if (!invoice) notFound();
   if (invoice.status !== 'draft') notFound();
 
-  const [{ data: properties }, { data: owners }, { data: workOrders }, { data: offers }] = await Promise.all([
+  const [propertiesRes, ownersRes, workOrdersRes, offersRes] = await Promise.all([
     supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
     supabase
       .from('owners')
@@ -46,26 +48,39 @@ export default async function EditInvoicePage({ params }: { params: Promise<{ id
       .order('issued_at', { ascending: false })
       .limit(50),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Abrechnung: properties');
+  const owners = unwrapRows(ownersRes, 'Abrechnung: owners');
+  const workOrders = unwrapRows(workOrdersRes, 'Abrechnung: work_orders');
+  const offers = unwrapRows(offersRes, 'Abrechnung: offers');
 
-  const ownerOpts = (owners ?? []).map((o) => ({
+  const ownerOpts = owners.map((o) => ({
     id: o.id,
     label:
       o.kind === 'company'
-        ? o.company_name ?? '—'
+        ? (o.company_name ?? '—')
         : `${o.first_name ?? ''} ${o.last_name ?? ''}`.trim() || '—',
   }));
-  const woOpts = (workOrders ?? []).map((w) => ({ id: w.id, label: `${w.code} · ${w.title}` }));
-  const offerOpts = (offers ?? []).map((o) => ({ id: o.id, label: `${o.code} · ${o.title}` }));
+  const woOpts = workOrders.map((w) => ({
+    id: w.id,
+    label: `${w.code} · ${w.title}`,
+  }));
+  const offerOpts = offers.map((o) => ({
+    id: o.id,
+    label: `${o.code} · ${o.title}`,
+  }));
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <PageHeader title="Rechnung bearbeiten" description="Nur Entwürfe können bearbeitet werden." />
+      <PageHeader
+        title="Rechnung bearbeiten"
+        description="Nur Entwürfe können bearbeitet werden."
+      />
       <BillingDocumentForm
         action={updateInvoiceAction}
         cancelHref={`/billing/invoices/${invoice.id}`}
         submitLabel="Speichern"
         kind="invoice"
-        properties={properties ?? []}
+        properties={properties}
         owners={ownerOpts}
         workOrders={woOpts}
         offers={offerOpts}

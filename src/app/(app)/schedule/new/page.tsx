@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { toDateTimeLocalInput } from '@/lib/schemas/scheduling';
 import { EntryForm } from '../entry-form';
 import { createScheduleEntryAction } from '../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neuer Termin' };
 
@@ -18,18 +19,28 @@ export default async function NewScheduleEntryPage() {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: employees } = await supabase
+  const employeesRes = await supabase
     .from('employees')
     .select('id, user_id, employment_status')
     .eq('employment_status', 'active');
+  const list = unwrapRows(employeesRes, 'Einsatzplan: auswaehlbare Mitarbeiter');
 
-  const list = employees ?? [];
+  // Sprint 112: Der Fehler faellt hier nicht als leere Auswahl auf, sondern
+  // als eine Auswahl aus lauter "(Ohne Namen)". Die IDs stimmen, nur die
+  // Beschriftung fehlt — der Planer waehlt also aus optisch identischen
+  // Eintraegen und weist den Termin faktisch zufaellig zu. Ein leeres Feld
+  // haette gestoppt, ein namenloses nicht.
   const userIds = [...new Set(list.map((e) => e.user_id))];
   const usersRes =
     userIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const nameByUserId = new Map((usersRes.data ?? []).map((u) => [u.id, u.display_name]));
+      : {
+          data: [] as { id: string; display_name: string | null }[],
+          error: null,
+        };
+  const nameByUserId = new Map(
+    unwrapRows(usersRes, 'Einsatzplan: Namen der Mitarbeiter').map((u) => [u.id, u.display_name]),
+  );
 
   const options = list
     .filter((e) => canEditOthers || e.user_id === ctx.userId)

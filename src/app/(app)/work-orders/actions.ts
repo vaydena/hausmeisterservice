@@ -11,6 +11,7 @@ import {
   workOrderStatusSchema,
   type WorkOrderStatus,
 } from '@/lib/schemas/work-orders';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export type WorkOrderFormState = {
   error?: string;
@@ -39,7 +40,10 @@ export async function createWorkOrderAction(
   const ctx = await requireTenantContext();
   const parsed = parseForm(formData);
   if (!parsed.success) {
-    return { fieldErrors: fieldErrorsFromZod(parsed.error), error: 'Bitte prüfen Sie die Eingaben.' };
+    return {
+      fieldErrors: fieldErrorsFromZod(parsed.error),
+      error: 'Bitte prüfen Sie die Eingaben.',
+    };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -80,16 +84,20 @@ export async function updateWorkOrderAction(
   const ctx = await requireTenantContext();
   const parsed = parseForm(formData);
   if (!parsed.success) {
-    return { fieldErrors: fieldErrorsFromZod(parsed.error), error: 'Bitte prüfen Sie die Eingaben.' };
+    return {
+      fieldErrors: fieldErrorsFromZod(parsed.error),
+      error: 'Bitte prüfen Sie die Eingaben.',
+    };
   }
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: before } = await supabase
+  const beforeRes = await supabase
     .from('work_orders')
     .select('assignee_id')
     .eq('id', workOrderId)
     .maybeSingle();
+  const before = unwrapMaybeRow(beforeRes, 'Auftraege: Auftrag vor der Bearbeitung');
 
   const { error } = await supabase
     .from('work_orders')
@@ -151,11 +159,12 @@ export async function assignWorkOrderAction(formData: FormData) {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: before } = await supabase
+  const beforeRes = await supabase
     .from('work_orders')
     .select('assignee_id, title')
     .eq('id', workOrderId)
     .maybeSingle();
+  const before = unwrapMaybeRow(beforeRes, 'Auftraege: Auftrag vor der Zuweisung');
 
   const { error } = await supabase
     .from('work_orders')
@@ -183,6 +192,7 @@ export async function assignWorkOrderAction(formData: FormData) {
 function friendlyDbMessage(msg?: string | null): string {
   if (!msg) return 'Speichern fehlgeschlagen.';
   if (msg.includes('row-level security')) return 'Sie haben keine Berechtigung für diese Aktion.';
-  if (msg.includes('violates foreign key')) return 'Verweis auf Objekt oder Mitarbeiter ist ungültig.';
+  if (msg.includes('violates foreign key'))
+    return 'Verweis auf Objekt oder Mitarbeiter ist ungültig.';
   return 'Speichern fehlgeschlagen. Bitte erneut versuchen.';
 }

@@ -8,6 +8,7 @@ import { WorkOrderForm } from '../work-order-form';
 import { createWorkOrderAction } from '../actions';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LinkButton } from '@/components/ui/button';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neuer Auftrag' };
 
@@ -22,17 +23,12 @@ export default async function NewWorkOrderPage({
   if (!permissions.has('work_orders.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: properties }, { data: employees }] = await Promise.all([
-    supabase
-      .from('properties')
-      .select('id, name, code')
-      .is('deleted_at', null)
-      .order('name'),
-    supabase
-      .from('employees')
-      .select('id, user_id')
-      .eq('employment_status', 'active'),
+  const [propertiesRes, employeesRes] = await Promise.all([
+    supabase.from('properties').select('id, name, code').is('deleted_at', null).order('name'),
+    supabase.from('employees').select('id, user_id').eq('employment_status', 'active'),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Auftraege: properties');
+  const employees = unwrapRows(employeesRes, 'Auftraege: employees');
 
   if (!properties || properties.length === 0) {
     return (
@@ -52,13 +48,14 @@ export default async function NewWorkOrderPage({
   }
 
   // Namen der Mitarbeiter für Assignee-Dropdown
-  const userIds = (employees ?? []).map((e) => e.user_id);
-  const { data: users } =
+  const userIds = employees.map((e) => e.user_id);
+  const usersRes =
     userIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const nameById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
-  const employeeOptions = (employees ?? []).map((e) => ({
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Auftraege: users');
+  const nameById = new Map(users.map((u) => [u.id, u.display_name]));
+  const employeeOptions = employees.map((e) => ({
     id: e.id,
     display_name: nameById.get(e.user_id) ?? '(Ohne Namen)',
   }));

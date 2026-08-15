@@ -3,11 +3,13 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { csvResponse, parsePeriod, toCsv } from '@/lib/reports/utils';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export async function GET(req: NextRequest) {
   const ctx = await requireTenantContext();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
-  if (!permissions.has('reporting.download')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!permissions.has('reporting.download'))
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const url = new URL(req.url);
   const { from, to } = parsePeriod(url.searchParams);
@@ -15,7 +17,7 @@ export async function GET(req: NextRequest) {
   const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
   const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
-  const [{ data: materials }, { data: movements }] = await Promise.all([
+  const [materialsRes, movementsRes] = await Promise.all([
     supabase
       .from('materials')
       .select('id, code, label, sku, unit, current_stock, min_stock, unit_cost')
@@ -27,11 +29,12 @@ export async function GET(req: NextRequest) {
       .gte('occurred_at', fromIso)
       .lte('occurred_at', toIso),
   ]);
+  const mats = unwrapRows(materialsRes, 'Auswertungen: materials');
+  const movements = unwrapRows(movementsRes, 'Auswertungen: stock_movements');
 
-  const mats = materials ?? [];
   const consumption = new Map<string, { qty: number; value: number }>();
   const inflow = new Map<string, { qty: number; value: number }>();
-  for (const m of movements ?? []) {
+  for (const m of movements) {
     const qty = Number(m.quantity ?? 0);
     const val = qty * Number(m.unit_cost_at_time ?? 0);
     const target = m.kind === 'issue' ? consumption : m.kind === 'receipt' ? inflow : null;

@@ -9,11 +9,8 @@ import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { OWNER_KIND_LABEL, ownerDisplayName, type OwnerKind } from '@/lib/schemas/owners';
-import {
-  attachPropertyAction,
-  deleteOwnerAction,
-  detachPropertyAction,
-} from '../actions';
+import { attachPropertyAction, deleteOwnerAction, detachPropertyAction } from '../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Eigentümer' };
 
@@ -23,42 +20,46 @@ const ROLE_LABEL: Record<string, string> = {
   management: 'Verwaltung',
 };
 
-export default async function OwnerDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function OwnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: owner } = await supabase
-    .from('owners')
-    .select(
-      'id, kind, first_name, last_name, company_name, email, phone, street, house_number, postal_code, city, country, notes, created_at, updated_at',
-    )
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
+  const owner = unwrapMaybeRow(
+    await supabase
+      .from('owners')
+      .select(
+        'id, kind, first_name, last_name, company_name, email, phone, street, house_number, postal_code, city, country, notes, created_at, updated_at',
+      )
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    'Eigentuemer: Datensatz',
+  );
 
   if (!owner) notFound();
 
-  const [{ data: assignments }, { data: allProperties }] = await Promise.all([
+  const [assignmentsRes, allPropertiesRes] = await Promise.all([
     supabase
       .from('owner_properties')
       .select('property_id, role, share_percent, created_at')
       .eq('owner_id', owner.id),
-    supabase
-      .from('properties')
-      .select('id, code, name')
-      .is('deleted_at', null)
-      .order('name'),
+    supabase.from('properties').select('id, code, name').is('deleted_at', null).order('name'),
   ]);
+  const assignments = unwrapRows(assignmentsRes, 'Personen: owner_properties');
+  const allProperties = unwrapRows(allPropertiesRes, 'Personen: properties');
 
-  const attachedPropertyIds = new Set((assignments ?? []).map((a) => a.property_id));
-  const propertyById = new Map((allProperties ?? []).map((p) => [p.id, p]));
-  const availableProperties = (allProperties ?? []).filter((p) => !attachedPropertyIds.has(p.id));
+  // Sprint 112: assignments beantwortet die Frage, welche Objekte diesem
+  // Eigentuemer gehoeren — und steuert zugleich, was im Zuordnen-Feld darunter
+  // zur Auswahl steht. Verschluckt hiess das zweierlei gleichzeitig: die Seite
+  // behauptete "keine Objekte zugeordnet", und die bereits zugeordneten
+  // Objekte tauchten wieder als zuordenbar auf. Wer das glaubt und zuordnet,
+  // legt eine zweite Beteiligung an derselben Immobilie an — mit einem
+  // Anteilswert, der dann nicht mehr aufgeht.
+  const attachedPropertyIds = new Set(assignments.map((a) => a.property_id));
+  const propertyById = new Map(allProperties.map((p) => [p.id, p]));
+  const availableProperties = allProperties.filter((p) => !attachedPropertyIds.has(p.id));
 
   const canEdit = permissions.has('owners.edit');
   const canDelete = permissions.has('owners.delete');
@@ -102,7 +103,10 @@ export default async function OwnerDetailPage({
               </Row>
               <Row label="Telefon">
                 {owner.phone ? (
-                  <a href={`tel:${owner.phone}`} className="text-[var(--color-primary)] hover:underline">
+                  <a
+                    href={`tel:${owner.phone}`}
+                    className="text-[var(--color-primary)] hover:underline"
+                  >
                     {owner.phone}
                   </a>
                 ) : (
@@ -127,7 +131,9 @@ export default async function OwnerDetailPage({
                 {owner.country}
               </address>
             ) : (
-              <span className="text-sm text-[var(--color-muted-foreground)]">Keine Adresse hinterlegt.</span>
+              <span className="text-sm text-[var(--color-muted-foreground)]">
+                Keine Adresse hinterlegt.
+              </span>
             )}
           </CardBody>
         </Card>
@@ -138,13 +144,13 @@ export default async function OwnerDetailPage({
           <CardTitle>Zugeordnete Objekte</CardTitle>
         </CardHeader>
         <CardBody>
-          {(assignments ?? []).length === 0 ? (
+          {assignments.length === 0 ? (
             <p className="text-sm text-[var(--color-muted-foreground)]">
               Diesem Eigentümer sind noch keine Objekte zugeordnet.
             </p>
           ) : (
             <ul className="divide-y divide-[var(--color-border)]">
-              {(assignments ?? []).map((a) => {
+              {assignments.map((a) => {
                 const p = propertyById.get(a.property_id);
                 return (
                   <li key={a.property_id} className="flex items-center justify-between gap-3 py-2">
@@ -216,7 +222,10 @@ export default async function OwnerDetailPage({
                 </select>
               </div>
               <div className="w-32">
-                <label htmlFor="role" className="mb-1 block text-xs font-medium text-[var(--color-muted-foreground)]">
+                <label
+                  htmlFor="role"
+                  className="mb-1 block text-xs font-medium text-[var(--color-muted-foreground)]"
+                >
                   Rolle
                 </label>
                 <select

@@ -18,6 +18,7 @@ import {
   defectReportStatusSchema,
   type DefectReportStatus,
 } from '@/lib/schemas/defect-reports';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Mängelmeldungen' };
 
@@ -45,13 +46,24 @@ export default async function DefectReportsPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const [{ data: propertiesForFilter }, countsRes] = await Promise.all([
+  const [propertiesForFilterRes, countsRes] = await Promise.all([
     supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
     supabase.from('defect_reports').select('status', { head: false }),
   ]);
+  const propertiesForFilter = unwrapRows(
+    propertiesForFilterRes,
+    'Maengelmeldungen: Objekte fuer den Filter',
+  );
 
+  // Sprint 112: Wie bei den Auftraegen — verschluckt steht ueber jedem
+  // Status-Tab eine Null. Bei Maengelmeldungen faellt das schwerer ins
+  // Gewicht, weil der Tab "Neu" die Eingangsschlange der Bewohner ist: eine
+  // Null dort heisst "nichts Neues gemeldet", waehrend die Meldungen
+  // unbearbeitet liegen bleiben.
   const counts: Record<string, number> = {};
-  for (const row of countsRes.data ?? []) counts[row.status] = (counts[row.status] ?? 0) + 1;
+  for (const row of unwrapRows(countsRes, 'Maengelmeldungen: Anzahl je Status')) {
+    counts[row.status] = (counts[row.status] ?? 0) + 1;
+  }
 
   let query = supabase
     .from('defect_reports')
@@ -64,15 +76,16 @@ export default async function DefectReportsPage({
 
   if (params.property_id) query = query.eq('property_id', params.property_id);
 
-  const { data: reports } = await query;
-  const items = reports ?? [];
+  const reportsRes = await query;
+  const items = unwrapRows(reportsRes, 'Maengelmeldungen');
 
   const propertyIds = [...new Set(items.map((r) => r.property_id))];
-  const { data: props } =
+  const propsRes =
     propertyIds.length > 0
       ? await supabase.from('properties').select('id, name, code').in('id', propertyIds)
-      : { data: [] };
-  const propertyById = new Map((props ?? []).map((p) => [p.id, p]));
+      : { data: [], error: null };
+  const props = unwrapRows(propsRes, 'Maengelmeldungen: Objektnamen zur Liste');
+  const propertyById = new Map(props.map((p) => [p.id, p]));
 
   const canCreate = permissions.has('defect_reports.create');
 
@@ -81,14 +94,16 @@ export default async function DefectReportsPage({
       <PageHeader
         title="Mängelmeldungen"
         description="Meldungen von Bewohnern, Eigentümern oder Personal — geprüft und in Aufträge überführt."
-        action={canCreate ? <LinkButton href="/defect-reports/new">Neue Meldung</LinkButton> : undefined}
+        action={
+          canCreate ? <LinkButton href="/defect-reports/new">Neue Meldung</LinkButton> : undefined
+        }
       />
 
       <StatusTabs current={tab} counts={counts} propertyId={params.property_id} />
 
-      {(propertiesForFilter?.length ?? 0) > 0 && (
+      {propertiesForFilter.length > 0 && (
         <PropertyFilter
-          properties={propertiesForFilter ?? []}
+          properties={propertiesForFilter}
           currentPropertyId={params.property_id}
           currentTab={tab}
         />
@@ -125,9 +140,8 @@ export default async function DefectReportsPage({
                           ? `${property.code ? property.code + ' · ' : ''}${property.name}`
                           : 'Objekt entfernt'}
                         {' · '}
-                        {REPORTER_KIND_LABEL[
-                          r.reporter_kind as keyof typeof REPORTER_KIND_LABEL
-                        ] ?? r.reporter_kind}
+                        {REPORTER_KIND_LABEL[r.reporter_kind as keyof typeof REPORTER_KIND_LABEL] ??
+                          r.reporter_kind}
                         {r.reporter_name ? ` (${r.reporter_name})` : ''}
                         {' · '}
                         {formatDateTime(r.created_at)}
@@ -209,7 +223,11 @@ function PropertyFilter({
   currentTab: DefectReportStatus;
 }) {
   return (
-    <form action="/defect-reports" method="get" className="flex flex-wrap items-center gap-2 text-sm">
+    <form
+      action="/defect-reports"
+      method="get"
+      className="flex flex-wrap items-center gap-2 text-sm"
+    >
       <input type="hidden" name="status" value={currentTab} />
       <label htmlFor="property_id" className="text-[var(--color-muted-foreground)]">
         Objekt:

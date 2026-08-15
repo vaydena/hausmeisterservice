@@ -15,36 +15,30 @@ import {
   type ChecklistItemKind,
   type ChecklistRunStatus,
 } from '@/lib/schemas/checklists';
-import {
-  cancelRunAction,
-  completeRunAction,
-  updateRunItemAction,
-} from '../actions';
+import { cancelRunAction, completeRunAction, updateRunItemAction } from '../actions';
 import { DocumentUploader } from '@/components/documents/document-uploader';
 import { DocumentList, type DocumentRow } from '@/components/documents/document-list';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Checklisten-Ausführung' };
 
-export default async function ChecklistRunPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ChecklistRunPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await requireTenantContext();
   const supabase = await createSupabaseServerClient();
 
-  const { data: run } = await supabase
+  const runRes = await supabase
     .from('checklist_runs')
     .select(
       'id, template_id, work_order_id, status, started_at, started_by, completed_at, completed_by, notes',
     )
     .eq('id', id)
     .maybeSingle();
+  const run = unwrapMaybeRow(runRes, 'Checklisten-Durchlauf: checklist_runs');
 
   if (!run) notFound();
 
-  const [{ data: template }, { data: itemsRaw }, { data: workOrder }] = await Promise.all([
+  const [templateRes, itemsRawRes, workOrderRes] = await Promise.all([
     supabase
       .from('checklist_templates')
       .select('id, code, title, description')
@@ -63,15 +57,17 @@ export default async function ChecklistRunPage({
           .select('id, code, title')
           .eq('id', run.work_order_id)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
+  const template = unwrapMaybeRow(templateRes, 'Checklisten-Durchlauf: checklist_templates');
+  const items = unwrapRows(itemsRawRes, 'Checklisten-Durchlauf: checklist_run_items');
+  const workOrder = unwrapMaybeRow(workOrderRes, 'Checklisten-Durchlauf: work_orders');
 
-  const items = itemsRaw ?? [];
   const status = run.status as ChecklistRunStatus;
   const isOpen = status === 'in_progress';
 
   const photoItemIds = items.filter((it) => it.kind === 'photo').map((it) => it.id);
-  const { data: photoDocs } =
+  const photoDocsRes =
     photoItemIds.length > 0
       ? await supabase
           .from('documents')
@@ -81,9 +77,10 @@ export default async function ChecklistRunPage({
           .eq('entity_type', 'checklist_run_item')
           .in('entity_id', photoItemIds)
           .order('created_at', { ascending: false })
-      : { data: [] };
+      : { data: [], error: null };
+  const photoDocs = unwrapRows(photoDocsRes, 'Checklisten-Durchlauf: documents');
   const docsByItem = new Map<string, DocumentRow[]>();
-  for (const doc of photoDocs ?? []) {
+  for (const doc of photoDocs) {
     const { entity_id, ...rest } = doc;
     const arr = docsByItem.get(entity_id) ?? [];
     arr.push(rest as DocumentRow);
@@ -98,11 +95,12 @@ export default async function ChecklistRunPage({
   const canComplete = isOpen && requiredMissing.length === 0;
 
   const userIds = [run.started_by, run.completed_by].filter((v): v is string => Boolean(v));
-  const { data: users } =
+  const usersRes =
     userIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', userIds)
-      : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Checklisten-Durchlauf: users');
+  const displayById = new Map(users.map((u) => [u.id, u.display_name]));
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -257,8 +255,7 @@ export default async function ChecklistRunPage({
                           )}
                           {(item.min_value !== null || item.max_value !== null) && (
                             <span className="text-xs text-[var(--color-muted-foreground)]">
-                              (Sollbereich{' '}
-                              {item.min_value !== null ? `≥ ${item.min_value}` : ''}
+                              (Sollbereich {item.min_value !== null ? `≥ ${item.min_value}` : ''}
                               {item.min_value !== null && item.max_value !== null ? ' · ' : ''}
                               {item.max_value !== null ? `≤ ${item.max_value}` : ''})
                             </span>

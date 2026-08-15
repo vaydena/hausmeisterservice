@@ -6,27 +6,25 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { MaterialForm } from '../../material-form';
 import { updateMaterialAction, type MaterialFormState } from '../../actions';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Artikel bearbeiten' };
 
-export default async function EditMaterialPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EditMaterialPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('materials.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: material } = await supabase
+  const materialRes = await supabase
     .from('materials')
     .select(
       'id, label, sku, category, unit, min_stock, unit_cost, storage_location, supplier, notes',
     )
     .eq('id', id)
     .maybeSingle();
+  const material = unwrapMaybeRow(materialRes, 'Material: materials');
 
   if (!material) notFound();
 

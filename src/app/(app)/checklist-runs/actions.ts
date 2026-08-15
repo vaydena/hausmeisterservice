@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isRunItemAnswered } from '@/lib/schemas/checklists';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 function friendlyDbMessage(msg?: string | null): string {
   if (!msg) return 'Speichern fehlgeschlagen.';
@@ -37,19 +38,21 @@ export async function startRunAction(formData: FormData): Promise<void> {
 
   let propertyId: string | null = null;
   if (workOrderId) {
-    const { data: wo } = await supabase
+    const woRes = await supabase
       .from('work_orders')
       .select('property_id')
       .eq('id', workOrderId)
       .maybeSingle();
+    const wo = unwrapMaybeRow(woRes, 'Checklisten-Durchlauf: work_orders');
     propertyId = wo?.property_id ?? null;
   }
 
-  const { data: items } = await supabase
+  const itemsRes = await supabase
     .from('checklist_template_items')
     .select('id, position, kind, label, help_text, required, unit, min_value, max_value')
     .eq('template_id', templateId)
     .order('position');
+  const items = unwrapRows(itemsRes, 'Checklisten-Durchlauf: checklist_template_items');
 
   const { data: run, error: runErr } = await supabase
     .from('checklist_runs')
@@ -134,10 +137,7 @@ export async function updateRunItemAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase
-    .from('checklist_run_items')
-    .update(patch)
-    .eq('id', itemId);
+  const { error } = await supabase.from('checklist_run_items').update(patch).eq('id', itemId);
   if (error) throw new Error(friendlyDbMessage(error.message));
 
   revalidatePath(`/checklist-runs/${runId}`);
@@ -156,39 +156,53 @@ export async function completeRunAction(formData: FormData): Promise<void> {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: run } = await supabase
+  const runRes = await supabase
     .from('checklist_runs')
     .select('id, status, work_order_id')
     .eq('id', runId)
     .single();
+  const run = unwrapMaybeRow(runRes, 'Checklisten-Durchlauf: Durchlauf zum Abschliessen');
   if (!run) throw new Error('Run nicht gefunden.');
   if (run.status !== 'in_progress') throw new Error('Run ist bereits abgeschlossen.');
 
-  const { data: items } = await supabase
+  const itemsRes = await supabase
     .from('checklist_run_items')
     .select('id, kind, required, value_bool, value_text, value_number, min_value, max_value, label')
     .eq('run_id', runId);
+  const items = unwrapRows(itemsRes, 'Checklisten-Durchlauf: checklist_run_items');
 
-  const photoItemIds = (items ?? [])
-    .filter((it) => it.kind === 'photo')
-    .map((it) => it.id);
+  const photoItemIds = items.filter((it) => it.kind === 'photo').map((it) => it.id);
   const docCountByItem = new Map<string, number>();
   if (photoItemIds.length > 0) {
-    const { data: docs } = await supabase
+    const docsRes = await supabase
       .from('documents')
       .select('entity_id')
       .eq('entity_type', 'checklist_run_item')
       .in('entity_id', photoItemIds);
-    for (const doc of docs ?? []) {
+    const docs = unwrapRows(docsRes, 'Checklisten-Durchlauf: documents');
+    for (const doc of docs) {
       docCountByItem.set(doc.entity_id, (docCountByItem.get(doc.entity_id) ?? 0) + 1);
     }
   }
 
-  const missing = (items ?? [])
+  // Sprint 112: `missing` ist die Sperre gegen das Abschliessen eines
+  // unvollstaendigen Durchlaufs. Sie speist sich aus zwei Listen, und beide
+  // fielen verschluckt leer aus: ohne items gibt es keine Pflichtfelder mehr
+  // zu pruefen, ohne docs zaehlt jedes Foto als nicht vorhanden — die eine
+  // Richtung oeffnet die Sperre, die andere schliesst sie zu.
+  //
+  // Die offene Richtung ist die gefaehrliche: der Durchlauf wird als
+  // vollstaendig abgehakt gespeichert, obwohl die Pflichtpunkte nie
+  // beantwortet wurden. Genau diese Fail-Open-Mechanik war Sprint 111, nur
+  // stand dort ein Zaehlerstand dahinter und hier eine Wartungsdokumentation,
+  // auf die sich spaeter jemand beruft.
+  const missing = items
     .filter((it) => it.required && !isRunItemAnswered(it, docCountByItem.get(it.id) ?? 0))
     .map((it) => it.label);
   if (missing.length > 0) {
-    throw new Error(`Bitte Pflichtfelder ausfüllen: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ' …' : ''}`);
+    throw new Error(
+      `Bitte Pflichtfelder ausfüllen: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? ' …' : ''}`,
+    );
   }
 
   const { error } = await supabase
@@ -213,11 +227,12 @@ export async function cancelRunAction(formData: FormData): Promise<void> {
 
   const supabase = await createSupabaseServerClient();
 
-  const { data: run } = await supabase
+  const runRes = await supabase
     .from('checklist_runs')
     .select('id, status, work_order_id')
     .eq('id', runId)
     .single();
+  const run = unwrapMaybeRow(runRes, 'Checklisten-Durchlauf: Durchlauf zum Abbrechen');
   if (!run) throw new Error('Run nicht gefunden.');
   if (run.status !== 'in_progress') throw new Error('Run ist bereits abgeschlossen.');
 

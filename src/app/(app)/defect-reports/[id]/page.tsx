@@ -23,6 +23,7 @@ import {
 } from '../actions';
 import { DocumentUploader } from '@/components/documents/document-uploader';
 import { DocumentList, type DocumentRow } from '@/components/documents/document-list';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Meldung' };
 
@@ -43,49 +44,57 @@ export default async function DefectReportDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: report } = await supabase
+  const reportRes = await supabase
     .from('defect_reports')
     .select(
       'id, code, title, description, category, priority, status, property_id, building_id, unit_id, location_details, reporter_kind, reporter_name, reporter_contact, reporter_user_id, converted_work_order_id, reviewed_by, reviewed_at, rejection_reason, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();
+  const report = unwrapMaybeRow(reportRes, 'Maengelmeldungen: defect_reports');
 
   if (!report) notFound();
 
-  const [{ data: property }, { data: building }, { data: unit }, workOrderRes] = await Promise.all([
+  const [propertyRes, buildingRes, unitRes, workOrderRes] = await Promise.all([
     supabase.from('properties').select('id, code, name').eq('id', report.property_id).maybeSingle(),
     report.building_id
       ? supabase.from('buildings').select('id, name').eq('id', report.building_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     report.unit_id
       ? supabase.from('units').select('id, code').eq('id', report.unit_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     report.converted_work_order_id
       ? supabase
           .from('work_orders')
           .select('id, code, title, status')
           .eq('id', report.converted_work_order_id)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
+  const property = unwrapMaybeRow(propertyRes, 'Maengelmeldungen: properties');
+  const building = unwrapMaybeRow(buildingRes, 'Maengelmeldungen: buildings');
+  const unit = unwrapMaybeRow(unitRes, 'Maengelmeldungen: units');
 
-  const { data: docs } = await supabase
+  const docsRes = await supabase
     .from('documents')
-    .select('id, kind, storage_path, original_filename, mime_type, byte_size, caption, created_at, uploaded_by')
+    .select(
+      'id, kind, storage_path, original_filename, mime_type, byte_size, caption, created_at, uploaded_by',
+    )
     .eq('entity_type', 'defect_report')
     .eq('entity_id', report.id)
     .order('created_at', { ascending: false });
+  const docs = unwrapRows(docsRes, 'Maengelmeldungen: documents');
 
-  const userIds = [report.reporter_user_id, report.reviewed_by].filter(
-    (v): v is string => Boolean(v),
+  const userIds = [report.reporter_user_id, report.reviewed_by].filter((v): v is string =>
+    Boolean(v),
   );
   const uniqueUserIds = [...new Set(userIds)];
-  const { data: users } =
+  const usersRes =
     uniqueUserIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', uniqueUserIds)
-      : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Maengelmeldungen: users');
+  const displayById = new Map(users.map((u) => [u.id, u.display_name]));
 
   const canEdit = permissions.has('defect_reports.edit');
   const canConvert = canEdit && permissions.has('work_orders.create');
@@ -164,7 +173,7 @@ export default async function DefectReportDetailPage({
             </CardHeader>
             <CardBody className="flex flex-col gap-4">
               <DocumentList
-                documents={(docs ?? []) as DocumentRow[]}
+                documents={docs as DocumentRow[]}
                 canDelete={canEdit || permissions.has('documents.delete')}
                 emptyLabel="Noch keine Fotos zur Meldung."
               />

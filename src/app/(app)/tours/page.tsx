@@ -16,13 +16,19 @@ import {
   formatDate,
   type TourStatus,
 } from '@/lib/schemas/tours';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Touren' };
 
 export default async function ToursPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; from?: string; to?: string; q?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    from?: string;
+    to?: string;
+    q?: string;
+  }>;
 }) {
   const params = await searchParams;
   const ctx = await requireTenantContext();
@@ -31,7 +37,9 @@ export default async function ToursPage({
 
   let query = supabase
     .from('tours')
-    .select('id, code, title, planned_date, status, driver_user_id, vehicle_id, started_at, completed_at')
+    .select(
+      'id, code, title, planned_date, status, driver_user_id, vehicle_id, started_at, completed_at',
+    )
     .is('deleted_at', null)
     .order('planned_date', { ascending: false });
 
@@ -45,8 +53,8 @@ export default async function ToursPage({
     query = query.ilike('title', `%${tourSearch}%`);
   }
 
-  const { data: toursRaw } = await query;
-  const tours = toursRaw ?? [];
+  const toursRawRes = await query;
+  const tours = unwrapRows(toursRawRes, 'Touren');
 
   const driverIds = [
     ...new Set(tours.map((t) => t.driver_user_id).filter((x): x is string => Boolean(x))),
@@ -54,25 +62,37 @@ export default async function ToursPage({
   const vehicleIds = [
     ...new Set(tours.map((t) => t.vehicle_id).filter((x): x is string => Boolean(x))),
   ];
-  const [{ data: drivers }, { data: vehicles }, { data: stopsAgg }] = await Promise.all([
+  const [driversRes, vehiclesRes, stopsAggRes] = await Promise.all([
     driverIds.length > 0
       ? supabase.from('users').select('id, display_name').in('id', driverIds)
-      : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; display_name: string | null }[],
+          error: null,
+        }),
     vehicleIds.length > 0
       ? supabase.from('vehicles').select('id, license_plate').in('id', vehicleIds)
-      : Promise.resolve({ data: [] as { id: string; license_plate: string }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; license_plate: string }[],
+          error: null,
+        }),
     tours.length > 0
       ? supabase
           .from('tour_stops')
           .select('tour_id')
-          .in('tour_id', tours.map((t) => t.id))
-      : Promise.resolve({ data: [] as { tour_id: string }[] }),
+          .in(
+            'tour_id',
+            tours.map((t) => t.id),
+          )
+      : Promise.resolve({ data: [] as { tour_id: string }[], error: null }),
   ]);
+  const drivers = unwrapRows(driversRes, 'Touren: users');
+  const vehicles = unwrapRows(vehiclesRes, 'Touren: vehicles');
+  const stopsAgg = unwrapRows(stopsAggRes, 'Touren: tour_stops');
 
-  const driverById = new Map((drivers ?? []).map((u) => [u.id, u.display_name]));
-  const vehicleById = new Map((vehicles ?? []).map((v) => [v.id, v.license_plate]));
+  const driverById = new Map(drivers.map((u) => [u.id, u.display_name]));
+  const vehicleById = new Map(vehicles.map((v) => [v.id, v.license_plate]));
   const stopCountByTour = new Map<string, number>();
-  for (const row of stopsAgg ?? []) {
+  for (const row of stopsAgg) {
     stopCountByTour.set(row.tour_id, (stopCountByTour.get(row.tour_id) ?? 0) + 1);
   }
 
@@ -101,7 +121,9 @@ export default async function ToursPage({
               ? 'Keine Treffer für die aktuellen Filter.'
               : 'Legen Sie die erste Tour an.'
           }
-          action={canCreate ? <LinkButton href="/tours/new">Erste Tour anlegen</LinkButton> : undefined}
+          action={
+            canCreate ? <LinkButton href="/tours/new">Erste Tour anlegen</LinkButton> : undefined
+          }
         />
       ) : (
         <Card>
@@ -130,7 +152,9 @@ export default async function ToursPage({
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone={tone}>{TOUR_STATUS_LABEL[t.status as TourStatus] ?? t.status}</Badge>
+                      <Badge tone={tone}>
+                        {TOUR_STATUS_LABEL[t.status as TourStatus] ?? t.status}
+                      </Badge>
                     </div>
                   </Link>
                 </li>
@@ -157,7 +181,9 @@ function ToursFilter({
   return (
     <form action="/tours" method="get" className="flex flex-wrap items-end gap-2 text-sm">
       <div className="flex flex-col">
-        <label htmlFor="q" className="text-xs text-[var(--color-muted-foreground)]">Suche</label>
+        <label htmlFor="q" className="text-xs text-[var(--color-muted-foreground)]">
+          Suche
+        </label>
         <input
           id="q"
           type="search"
@@ -168,7 +194,9 @@ function ToursFilter({
         />
       </div>
       <div className="flex flex-col">
-        <label htmlFor="status" className="text-xs text-[var(--color-muted-foreground)]">Status</label>
+        <label htmlFor="status" className="text-xs text-[var(--color-muted-foreground)]">
+          Status
+        </label>
         <select
           id="status"
           name="status"
@@ -177,12 +205,16 @@ function ToursFilter({
         >
           <option value="">Alle</option>
           {TOUR_STATUSES.map((s) => (
-            <option key={s} value={s}>{TOUR_STATUS_LABEL[s]}</option>
+            <option key={s} value={s}>
+              {TOUR_STATUS_LABEL[s]}
+            </option>
           ))}
         </select>
       </div>
       <div className="flex flex-col">
-        <label htmlFor="from" className="text-xs text-[var(--color-muted-foreground)]">Von</label>
+        <label htmlFor="from" className="text-xs text-[var(--color-muted-foreground)]">
+          Von
+        </label>
         <input
           id="from"
           type="date"
@@ -192,7 +224,9 @@ function ToursFilter({
         />
       </div>
       <div className="flex flex-col">
-        <label htmlFor="to" className="text-xs text-[var(--color-muted-foreground)]">Bis</label>
+        <label htmlFor="to" className="text-xs text-[var(--color-muted-foreground)]">
+          Bis
+        </label>
         <input
           id="to"
           type="date"

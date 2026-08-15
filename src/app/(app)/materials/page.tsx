@@ -17,13 +17,19 @@ import {
   type MaterialCategory,
   type MaterialStatus,
 } from '@/lib/schemas/materials';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Material' };
 
 export default async function MaterialsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; status?: string; low?: string; q?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    status?: string;
+    low?: string;
+    q?: string;
+  }>;
 }) {
   const params = await searchParams;
   const ctx = await requireTenantContext();
@@ -48,8 +54,9 @@ export default async function MaterialsPage({
     query = query.ilike('label', `%${materialSearch}%`);
   }
 
-  const { data: materialsRaw } = await query;
-  let items = (materialsRaw ?? []).map((m) => ({
+  const materialsRawRes = await query;
+  const materialsRaw = unwrapRows(materialsRawRes, 'Material');
+  let items = materialsRaw.map((m) => ({
     ...m,
     current_stock: Number(m.current_stock),
     min_stock: Number(m.min_stock),

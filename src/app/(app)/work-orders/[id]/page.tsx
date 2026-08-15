@@ -24,10 +24,14 @@ import { setWorkOrderStatusAction, assignWorkOrderAction } from '../actions';
 import { startRunAction } from '../../checklist-runs/actions';
 import { DocumentUploader } from '@/components/documents/document-uploader';
 import { DocumentList, type DocumentRow } from '@/components/documents/document-list';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Auftrag' };
 
-const STATUS_TONE: Record<WorkOrderStatus, 'primary' | 'neutral' | 'warning' | 'danger' | 'success' | 'muted'> = {
+const STATUS_TONE: Record<
+  WorkOrderStatus,
+  'primary' | 'neutral' | 'warning' | 'danger' | 'success' | 'muted'
+> = {
   new: 'primary',
   planned: 'neutral',
   in_progress: 'warning',
@@ -36,17 +40,13 @@ const STATUS_TONE: Record<WorkOrderStatus, 'primary' | 'neutral' | 'warning' | '
   cancelled: 'muted',
 };
 
-export default async function WorkOrderDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: wo } = await supabase
+  const woRes = await supabase
     .from('work_orders')
     .select(
       'id, code, title, description, category, priority, status, property_id, building_id, unit_id, assignee_id, planned_start, planned_end, deadline, estimated_minutes, is_emergency, created_at, closed_at, updated_at',
@@ -54,66 +54,77 @@ export default async function WorkOrderDetailPage({
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
+  const wo = unwrapMaybeRow(woRes, 'Auftraege: work_orders');
 
   if (!wo) notFound();
 
-  const [{ data: property }, { data: events }, { data: activeEmployees }, { data: runs }, { data: templates }] =
-    await Promise.all([
-      supabase
-        .from('properties')
-        .select('id, code, name')
-        .eq('id', wo.property_id)
-        .maybeSingle(),
-      supabase
-        .from('work_order_events')
-        .select('id, event_kind, old_value, new_value, comment, actor_id, created_at')
-        .eq('work_order_id', wo.id)
-        .order('created_at', { ascending: false })
-        .limit(50),
-      supabase
-        .from('employees')
-        .select('id, user_id, employment_status')
-        .eq('employment_status', 'active'),
-      supabase
-        .from('checklist_runs')
-        .select('id, template_id, status, started_at, completed_at')
-        .eq('work_order_id', wo.id)
-        .order('started_at', { ascending: false }),
-      supabase
-        .from('checklist_templates')
-        .select('id, code, title')
-        .eq('active', true)
-        .is('deleted_at', null)
-        .order('title'),
-    ]);
+  const [propertyRes, eventsRes, activeEmployeesRes, runsRes, templatesRes] = await Promise.all([
+    supabase.from('properties').select('id, code, name').eq('id', wo.property_id).maybeSingle(),
+    supabase
+      .from('work_order_events')
+      .select('id, event_kind, old_value, new_value, comment, actor_id, created_at')
+      .eq('work_order_id', wo.id)
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase
+      .from('employees')
+      .select('id, user_id, employment_status')
+      .eq('employment_status', 'active'),
+    supabase
+      .from('checklist_runs')
+      .select('id, template_id, status, started_at, completed_at')
+      .eq('work_order_id', wo.id)
+      .order('started_at', { ascending: false }),
+    supabase
+      .from('checklist_templates')
+      .select('id, code, title')
+      .eq('active', true)
+      .is('deleted_at', null)
+      .order('title'),
+  ]);
+  const property = unwrapMaybeRow(propertyRes, 'Auftraege: properties');
+  const events = unwrapRows(eventsRes, 'Auftraege: work_order_events');
+  const activeEmployees = unwrapRows(activeEmployeesRes, 'Auftraege: employees');
+  const runs = unwrapRows(runsRes, 'Auftraege: checklist_runs');
+  const templates = unwrapRows(templatesRes, 'Auftraege: auswaehlbare Checklisten-Vorlagen');
 
-  const { data: docs } = await supabase
+  const docsRes = await supabase
     .from('documents')
-    .select('id, kind, storage_path, original_filename, mime_type, byte_size, caption, created_at, uploaded_by')
+    .select(
+      'id, kind, storage_path, original_filename, mime_type, byte_size, caption, created_at, uploaded_by',
+    )
     .eq('entity_type', 'work_order')
     .eq('entity_id', wo.id)
     .order('created_at', { ascending: false });
+  const docs = unwrapRows(docsRes, 'Auftraege: documents');
 
-  const runTemplateIds = [...new Set((runs ?? []).map((r) => r.template_id))];
-  const { data: runTemplates } =
+  const runTemplateIds = [...new Set(runs.map((r) => r.template_id))];
+  const runTemplatesRes =
     runTemplateIds.length > 0
-      ? await supabase.from('checklist_templates').select('id, title, code').in('id', runTemplateIds)
-      : { data: [] };
-  const templateById = new Map((runTemplates ?? []).map((t) => [t.id, t]));
+      ? await supabase
+          .from('checklist_templates')
+          .select('id, title, code')
+          .in('id', runTemplateIds)
+      : { data: [], error: null };
+  const runTemplates = unwrapRows(runTemplatesRes, 'Auftraege: Vorlagen der laufenden Durchlaeufe');
+  const templateById = new Map(runTemplates.map((t) => [t.id, t]));
 
-  const employeeIds = (activeEmployees ?? []).map((e) => e.id);
-  const userIds = (activeEmployees ?? []).map((e) => e.user_id);
-  const actorIds = [...new Set((events ?? []).map((e) => e.actor_id).filter((v): v is string => Boolean(v)))];
+  const employeeIds = activeEmployees.map((e) => e.id);
+  const userIds = activeEmployees.map((e) => e.user_id);
+  const actorIds = [
+    ...new Set(events.map((e) => e.actor_id).filter((v): v is string => Boolean(v))),
+  ];
   const allUserIds = [...new Set([...userIds, ...actorIds])];
 
-  const { data: users } =
+  const usersRes =
     allUserIds.length > 0
       ? await supabase.from('users').select('id, display_name').in('id', allUserIds)
-      : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Auftraege: users');
+  const displayById = new Map(users.map((u) => [u.id, u.display_name]));
 
   const employeeById = new Map(
-    (activeEmployees ?? []).map((e) => [e.id, displayById.get(e.user_id) ?? '(Ohne Namen)']),
+    activeEmployees.map((e) => [e.id, displayById.get(e.user_id) ?? '(Ohne Namen)']),
   );
   const currentAssigneeName = wo.assignee_id ? employeeById.get(wo.assignee_id) : null;
 
@@ -128,7 +139,7 @@ export default async function WorkOrderDetailPage({
         description={
           wo.code
             ? `${wo.code}${wo.category ? ` · ${wo.category}` : ''}`
-            : wo.category ?? undefined
+            : (wo.category ?? undefined)
         }
         action={
           canEdit ? (
@@ -169,13 +180,13 @@ export default async function WorkOrderDetailPage({
               <CardTitle>Checklisten</CardTitle>
             </CardHeader>
             <CardBody>
-              {(runs ?? []).length === 0 ? (
+              {runs.length === 0 ? (
                 <p className="mb-3 text-sm text-[var(--color-muted-foreground)]">
                   Noch keine Checkliste an diesen Auftrag gehängt.
                 </p>
               ) : (
                 <ul className="mb-3 flex flex-col gap-2">
-                  {(runs ?? []).map((r) => {
+                  {runs.map((r) => {
                     const tpl = templateById.get(r.template_id);
                     return (
                       <li key={r.id}>
@@ -189,7 +200,8 @@ export default async function WorkOrderDetailPage({
                             </span>
                             <span className="text-xs text-[var(--color-muted-foreground)]">
                               Gestartet {formatDateTime(r.started_at)}
-                              {r.completed_at && ` · abgeschlossen ${formatDateTime(r.completed_at)}`}
+                              {r.completed_at &&
+                                ` · abgeschlossen ${formatDateTime(r.completed_at)}`}
                             </span>
                           </div>
                           <Badge tone={RUN_STATUS_TONE[r.status as ChecklistRunStatus]}>
@@ -202,7 +214,7 @@ export default async function WorkOrderDetailPage({
                 </ul>
               )}
 
-              {canEdit && (templates ?? []).length > 0 && (
+              {canEdit && templates.length > 0 && (
                 <form action={startRunAction} className="flex flex-wrap items-center gap-2">
                   <input type="hidden" name="work_order_id" value={wo.id} />
                   <select
@@ -214,7 +226,7 @@ export default async function WorkOrderDetailPage({
                     <option value="" disabled>
                       Checkliste wählen …
                     </option>
-                    {(templates ?? []).map((t) => (
+                    {templates.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.code ? `${t.code} · ${t.title}` : t.title}
                       </option>
@@ -237,7 +249,7 @@ export default async function WorkOrderDetailPage({
             </CardHeader>
             <CardBody className="flex flex-col gap-4">
               <DocumentList
-                documents={(docs ?? []) as DocumentRow[]}
+                documents={docs as DocumentRow[]}
                 canDelete={canEdit || permissions.has('documents.delete')}
                 emptyLabel="Noch keine Fotos oder Dokumente angehängt."
               />
@@ -252,14 +264,15 @@ export default async function WorkOrderDetailPage({
               <CardTitle>Verlauf</CardTitle>
             </CardHeader>
             <CardBody>
-              {(events ?? []).length === 0 ? (
-                <p className="text-sm text-[var(--color-muted-foreground)]">
-                  Noch keine Einträge.
-                </p>
+              {events.length === 0 ? (
+                <p className="text-sm text-[var(--color-muted-foreground)]">Noch keine Einträge.</p>
               ) : (
                 <ol className="flex flex-col gap-3">
-                  {(events ?? []).map((ev) => (
-                    <li key={ev.id} className="flex flex-col gap-1 border-l-2 border-[var(--color-border)] pl-3">
+                  {events.map((ev) => (
+                    <li
+                      key={ev.id}
+                      className="flex flex-col gap-1 border-l-2 border-[var(--color-border)] pl-3"
+                    >
                       <div className="flex items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
                         <span>{formatDateTime(ev.created_at)}</span>
                         {ev.actor_id && (
@@ -371,8 +384,12 @@ export default async function WorkOrderDetailPage({
             <CardBody>
               <dl className="grid grid-cols-1 gap-2 text-sm">
                 <TermRow label="Angelegt">{formatDateTime(wo.created_at)}</TermRow>
-                {wo.planned_start && <TermRow label="Start (geplant)">{formatDateTime(wo.planned_start)}</TermRow>}
-                {wo.planned_end && <TermRow label="Ende (geplant)">{formatDateTime(wo.planned_end)}</TermRow>}
+                {wo.planned_start && (
+                  <TermRow label="Start (geplant)">{formatDateTime(wo.planned_start)}</TermRow>
+                )}
+                {wo.planned_end && (
+                  <TermRow label="Ende (geplant)">{formatDateTime(wo.planned_end)}</TermRow>
+                )}
                 {wo.deadline && <TermRow label="Deadline">{formatDateTime(wo.deadline)}</TermRow>}
                 {wo.estimated_minutes !== null && (
                   <TermRow label="Geschätzt">{wo.estimated_minutes} Min</TermRow>

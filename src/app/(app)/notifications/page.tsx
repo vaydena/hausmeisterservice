@@ -20,6 +20,7 @@ import {
   markAllNotificationsReadAction,
   openNotificationAction,
 } from './actions';
+import { unwrapRowsWithCount } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Benachrichtigungen' };
 
@@ -47,7 +48,8 @@ export default async function NotificationsPage({
     .range(offset, offset + PAGE_SIZE - 1);
   if (onlyUnread) query = query.is('read_at', null);
 
-  const { data, count } = await query;
+  const dataRes = await query;
+  const { rows: data, count: count } = unwrapRowsWithCount(dataRes, 'Benachrichtigungen');
   const items = data ?? [];
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -69,7 +71,10 @@ export default async function NotificationsPage({
       />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" className="inline-flex rounded-md border border-[var(--color-border)] p-0.5">
+        <div
+          role="tablist"
+          className="inline-flex rounded-md border border-[var(--color-border)] p-0.5"
+        >
           <TabLink label="Alle" href="/notifications" active={!onlyUnread} />
           <TabLink
             label={`Ungelesen${unreadCount ? ` (${unreadCount})` : ''}`}
@@ -88,7 +93,9 @@ export default async function NotificationsPage({
 
       {items.length === 0 ? (
         <EmptyState
-          title={onlyUnread ? 'Keine ungelesenen Benachrichtigungen.' : 'Noch keine Benachrichtigungen.'}
+          title={
+            onlyUnread ? 'Keine ungelesenen Benachrichtigungen.' : 'Noch keine Benachrichtigungen.'
+          }
           description="Zuweisungen, Meldungen und Wartungserinnerungen erscheinen hier."
         />
       ) : (

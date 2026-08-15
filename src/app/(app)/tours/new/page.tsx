@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { TourForm } from '../tour-form';
 import { createTourAction } from '../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neue Tour' };
 
@@ -15,7 +16,7 @@ export default async function NewTourPage() {
   if (!permissions.has('tours.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: users }, { data: vehicles }] = await Promise.all([
+  const [usersRes, vehiclesRes] = await Promise.all([
     supabase.from('users').select('id, display_name').order('display_name'),
     supabase
       .from('vehicles')
@@ -23,16 +24,21 @@ export default async function NewTourPage() {
       .is('deleted_at', null)
       .order('license_plate'),
   ]);
+  const users = unwrapRows(usersRes, 'Touren: users');
+  const vehicles = unwrapRows(vehiclesRes, 'Touren: vehicles');
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <PageHeader title="Neue Tour" description="Kopf-Stammdaten festlegen; Stopps folgen im Detail." />
+      <PageHeader
+        title="Neue Tour"
+        description="Kopf-Stammdaten festlegen; Stopps folgen im Detail."
+      />
       <TourForm
         action={createTourAction}
         cancelHref="/tours"
         submitLabel="Tour anlegen"
-        users={users ?? []}
-        vehicles={vehicles ?? []}
+        users={users}
+        vehicles={vehicles}
       />
     </div>
   );

@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { BillingDocumentForm } from '../../billing-form';
 import { createOfferAction } from '../../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neues Angebot' };
 
@@ -15,7 +16,7 @@ export default async function NewOfferPage() {
   if (!permissions.has('billing.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: properties }, { data: owners }] = await Promise.all([
+  const [propertiesRes, ownersRes] = await Promise.all([
     supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
     supabase
       .from('owners')
@@ -23,24 +24,29 @@ export default async function NewOfferPage() {
       .is('deleted_at', null)
       .order('company_name'),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Abrechnung: properties');
+  const owners = unwrapRows(ownersRes, 'Abrechnung: owners');
 
-  const ownerOpts = (owners ?? []).map((o) => ({
+  const ownerOpts = owners.map((o) => ({
     id: o.id,
     label:
       o.kind === 'company'
-        ? o.company_name ?? '—'
+        ? (o.company_name ?? '—')
         : `${o.first_name ?? ''} ${o.last_name ?? ''}`.trim() || '—',
   }));
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <PageHeader title="Neues Angebot" description="Beleg-Kopf anlegen. Positionen werden auf der Detail-Seite ergänzt." />
+      <PageHeader
+        title="Neues Angebot"
+        description="Beleg-Kopf anlegen. Positionen werden auf der Detail-Seite ergänzt."
+      />
       <BillingDocumentForm
         action={createOfferAction}
         cancelHref="/billing/offers"
         submitLabel="Angebot anlegen"
         kind="offer"
-        properties={properties ?? []}
+        properties={properties}
         owners={ownerOpts}
       />
     </div>

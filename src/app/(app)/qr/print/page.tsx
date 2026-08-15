@@ -5,6 +5,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isValidQrType, isValidUuid, type QrEntityType } from '@/lib/qr/generate';
 import { PrintButton } from '../[type]/[id]/print-button';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'QR-Codes drucken (Sammel-Bogen)' };
 
@@ -32,20 +33,18 @@ type Sticker = {
   subtitle: string | null;
 };
 
-async function loadStickers(
-  type: QrEntityType,
-  ids: string[],
-): Promise<Sticker[]> {
+async function loadStickers(type: QrEntityType, ids: string[]): Promise<Sticker[]> {
   const supabase = await createSupabaseServerClient();
   const kindLabel = LABEL[type];
 
   if (type === 'property') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('properties')
       .select('id, name, code, street, house_number, postal_code, city')
       .in('id', ids)
       .is('deleted_at', null);
-    return (data ?? []).map((p) => {
+    const data = unwrapRows(dataRes, 'QR-Codes: properties');
+    return data.map((p) => {
       const addr = [
         [p.street, p.house_number].filter(Boolean).join(' '),
         [p.postal_code, p.city].filter(Boolean).join(' '),
@@ -61,12 +60,13 @@ async function loadStickers(
     });
   }
   if (type === 'key') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('keys')
       .select('id, code, label, kind, storage_location')
       .in('id', ids)
       .is('deleted_at', null);
-    return (data ?? []).map((k) => ({
+    const data = unwrapRows(dataRes, 'QR-Codes: keys');
+    return data.map((k) => ({
       id: k.id,
       kindLabel,
       title: `${k.label}${k.code ? ` · ${k.code}` : ''}`,
@@ -74,26 +74,27 @@ async function loadStickers(
     }));
   }
   if (type === 'meter') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('meters')
       .select('id, label, meter_number, location_note, utility_kind')
       .in('id', ids)
       .is('deleted_at', null);
-    return (data ?? []).map((m) => ({
+    const data = unwrapRows(dataRes, 'QR-Codes: meters');
+    return data.map((m) => ({
       id: m.id,
       kindLabel,
       title: `${m.label}${m.meter_number ? ` · ${m.meter_number}` : ''}`,
-      subtitle:
-        [m.utility_kind, m.location_note].filter(Boolean).join(' · ') || null,
+      subtitle: [m.utility_kind, m.location_note].filter(Boolean).join(' · ') || null,
     }));
   }
   if (type === 'vehicle') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('vehicles')
       .select('id, license_plate, model, make')
       .in('id', ids)
       .is('deleted_at', null);
-    return (data ?? []).map((v) => ({
+    const data = unwrapRows(dataRes, 'QR-Codes: vehicles');
+    return data.map((v) => ({
       id: v.id,
       kindLabel,
       title: v.license_plate,
@@ -144,13 +145,14 @@ export default async function QrSheetPage({
             QR-Codes drucken: {LABEL[type]} ({stickers.length})
           </h1>
           <p className="text-xs text-[var(--color-muted-foreground)]">
-            A4-Bogen mit 15 Aufklebern pro Seite. Zum Drucken „Randlos" oder „Skalieren:
-            keine" wählen, damit die Rasterung stimmt.
+            A4-Bogen mit 15 Aufklebern pro Seite. Zum Drucken „Randlos" oder „Skalieren: keine"
+            wählen, damit die Rasterung stimmt.
             {missing > 0 && (
               <>
                 {' '}
                 <span className="text-[var(--color-destructive)]">
-                  {missing} ID{missing === 1 ? '' : 's'} nicht gefunden oder gelöscht — übersprungen.
+                  {missing} ID{missing === 1 ? '' : 's'} nicht gefunden oder gelöscht —
+                  übersprungen.
                 </span>
               </>
             )}
@@ -174,9 +176,7 @@ export default async function QrSheetPage({
             key={s.id}
             className="flex break-inside-avoid flex-col items-center justify-center gap-1.5 rounded-md border border-gray-300 bg-white p-3 print:break-inside-avoid print:rounded-none print:border-gray-400"
           >
-            <p className="text-[9px] uppercase tracking-widest text-gray-500">
-              {s.kindLabel}
-            </p>
+            <p className="text-[9px] uppercase tracking-widest text-gray-500">{s.kindLabel}</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/qr/${type}/${s.id}`}
@@ -189,9 +189,7 @@ export default async function QrSheetPage({
               {s.title}
             </p>
             {s.subtitle && (
-              <p className="line-clamp-1 text-center text-[9px] text-gray-600">
-                {s.subtitle}
-              </p>
+              <p className="line-clamp-1 text-center text-[9px] text-gray-600">{s.subtitle}</p>
             )}
           </article>
         ))}

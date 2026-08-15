@@ -383,7 +383,7 @@ async function resolveUsersInRole(
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
     .in('user_id', userIds);
-  return unwrapRows(active, 'Automation: aktive Mitgliedschaften').map((a) => a.user_id);
+  return unwrapRows(active, 'Automation: aktive Mitglieder der Rolle').map((a) => a.user_id);
 }
 
 async function resolveRecipients(
@@ -402,7 +402,9 @@ async function resolveRecipients(
       .eq('tenant_id', tenantId)
       .eq('status', 'active')
       .in('user_id', rawIds);
-    return unwrapRows(active, 'Automation: aktive Mitgliedschaften').map((m) => m.user_id);
+    return unwrapRows(active, 'Automation: aktive Empfaenger der Benachrichtigung').map(
+      (m) => m.user_id,
+    );
   }
   if (actionKey === 'notify_role') {
     if (!cfg.role_key) return [];
@@ -486,7 +488,7 @@ async function resolveEmailRecipients(
       .eq('tenant_id', tenantId)
       .eq('status', 'active')
       .in('user_id', userIds);
-    userIds = unwrapRows(active, 'Automation: aktive Mitgliedschaften').map((m) => m.user_id);
+    userIds = unwrapRows(active, 'Automation: aktive Empfaenger der E-Mail').map((m) => m.user_id);
   } else if (kind === 'role') {
     if (!cfg.role_key) return [];
     userIds = await resolveUsersInRole(supabase, tenantId, cfg.role_key);

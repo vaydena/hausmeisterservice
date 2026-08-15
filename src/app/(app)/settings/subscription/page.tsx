@@ -3,14 +3,12 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { getTenantBillingContext } from '@/lib/platform/billing';
 import { getBankDetails, paymentReferenceForInvoice } from '@/lib/platform/bank-transfer';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { formatDate, formatEUR } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';
 import { Button } from '@/components/ui/button';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
-import {
-  selectPlanAction,
-  requestBankTransferInvoiceAction,
-} from './actions';
+import { selectPlanAction, requestBankTransferInvoiceAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,15 +25,22 @@ export default async function SubscriptionPage() {
       .order('sort_order'),
     createPlatformServiceClient()
       .from('invoices')
-      .select('id, invoice_number, total_cents, status, paid_at, issued_at, due_at, period_start, period_end')
+      .select(
+        'id, invoice_number, total_cents, status, paid_at, issued_at, due_at, period_start, period_end',
+      )
       .eq('tenant_id', ctx.tenantId)
       .order('issued_at', { ascending: false })
       .limit(10),
   ]);
 
   if (!billing) redirect('/dashboard');
-  const plans = plansRes.data ?? [];
-  const invoices = invoicesRes.data ?? [];
+  // Sprint 112: Bezahlt wird ausschliesslich per Ueberweisung. Die offene
+  // Rechnung ist damit der einzige Traeger des Verwendungszwecks — faellt die
+  // Abfrage aus, steht hier "keine Rechnungen", der Ueberweisungsblock
+  // erscheint nicht, und der Kunde kann nicht zahlen. Am Ende dieser Kette
+  // steht das Zahlungs-Gate aus Sprint 10.8, das ihn aussperrt.
+  const plans = unwrapRows(plansRes, 'Abo: verfuegbare Tarife');
+  const invoices = unwrapRows(invoicesRes, 'Abo: eigene Rechnungen');
   const bank = getBankDetails();
   const latestOpen = invoices.find((i) => !i.paid_at && i.status === 'open');
 
@@ -99,10 +104,14 @@ export default async function SubscriptionPage() {
                 className={`rounded-xl border p-4 ${active ? 'border-[var(--color-brand)] ring-1 ring-[var(--color-brand)]' : 'border-[var(--color-border)]'}`}
               >
                 <div className="text-lg font-semibold">{plan.name}</div>
-                <div className="text-xs text-[var(--color-muted-foreground)]">{plan.description}</div>
+                <div className="text-xs text-[var(--color-muted-foreground)]">
+                  {plan.description}
+                </div>
                 <div className="mt-3 text-2xl font-semibold">
                   {formatEUR(plan.monthly_price_cents)}
-                  <span className="text-xs font-normal text-[var(--color-muted-foreground)]">/M</span>
+                  <span className="text-xs font-normal text-[var(--color-muted-foreground)]">
+                    /M
+                  </span>
                 </div>
                 <div className="text-xs text-[var(--color-muted-foreground)]">
                   oder {formatEUR(plan.yearly_price_cents)} pro Jahr
@@ -113,9 +122,13 @@ export default async function SubscriptionPage() {
                   {plan.features && typeof plan.features === 'object' && (
                     <>
                       {(plan.features as Record<string, boolean>).gps && <li>• GPS-Tracking</li>}
-                      {(plan.features as Record<string, boolean>).portal && <li>• Bewohner-/Eigentümerportal</li>}
+                      {(plan.features as Record<string, boolean>).portal && (
+                        <li>• Bewohner-/Eigentümerportal</li>
+                      )}
                       {(plan.features as Record<string, boolean>).vehicles && <li>• Fuhrpark</li>}
-                      {(plan.features as Record<string, boolean>).automations && <li>• Automatisierungen</li>}
+                      {(plan.features as Record<string, boolean>).automations && (
+                        <li>• Automatisierungen</li>
+                      )}
                       {(plan.features as Record<string, boolean>).api && <li>• API-Zugang</li>}
                     </>
                   )}
@@ -130,11 +143,7 @@ export default async function SubscriptionPage() {
                     <option value="monthly">Monatlich zahlen</option>
                     <option value="yearly">Jährlich zahlen</option>
                   </select>
-                  <Button
-                    variant={active ? 'secondary' : 'primary'}
-                    size="sm"
-                    type="submit"
-                  >
+                  <Button variant={active ? 'secondary' : 'primary'} size="sm" type="submit">
                     {active ? 'Aktueller Plan' : `Zu ${plan.name} wechseln`}
                   </Button>
                 </form>
@@ -165,19 +174,37 @@ export default async function SubscriptionPage() {
                       {formatEUR(latestOpen.total_cents)}
                     </div>
                     <div className="mt-2 grid grid-cols-1 gap-1 text-sm md:grid-cols-2">
-                      <div><span className="text-[var(--color-muted-foreground)]">Empfänger:</span> {bank.holder}</div>
-                      <div><span className="text-[var(--color-muted-foreground)]">Fällig:</span> {formatDate(latestOpen.due_at)}</div>
-                      <div><span className="text-[var(--color-muted-foreground)]">IBAN:</span> <span className="font-mono">{bank.iban}</span></div>
-                      <div><span className="text-[var(--color-muted-foreground)]">BIC:</span> <span className="font-mono">{bank.bic}</span></div>
+                      <div>
+                        <span className="text-[var(--color-muted-foreground)]">Empfänger:</span>{' '}
+                        {bank.holder}
+                      </div>
+                      <div>
+                        <span className="text-[var(--color-muted-foreground)]">Fällig:</span>{' '}
+                        {formatDate(latestOpen.due_at)}
+                      </div>
+                      <div>
+                        <span className="text-[var(--color-muted-foreground)]">IBAN:</span>{' '}
+                        <span className="font-mono">{bank.iban}</span>
+                      </div>
+                      <div>
+                        <span className="text-[var(--color-muted-foreground)]">BIC:</span>{' '}
+                        <span className="font-mono">{bank.bic}</span>
+                      </div>
                       <div className="md:col-span-2">
-                        <span className="text-[var(--color-muted-foreground)]">Verwendungszweck:</span>{' '}
+                        <span className="text-[var(--color-muted-foreground)]">
+                          Verwendungszweck:
+                        </span>{' '}
                         <span className="font-mono">
-                          {paymentReferenceForInvoice(latestOpen.invoice_number, billing.tenantSlug)}
+                          {paymentReferenceForInvoice(
+                            latestOpen.invoice_number,
+                            billing.tenantSlug,
+                          )}
                         </span>
                       </div>
                     </div>
                     <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
-                      Nach Zahlungseingang schaltet der Betreiber deinen Zugang aktiv (i. d. R. innerhalb von 1-2 Werktagen).
+                      Nach Zahlungseingang schaltet der Betreiber deinen Zugang aktiv (i. d. R.
+                      innerhalb von 1-2 Werktagen).
                     </p>
                   </div>
                 ) : (
@@ -205,7 +232,8 @@ export default async function SubscriptionPage() {
               </>
             ) : (
               <p className="text-sm text-amber-800">
-                Der Betreiber hat noch keine Bankverbindung hinterlegt. Bitte den Support kontaktieren.
+                Der Betreiber hat noch keine Bankverbindung hinterlegt. Bitte den Support
+                kontaktieren.
               </p>
             )}
           </div>
@@ -217,7 +245,9 @@ export default async function SubscriptionPage() {
           Rechnungsverlauf
         </h2>
         {invoices.length === 0 ? (
-          <p className="mt-3 text-sm text-[var(--color-muted-foreground)]">Noch keine Rechnungen.</p>
+          <p className="mt-3 text-sm text-[var(--color-muted-foreground)]">
+            Noch keine Rechnungen.
+          </p>
         ) : (
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-xs uppercase text-[var(--color-muted-foreground)]">

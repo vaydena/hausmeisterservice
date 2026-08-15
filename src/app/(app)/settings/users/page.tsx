@@ -1,15 +1,12 @@
 import type { Metadata } from 'next';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapRowsWithCount } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { formatDate } from '@/lib/utils/format';
-import {
-  assignRoleAction,
-  deleteRoleAction,
-  removeRoleAssignmentAction,
-} from './actions';
+import { assignRoleAction, deleteRoleAction, removeRoleAssignmentAction } from './actions';
 
 export const metadata: Metadata = { title: 'Benutzer & Rollen' };
 
@@ -26,7 +23,7 @@ export default async function UsersRolesPage() {
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
 
-  const [rolesRes, membersRes, permCount, rolePermsRes, userRolesRes] = await Promise.all([
+  const [rolesRes, membersRes, permCountRes, rolePermsRes, userRolesRes] = await Promise.all([
     supabase
       .from('roles')
       .select('id, key, name, description, is_system, created_at')
@@ -52,18 +49,27 @@ export default async function UsersRolesPage() {
   const canManage = permissions.has('core.users_roles.manage');
   const canAssign = permissions.has('core.users_roles.edit');
 
-  const roles = rolesRes.data ?? [];
-  const members = membersRes.data ?? [];
-  const totalPermissions = permCount.count ?? 0;
+  // Sprint 112: Diese Seite IST die Rechteverwaltung. Fiel eine dieser
+  // Abfragen aus, stand hier ein vollstaendig entrechteter Mandant — keine
+  // Rollen, keine Mitglieder, "Keine Rollen zugewiesen" neben jedem Namen und
+  // "eine Registry von 0 Berechtigungen". Das ist die Guard-Folge aus Sprint
+  // 104, nur eine Etage hoeher: dort log eine einzelne Berechtigungsantwort,
+  // hier das gesamte Rechtebild des Mandanten.
+  const roles = unwrapRows(rolesRes, 'Benutzer & Rollen: Rollen');
+  const members = unwrapRows(membersRes, 'Benutzer & Rollen: Mitglieder');
+  const totalPermissions = unwrapRowsWithCount(
+    permCountRes,
+    'Benutzer & Rollen: Rechte-Registry',
+  ).count;
 
   const permCountByRole = new Map<string, number>();
-  for (const rp of rolePermsRes.data ?? []) {
+  for (const rp of unwrapRows(rolePermsRes, 'Benutzer & Rollen: Rechte je Rolle')) {
     permCountByRole.set(rp.role_id, (permCountByRole.get(rp.role_id) ?? 0) + 1);
   }
 
   const assignedRolesByUser = new Map<string, Array<{ userRoleId: string; roleId: string }>>();
   const assignmentCountByRole = new Map<string, number>();
-  for (const ur of userRolesRes.data ?? []) {
+  for (const ur of unwrapRows(userRolesRes, 'Benutzer & Rollen: Rollenzuweisungen')) {
     const list = assignedRolesByUser.get(ur.user_id) ?? [];
     list.push({ userRoleId: ur.id, roleId: ur.role_id });
     assignedRolesByUser.set(ur.user_id, list);
@@ -125,8 +131,7 @@ export default async function UsersRolesPage() {
                     )}
                     <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
                       {permCountForRole} {permCountForRole === 1 ? 'Recht' : 'Rechte'} ·{' '}
-                      {assignCountForRole}{' '}
-                      {assignCountForRole === 1 ? 'Zuweisung' : 'Zuweisungen'}
+                      {assignCountForRole} {assignCountForRole === 1 ? 'Zuweisung' : 'Zuweisungen'}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -281,9 +286,10 @@ function StatusPill({ status }: { status: string }) {
       className: 'bg-[var(--color-destructive)]/10 text-[var(--color-destructive)]',
     },
   };
-  const cfg =
-    map[status] ??
-    { label: status, className: 'bg-[var(--color-muted)] text-[var(--color-muted-foreground)]' };
+  const cfg = map[status] ?? {
+    label: status,
+    className: 'bg-[var(--color-muted)] text-[var(--color-muted-foreground)]',
+  };
   return (
     <span
       className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${cfg.className}`}

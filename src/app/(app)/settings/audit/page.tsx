@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -37,21 +38,32 @@ export default async function AuditLogPage() {
   if (!permissions.has('core.audit_log.view')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: entries } = await supabase
-    .from('audit_log')
-    .select('id, occurred_at, actor_id, table_name, row_id, action, changed_columns')
-    .eq('tenant_id', ctx.tenantId)
-    .order('occurred_at', { ascending: false })
-    .limit(100);
+  // Sprint 112: Von allen Seiten im Bogen 103–112 ist das die, bei der ein
+  // verschluckter Fehler am dreistesten aussieht — ein Audit-Log, das bei
+  // einer Stoerung "Noch keine Eintraege" meldet. Wer hier nachsieht, sucht
+  // in der Regel nach etwas Bestimmtem, und bekommt die Antwort, dass es nie
+  // passiert ist.
+  const entries = unwrapRows(
+    await supabase
+      .from('audit_log')
+      .select('id, occurred_at, actor_id, table_name, row_id, action, changed_columns')
+      .eq('tenant_id', ctx.tenantId)
+      .order('occurred_at', { ascending: false })
+      .limit(100),
+    'Audit-Log: Eintraege',
+  );
 
   const actorIds = [
-    ...new Set((entries ?? []).map((e) => e.actor_id).filter((v): v is string => Boolean(v))),
+    ...new Set(entries.map((e) => e.actor_id).filter((v): v is string => Boolean(v))),
   ];
-  const { data: actors } =
+  const actors =
     actorIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', actorIds)
-      : { data: [] };
-  const nameById = new Map((actors ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', actorIds),
+          'Audit-Log: Namen der Handelnden',
+        )
+      : [];
+  const nameById = new Map(actors.map((u) => [u.id, u.display_name]));
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -60,7 +72,7 @@ export default async function AuditLogPage() {
         description="Änderungen an Berechtigungen, Mitgliedschaften und Modulen. Die letzten 100 Einträge."
       />
 
-      {!entries || entries.length === 0 ? (
+      {entries.length === 0 ? (
         <EmptyState
           title="Noch keine Einträge"
           description="Sobald Rollen, Rechte, Mitgliedschaften oder Module geändert werden, erscheinen die Vorgänge hier."
@@ -83,16 +95,14 @@ export default async function AuditLogPage() {
                   <td className="whitespace-nowrap px-4 py-2 text-[var(--color-muted-foreground)]">
                     {formatDateTime(e.occurred_at)}
                   </td>
-                  <td className="px-4 py-2">
-                    {TABLE_LABEL[e.table_name] ?? e.table_name}
-                  </td>
+                  <td className="px-4 py-2">{TABLE_LABEL[e.table_name] ?? e.table_name}</td>
                   <td className="px-4 py-2">
                     <Badge tone={ACTION_TONE[e.action] ?? 'neutral'}>
                       {ACTION_LABEL[e.action] ?? e.action}
                     </Badge>
                   </td>
                   <td className="px-4 py-2">
-                    {e.actor_id ? nameById.get(e.actor_id) ?? '(Unbekannt)' : 'System'}
+                    {e.actor_id ? (nameById.get(e.actor_id) ?? '(Unbekannt)') : 'System'}
                   </td>
                   <td className="px-4 py-2 text-xs text-[var(--color-muted-foreground)]">
                     {e.changed_columns && e.changed_columns.length > 0

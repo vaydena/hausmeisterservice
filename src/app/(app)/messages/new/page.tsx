@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { NewThreadForm } from '../new-thread-form';
 import { createThreadAction } from '../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neue Nachricht' };
 
@@ -16,25 +17,34 @@ export default async function NewMessagePage() {
 
   const supabase = await createSupabaseServerClient();
   // Nur User im aktuellen Tenant, die aktive Membership haben
-  const { data: members } = await supabase
+  const membersRes = await supabase
     .from('memberships')
     .select('user_id')
     .eq('tenant_id', ctx.tenantId)
     .eq('status', 'active');
+  const members = unwrapRows(membersRes, 'Nachrichten: memberships');
 
-  const memberIds = (members ?? []).map((m) => m.user_id);
-  const { data: users } =
+  const memberIds = members.map((m) => m.user_id);
+  const usersRes =
     memberIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', memberIds).order('display_name')
-      : { data: [] };
+      ? await supabase
+          .from('users')
+          .select('id, display_name')
+          .in('id', memberIds)
+          .order('display_name')
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Nachrichten: users');
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <PageHeader title="Neue Nachricht" description="Empfänger, Betreff und erste Nachricht festlegen." />
+      <PageHeader
+        title="Neue Nachricht"
+        description="Empfänger, Betreff und erste Nachricht festlegen."
+      />
       <NewThreadForm
         action={createThreadAction}
         cancelHref="/messages"
-        users={users ?? []}
+        users={users}
         currentUserId={ctx.userId}
       />
     </div>

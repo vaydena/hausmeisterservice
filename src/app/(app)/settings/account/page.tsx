@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { getCurrentSessionId } from '@/lib/auth/current-session-id';
 import { parseUserSessions } from '@/lib/auth/user-sessions';
 import { ChangeDisplayNameForm } from './change-display-name-form';
@@ -38,23 +39,39 @@ export default async function AccountSettingsPage({
 
   // Anzahl unbenutzter Recovery-Codes. Function ist SECURITY DEFINER mit
   // execute-Grant nur auf service_role (Sprint 21 Lockdown-Muster).
+  //
+  // Sprint 112: Verschluckt stand hier "0 von 10 Recovery-Codes verfuegbar"
+  // samt Hinweis "Empfohlen bei aktiver Zwei-Faktor-Authentifizierung" — vor
+  // einem Nutzer, der seine zehn Codes laengst sicher abgelegt hat. Wer
+  // darauf neu generiert, loescht sie: generate_mfa_recovery_codes beginnt
+  // mit `delete from auth_mfa_recovery_codes where user_id = p_user_id`. Ein
+  // Lesefehler redet den Nutzer damit in eine zerstoerende Aktion hinein.
   const service = createSupabaseServiceClient();
-  const { data: unusedCountData } = await service.rpc(
-    'count_unused_mfa_recovery_codes',
-    { p_user_id: ctx.userId },
+  const unusedCountData = unwrapMaybeRow(
+    await service.rpc('count_unused_mfa_recovery_codes', {
+      p_user_id: ctx.userId,
+    }),
+    'Konto: unbenutzte Recovery-Codes zaehlen',
   );
   const unusedCount = typeof unusedCountData === 'number' ? unusedCountData : 0;
 
   // Anmeldeverlauf (Sprint 29): letzte 20 erfolgreiche Logins. RLS erlaubt
   // dem User SELECT auf seine eigenen Rows — daher der anon Server-Client,
   // kein service_role noetig.
-  const { data: loginEventsData } = await supabase
-    .from('auth_login_events')
-    .select('id, at, ip, user_agent, endpoint')
-    .eq('user_id', ctx.userId)
-    .order('at', { ascending: false })
-    .limit(20);
-  const loginEvents = (loginEventsData ?? []).map((e) => ({
+  //
+  // Verschluckt war der Verlauf leer — und ein leerer Anmeldeverlauf ist
+  // genau die Antwort, die jemand sucht, der wissen will, ob ausser ihm noch
+  // wer im Konto war.
+  const loginEventsData = unwrapRows(
+    await supabase
+      .from('auth_login_events')
+      .select('id, at, ip, user_agent, endpoint')
+      .eq('user_id', ctx.userId)
+      .order('at', { ascending: false })
+      .limit(20),
+    'Konto: Anmeldeverlauf',
+  );
+  const loginEvents = loginEventsData.map((e) => ({
     id: e.id,
     at: e.at,
     ip: e.ip,
@@ -65,9 +82,14 @@ export default async function AccountSettingsPage({
   // Sprint 31: Aktive Sessions inkl. eigener session_id. Load via service_role,
   // weil auth.sessions aus authenticated-Kontext nicht lesbar ist; die
   // SECURITY-DEFINER-Function scoped selbst auf p_user_id = ctx.userId.
-  const { data: sessionsRaw } = await service.rpc('list_user_sessions', {
-    p_user_id: ctx.userId,
-  });
+  //
+  // Auch hier faellt die Anzeige in die beruhigende Richtung: keine
+  // Sitzungen, nichts zu widerrufen — obwohl der Nutzer die Seite gerade aus
+  // einer Sitzung heraus aufruft.
+  const sessionsRaw = unwrapMaybeRow(
+    await service.rpc('list_user_sessions', { p_user_id: ctx.userId }),
+    'Konto: aktive Sitzungen',
+  );
   const sessions = parseUserSessions(sessionsRaw);
   const currentSessionId = await getCurrentSessionId(supabase);
 
@@ -88,8 +110,8 @@ export default async function AccountSettingsPage({
           <p className="font-medium">Recovery-Code eingeloest.</p>
           <p className="mt-1 text-[var(--color-muted-foreground)]">
             Alle bisherigen MFA-Faktoren wurden entfernt. Bitte richten Sie die
-            Zwei-Faktor-Authentifizierung jetzt direkt neu ein und generieren
-            Sie anschliessend einen frischen Batch Recovery-Codes.
+            Zwei-Faktor-Authentifizierung jetzt direkt neu ein und generieren Sie anschliessend
+            einen frischen Batch Recovery-Codes.
           </p>
         </div>
       )}
@@ -101,8 +123,8 @@ export default async function AccountSettingsPage({
         >
           <p className="font-medium">E-Mail-Adresse erfolgreich geaendert.</p>
           <p className="mt-1 text-[var(--color-muted-foreground)]">
-            Ihre neue Adresse ist jetzt aktiv. Falls Sie sich auf anderen Geraeten
-            einloggen, verwenden Sie bitte die neue E-Mail.
+            Ihre neue Adresse ist jetzt aktiv. Falls Sie sich auf anderen Geraeten einloggen,
+            verwenden Sie bitte die neue E-Mail.
           </p>
         </div>
       )}
@@ -125,9 +147,8 @@ export default async function AccountSettingsPage({
             E-Mail-Adresse
           </h2>
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-            Ihre E-Mail wird fuer Login, Benachrichtigungen und Passwort-Zuruecksetzung
-            verwendet. Aus Sicherheitsgruenden ist die Aenderung nur mit Bestaetigungs-
-            Link moeglich.
+            Ihre E-Mail wird fuer Login, Benachrichtigungen und Passwort-Zuruecksetzung verwendet.
+            Aus Sicherheitsgruenden ist die Aenderung nur mit Bestaetigungs- Link moeglich.
           </p>
         </div>
         <ChangeEmailForm currentEmail={ctx.email ?? '–'} />
@@ -152,9 +173,9 @@ export default async function AccountSettingsPage({
             Zwei-Faktor-Authentifizierung
           </h2>
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-            Zusaetzlicher Schutz beim Login: Nach Passwort-Eingabe wird ein 6-stelliger
-            Code aus einer Authenticator-App (Google Authenticator, 1Password, Bitwarden,
-            …) abgefragt. Wir empfehlen die Aktivierung fuer alle Owner-Konten.
+            Zusaetzlicher Schutz beim Login: Nach Passwort-Eingabe wird ein 6-stelliger Code aus
+            einer Authenticator-App (Google Authenticator, 1Password, Bitwarden, …) abgefragt. Wir
+            empfehlen die Aktivierung fuer alle Owner-Konten.
           </p>
         </div>
         <MfaForm factors={factors} />
@@ -164,10 +185,9 @@ export default async function AccountSettingsPage({
             <div className="mb-3">
               <h3 className="text-sm font-semibold">Recovery-Codes</h3>
               <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
-                Einmalige Ersatz-Codes fuer den Fall, dass Sie Ihr Authenticator-
-                Geraet verlieren. Jeder Code kann genau einmal beim Login
-                verwendet werden und entfernt danach den TOTP-Faktor —
-                anschliessend richten Sie MFA direkt neu ein.
+                Einmalige Ersatz-Codes fuer den Fall, dass Sie Ihr Authenticator- Geraet verlieren.
+                Jeder Code kann genau einmal beim Login verwendet werden und entfernt danach den
+                TOTP-Faktor — anschliessend richten Sie MFA direkt neu ein.
               </p>
             </div>
             <RecoveryCodesForm unusedCount={unusedCount} />
@@ -181,9 +201,9 @@ export default async function AccountSettingsPage({
             Anmeldeverlauf
           </h2>
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-            Ihre letzten 20 erfolgreichen Anmeldungen. Prüfen Sie diese Liste
-            regelmässig — eine unbekannte IP oder ein fremder Browser kann
-            ein Hinweis auf eine kompromittierte Sitzung sein.
+            Ihre letzten 20 erfolgreichen Anmeldungen. Prüfen Sie diese Liste regelmässig — eine
+            unbekannte IP oder ein fremder Browser kann ein Hinweis auf eine kompromittierte Sitzung
+            sein.
           </p>
         </div>
         <LoginEventsList events={loginEvents} />
@@ -195,9 +215,9 @@ export default async function AccountSettingsPage({
             Aktive Sitzungen
           </h2>
           <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-            Alle Geraete, auf denen Sie gerade eingeloggt sind. Beenden Sie einzelne
-            Sitzungen, wenn Sie ein Geraet nicht wiedererkennen — Ihre aktuelle Sitzung
-            hier bleibt davon unberuehrt.
+            Alle Geraete, auf denen Sie gerade eingeloggt sind. Beenden Sie einzelne Sitzungen, wenn
+            Sie ein Geraet nicht wiedererkennen — Ihre aktuelle Sitzung hier bleibt davon
+            unberuehrt.
           </p>
         </div>
 

@@ -16,10 +16,14 @@ import {
   workOrderStatusSchema,
   type WorkOrderStatus,
 } from '@/lib/schemas/work-orders';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Aufträge' };
 
-const STATUS_TONE: Record<WorkOrderStatus, 'primary' | 'neutral' | 'warning' | 'danger' | 'success' | 'muted'> = {
+const STATUS_TONE: Record<
+  WorkOrderStatus,
+  'primary' | 'neutral' | 'warning' | 'danger' | 'success' | 'muted'
+> = {
   new: 'primary',
   planned: 'neutral',
   in_progress: 'warning',
@@ -52,20 +56,25 @@ export default async function WorkOrdersPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const [{ data: propertiesForFilter }, countsRes] = await Promise.all([
-    supabase
-      .from('properties')
-      .select('id, name')
-      .is('deleted_at', null)
-      .order('name'),
-    supabase
-      .from('work_orders')
-      .select('status', { head: false })
-      .is('deleted_at', null),
+  const [propertiesForFilterRes, countsRes] = await Promise.all([
+    supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
+    supabase.from('work_orders').select('status', { head: false }).is('deleted_at', null),
   ]);
+  const propertiesForFilter = unwrapRows(
+    propertiesForFilterRes,
+    'Auftraege: Objekte fuer den Filter',
+  );
 
+  // Sprint 112: Diese Schleife fuellt die Zahlen an den Status-Tabs. Fiel die
+  // Query verschluckt aus, stand ueber jedem Tab eine Null — und eine Null
+  // ueber "Offen" ist keine Stoerungsmeldung, sondern ein Feierabend-Signal.
+  // Zusaetzlich haette das Bild sich selbst widersprochen: die Liste darunter
+  // laedt getrennt und haette weiter Auftraege gezeigt. Wer einer der beiden
+  // Angaben glaubt, glaubt der falschen.
   const counts: Record<string, number> = {};
-  for (const row of countsRes.data ?? []) counts[row.status] = (counts[row.status] ?? 0) + 1;
+  for (const row of unwrapRows(countsRes, 'Auftraege: Anzahl je Status')) {
+    counts[row.status] = (counts[row.status] ?? 0) + 1;
+  }
 
   let query = supabase
     .from('work_orders')
@@ -80,15 +89,16 @@ export default async function WorkOrdersPage({
 
   if (params.property_id) query = query.eq('property_id', params.property_id);
 
-  const { data: orders } = await query;
-  const items = orders ?? [];
+  const ordersRes = await query;
+  const items = unwrapRows(ordersRes, 'Auftraege');
 
   const propertyIds = [...new Set(items.map((o) => o.property_id))];
-  const { data: props } =
+  const propsRes =
     propertyIds.length > 0
       ? await supabase.from('properties').select('id, name, code').in('id', propertyIds)
-      : { data: [] };
-  const propertyById = new Map((props ?? []).map((p) => [p.id, p]));
+      : { data: [], error: null };
+  const props = unwrapRows(propsRes, 'Auftraege: Objektnamen zur Liste');
+  const propertyById = new Map(props.map((p) => [p.id, p]));
 
   const canCreate = permissions.has('work_orders.create');
 
@@ -104,9 +114,9 @@ export default async function WorkOrdersPage({
 
       <StatusTabs current={tab} counts={counts} propertyId={params.property_id} />
 
-      {(propertiesForFilter?.length ?? 0) > 0 && (
+      {propertiesForFilter.length > 0 && (
         <PropertyFilter
-          properties={propertiesForFilter ?? []}
+          properties={propertiesForFilter}
           currentPropertyId={params.property_id}
           currentTab={tab}
         />
@@ -149,7 +159,8 @@ export default async function WorkOrdersPage({
                     <div className="flex flex-wrap items-center gap-2">
                       {wo.priority !== 'normal' && (
                         <Badge tone={PRIORITY_TONE[wo.priority] ?? 'neutral'}>
-                          {PRIORITY_LABEL[wo.priority as keyof typeof PRIORITY_LABEL] ?? wo.priority}
+                          {PRIORITY_LABEL[wo.priority as keyof typeof PRIORITY_LABEL] ??
+                            wo.priority}
                         </Badge>
                       )}
                       <Badge tone={STATUS_TONE[wo.status as WorkOrderStatus] ?? 'neutral'}>
@@ -259,9 +270,7 @@ function PropertyFilter({
 }
 
 function emptyTitle(tab: WorkOrderStatus): string {
-  return tab === 'new'
-    ? 'Keine neuen Aufträge'
-    : `Keine Aufträge im Status „${STATUS_LABEL[tab]}"`;
+  return tab === 'new' ? 'Keine neuen Aufträge' : `Keine Aufträge im Status „${STATUS_LABEL[tab]}"`;
 }
 
 function emptyDescription(tab: WorkOrderStatus): string {

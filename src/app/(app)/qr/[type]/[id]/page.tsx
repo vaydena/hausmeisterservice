@@ -3,13 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import {
-  buildDeepLink,
-  isValidQrType,
-  isValidUuid,
-  type QrEntityType,
-} from '@/lib/qr/generate';
+import { buildDeepLink, isValidQrType, isValidUuid, type QrEntityType } from '@/lib/qr/generate';
 import { PrintButton } from './print-button';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'QR-Code drucken' };
 
@@ -31,11 +27,12 @@ async function loadEntitySummary(
 ): Promise<{ title: string; subtitle: string | null } | null> {
   const supabase = await createSupabaseServerClient();
   if (type === 'property') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('properties')
       .select('name, code, street, house_number, postal_code, city')
       .eq('id', id)
       .maybeSingle();
+    const data = unwrapMaybeRow(dataRes, 'QR-Codes: properties');
     if (!data) return null;
     const addr = [
       [data.street, data.house_number].filter(Boolean).join(' '),
@@ -49,11 +46,12 @@ async function loadEntitySummary(
     };
   }
   if (type === 'key') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('keys')
       .select('code, label, kind')
       .eq('id', id)
       .maybeSingle();
+    const data = unwrapMaybeRow(dataRes, 'QR-Codes: keys');
     if (!data) return null;
     return {
       title: `${data.label}${data.code ? ` · ${data.code}` : ''}`,
@@ -61,11 +59,12 @@ async function loadEntitySummary(
     };
   }
   if (type === 'meter') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('meters')
       .select('label, meter_number, location_note, utility_kind')
       .eq('id', id)
       .maybeSingle();
+    const data = unwrapMaybeRow(dataRes, 'QR-Codes: meters');
     if (!data) return null;
     return {
       title: `${data.label}${data.meter_number ? ` · ${data.meter_number}` : ''}`,
@@ -73,11 +72,12 @@ async function loadEntitySummary(
     };
   }
   if (type === 'vehicle') {
-    const { data } = await supabase
+    const dataRes = await supabase
       .from('vehicles')
       .select('license_plate, model, make')
       .eq('id', id)
       .maybeSingle();
+    const data = unwrapMaybeRow(dataRes, 'QR-Codes: vehicles');
     if (!data) return null;
     return {
       title: data.license_plate,
@@ -137,10 +137,9 @@ export default async function QrPrintPage({
       </article>
 
       <p className="text-xs text-[var(--color-muted-foreground)] print:hidden">
-        Tipp: QR-Code auf robuste Etiketten drucken und direkt am Objekt anbringen. Ein Scan
-        führt jeden authentifizierten Nutzer direkt auf die Detail-Seite.
+        Tipp: QR-Code auf robuste Etiketten drucken und direkt am Objekt anbringen. Ein Scan führt
+        jeden authentifizierten Nutzer direkt auf die Detail-Seite.
       </p>
     </div>
   );
 }
-

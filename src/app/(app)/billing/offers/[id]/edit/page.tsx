@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { BillingDocumentForm } from '../../../billing-form';
 import { updateOfferAction } from '../../../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Angebot bearbeiten' };
 
@@ -16,17 +17,18 @@ export default async function EditOfferPage({ params }: { params: Promise<{ id: 
   if (!permissions.has('billing.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: offer } = await supabase
+  const offerRes = await supabase
     .from('offers')
     .select(
       'id, title, description, status, bill_to_name, bill_to_address, property_id, owner_id, issued_at, valid_until, notes',
     )
     .eq('id', id)
     .maybeSingle();
+  const offer = unwrapMaybeRow(offerRes, 'Abrechnung: offers');
   if (!offer) notFound();
   if (offer.status !== 'draft') notFound();
 
-  const [{ data: properties }, { data: owners }] = await Promise.all([
+  const [propertiesRes, ownersRes] = await Promise.all([
     supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
     supabase
       .from('owners')
@@ -34,12 +36,14 @@ export default async function EditOfferPage({ params }: { params: Promise<{ id: 
       .is('deleted_at', null)
       .order('company_name'),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Abrechnung: properties');
+  const owners = unwrapRows(ownersRes, 'Abrechnung: owners');
 
-  const ownerOpts = (owners ?? []).map((o) => ({
+  const ownerOpts = owners.map((o) => ({
     id: o.id,
     label:
       o.kind === 'company'
-        ? o.company_name ?? '—'
+        ? (o.company_name ?? '—')
         : `${o.first_name ?? ''} ${o.last_name ?? ''}`.trim() || '—',
   }));
 
@@ -51,7 +55,7 @@ export default async function EditOfferPage({ params }: { params: Promise<{ id: 
         cancelHref={`/billing/offers/${offer.id}`}
         submitLabel="Speichern"
         kind="offer"
-        properties={properties ?? []}
+        properties={properties}
         owners={ownerOpts}
         initial={{
           id: offer.id,

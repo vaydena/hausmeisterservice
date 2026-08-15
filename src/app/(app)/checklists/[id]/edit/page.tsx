@@ -6,26 +6,24 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { TemplateForm } from '../../template-form';
 import { updateTemplateAction, type TemplateFormState } from '../../actions';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Checkliste bearbeiten' };
 
-export default async function EditChecklistPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EditChecklistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('checklists.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: template } = await supabase
+  const templateRes = await supabase
     .from('checklist_templates')
     .select('id, title, description, category, active')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
+  const template = unwrapMaybeRow(templateRes, 'Checklisten: checklist_templates');
 
   if (!template) notFound();
 

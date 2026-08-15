@@ -7,7 +7,13 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
-import { ACTIONS_BY_KEY, TRIGGERS_BY_KEY, type ActionKey, type TriggerKey } from '@/lib/automations/registry';
+import {
+  ACTIONS_BY_KEY,
+  TRIGGERS_BY_KEY,
+  type ActionKey,
+  type TriggerKey,
+} from '@/lib/automations/registry';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Automatisierungen' };
 
@@ -24,10 +30,16 @@ export default async function AutomationsPage() {
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   const canManage = permissions.has('automations.manage');
 
-  const { data: rules } = await supabase
-    .from('automation_rules')
-    .select('id, name, description, trigger_key, action_key, enabled, last_run_at, last_error')
-    .order('created_at', { ascending: false });
+  // Verschluckt sah es aus, als gaebe es keine Automatisierungen — auf einer
+  // Seite, deren Zweck es ist zu zeigen, was ohne Zutun im Hintergrund
+  // laeuft. Wer daraufhin eine Regel neu anlegt, hat sie doppelt.
+  const rules = unwrapRows(
+    await supabase
+      .from('automation_rules')
+      .select('id, name, description, trigger_key, action_key, enabled, last_run_at, last_error')
+      .order('created_at', { ascending: false }),
+    'Automatisierungen: Regeln',
+  );
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -46,7 +58,7 @@ export default async function AutomationsPage() {
         }
       />
 
-      {!rules || rules.length === 0 ? (
+      {rules.length === 0 ? (
         <EmptyState
           title="Noch keine Regeln"
           description="Legen Sie eine Regel an, um z. B. Benachrichtigungen für überfällige Rechnungen zu automatisieren."
@@ -86,10 +98,15 @@ export default async function AutomationsPage() {
                       </p>
                     )}
                     <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
-                      Trigger: <strong>{TRIGGERS_BY_KEY[r.trigger_key as TriggerKey]?.labelDe ?? r.trigger_key}</strong>
-                      {' '}·{' '}
-                      Aktion: <strong>{ACTIONS_BY_KEY[r.action_key as ActionKey]?.labelDe ?? r.action_key}</strong>
-                      {' '}· Letzter Lauf: {formatDateTime(r.last_run_at)}
+                      Trigger:{' '}
+                      <strong>
+                        {TRIGGERS_BY_KEY[r.trigger_key as TriggerKey]?.labelDe ?? r.trigger_key}
+                      </strong>{' '}
+                      · Aktion:{' '}
+                      <strong>
+                        {ACTIONS_BY_KEY[r.action_key as ActionKey]?.labelDe ?? r.action_key}
+                      </strong>{' '}
+                      · Letzter Lauf: {formatDateTime(r.last_run_at)}
                     </p>
                   </div>
                 </div>

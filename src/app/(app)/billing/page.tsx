@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatCents, formatDate, isOverdue } from '@/lib/schemas/billing';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Abrechnung' };
 
@@ -17,7 +18,7 @@ export default async function BillingPage() {
   if (!permissions.has('billing.view')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: invoices }, { data: offers }] = await Promise.all([
+  const [invoicesRes, offersRes] = await Promise.all([
     supabase
       .from('invoices')
       .select('id, code, title, status, gross_total_cents, due_at, paid_at, issued_at')
@@ -29,9 +30,8 @@ export default async function BillingPage() {
       .order('created_at', { ascending: false })
       .limit(500),
   ]);
-
-  const invs = invoices ?? [];
-  const offs = offers ?? [];
+  const invs = unwrapRows(invoicesRes, 'Abrechnung: invoices');
+  const offs = unwrapRows(offersRes, 'Abrechnung: offers');
 
   const openInvoices = invs.filter((i) => i.status === 'sent' || i.status === 'draft');
   const overdueInvoices = invs.filter((i) => isOverdue(i.due_at, i.status));
@@ -64,15 +64,28 @@ export default async function BillingPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Kpi title="Offene Rechnungen" value={formatCents(openSum)} sub={`${openInvoices.length} Belege`} />
+        <Kpi
+          title="Offene Rechnungen"
+          value={formatCents(openSum)}
+          sub={`${openInvoices.length} Belege`}
+        />
         <Kpi
           title="Überfällig"
           value={formatCents(overdueSum)}
           sub={`${overdueInvoices.length} Belege`}
           accent={overdueInvoices.length > 0 ? 'danger' : 'muted'}
         />
-        <Kpi title="Umsatz YTD (bezahlt)" value={formatCents(paidSum)} sub={`${paidThisYear.length} Belege`} accent="success" />
-        <Kpi title="Offene Angebote" value={formatCents(openOffersSum)} sub={`${openOffers.length} Angebote`} />
+        <Kpi
+          title="Umsatz YTD (bezahlt)"
+          value={formatCents(paidSum)}
+          sub={`${paidThisYear.length} Belege`}
+          accent="success"
+        />
+        <Kpi
+          title="Offene Angebote"
+          value={formatCents(openOffersSum)}
+          sub={`${openOffers.length} Angebote`}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -80,7 +93,10 @@ export default async function BillingPage() {
           <CardHeader>
             <CardTitle>
               Rechnungen{' '}
-              <Link href="/billing/invoices" className="text-xs font-normal text-[var(--color-primary)] hover:underline">
+              <Link
+                href="/billing/invoices"
+                className="text-xs font-normal text-[var(--color-primary)] hover:underline"
+              >
                 → alle
               </Link>
             </CardTitle>
@@ -95,19 +111,25 @@ export default async function BillingPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-[var(--color-muted-foreground)]">{i.code}</span>
+                        <span className="font-mono text-xs text-[var(--color-muted-foreground)]">
+                          {i.code}
+                        </span>
                         <span className="truncate">{i.title}</span>
                       </div>
                       <div className="text-xs text-[var(--color-muted-foreground)]">
                         {i.status} · fällig {formatDate(i.due_at)}
                       </div>
                     </div>
-                    <span className="tabular-nums font-medium">{formatCents(i.gross_total_cents)}</span>
+                    <span className="tabular-nums font-medium">
+                      {formatCents(i.gross_total_cents)}
+                    </span>
                   </Link>
                 </li>
               ))}
               {invs.length === 0 && (
-                <li className="py-4 text-sm text-[var(--color-muted-foreground)]">Noch keine Rechnungen.</li>
+                <li className="py-4 text-sm text-[var(--color-muted-foreground)]">
+                  Noch keine Rechnungen.
+                </li>
               )}
             </ul>
           </CardBody>
@@ -117,7 +139,10 @@ export default async function BillingPage() {
           <CardHeader>
             <CardTitle>
               Angebote{' '}
-              <Link href="/billing/offers" className="text-xs font-normal text-[var(--color-primary)] hover:underline">
+              <Link
+                href="/billing/offers"
+                className="text-xs font-normal text-[var(--color-primary)] hover:underline"
+              >
                 → alle
               </Link>
             </CardTitle>
@@ -132,19 +157,25 @@ export default async function BillingPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-[var(--color-muted-foreground)]">{o.code}</span>
+                        <span className="font-mono text-xs text-[var(--color-muted-foreground)]">
+                          {o.code}
+                        </span>
                         <span className="truncate">{o.title}</span>
                       </div>
                       <div className="text-xs text-[var(--color-muted-foreground)]">
                         {o.status} · gültig bis {formatDate(o.valid_until)}
                       </div>
                     </div>
-                    <span className="tabular-nums font-medium">{formatCents(o.gross_total_cents)}</span>
+                    <span className="tabular-nums font-medium">
+                      {formatCents(o.gross_total_cents)}
+                    </span>
                   </Link>
                 </li>
               ))}
               {offs.length === 0 && (
-                <li className="py-4 text-sm text-[var(--color-muted-foreground)]">Noch keine Angebote.</li>
+                <li className="py-4 text-sm text-[var(--color-muted-foreground)]">
+                  Noch keine Angebote.
+                </li>
               )}
             </ul>
           </CardBody>
@@ -169,12 +200,14 @@ function Kpi({
     accent === 'success'
       ? 'text-[var(--color-success)]'
       : accent === 'danger'
-      ? 'text-[var(--color-destructive)]'
-      : 'text-[var(--color-foreground)]';
+        ? 'text-[var(--color-destructive)]'
+        : 'text-[var(--color-foreground)]';
   return (
     <Card>
       <CardBody>
-        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{title}</p>
+        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+          {title}
+        </p>
         <p className={`mt-1 text-2xl font-semibold tabular-nums ${accentClass}`}>{value}</p>
         {sub && <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{sub}</p>}
       </CardBody>

@@ -20,6 +20,7 @@ import {
   DeleteDraftButton,
   PublishButton,
 } from '../announcement-actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Ankündigung' };
 
@@ -33,13 +34,14 @@ export default async function AnnouncementDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: ann } = await supabase
+  const annRes = await supabase
     .from('announcements')
     .select(
       'id, title, body, status, target_type, target_role_key, target_user_ids, requires_acknowledgement, published_at, expires_at, created_by, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();
+  const ann = unwrapMaybeRow(annRes, 'Ankuendigungen: announcements');
   if (!ann) notFound();
 
   const isAuthor = ann.created_by === ctx.userId;
@@ -48,12 +50,13 @@ export default async function AnnouncementDetailPage({
   const canManage = isAuthor || canPublish;
 
   // Meine Quittung
-  const { data: myReceipt } = await supabase
+  const myReceiptRes = await supabase
     .from('announcement_receipts')
     .select('read_at, acknowledged_at')
     .eq('announcement_id', ann.id)
     .eq('user_id', ctx.userId)
     .maybeSingle();
+  const myReceipt = unwrapMaybeRow(myReceiptRes, 'Ankuendigungen: eigene Lesebestaetigung');
 
   // Als gelesen markieren (falls veröffentlicht und noch nicht gelesen und nicht mein eigener)
   if (ann.status === 'published' && !isAuthor && !myReceipt?.read_at) {
@@ -82,32 +85,35 @@ export default async function AnnouncementDetailPage({
     if (ann.target_type === 'users') {
       targetUserIds = ann.target_user_ids ?? [];
     } else if (ann.target_type === 'all') {
-      const { data: mems } = await supabase
+      const memsRes = await supabase
         .from('memberships')
         .select('user_id')
         .eq('tenant_id', ctx.tenantId)
         .eq('status', 'active');
-      targetUserIds = (mems ?? []).map((m) => m.user_id);
+      const mems = unwrapRows(memsRes, 'Ankuendigungen: memberships');
+      targetUserIds = mems.map((m) => m.user_id);
     } else if (ann.target_type === 'role' && ann.target_role_key) {
-      const { data: role } = await supabase
+      const roleRes = await supabase
         .from('roles')
         .select('id')
         .eq('tenant_id', ctx.tenantId)
         .eq('key', ann.target_role_key)
         .maybeSingle();
+      const role = unwrapMaybeRow(roleRes, 'Ankuendigungen: Zielrolle der Ankuendigung');
       if (role) {
-        const { data: ur } = await supabase
+        const urRes = await supabase
           .from('user_roles')
           .select('user_id')
           .eq('role_id', role.id)
           .eq('tenant_id', ctx.tenantId);
-        targetUserIds = [...new Set((ur ?? []).map((r) => r.user_id))];
+        const ur = unwrapRows(urRes, 'Ankuendigungen: user_roles');
+        targetUserIds = [...new Set(ur.map((r) => r.user_id))];
       }
     }
     totalRecipients = targetUserIds.length;
 
     if (targetUserIds.length > 0) {
-      const [{ data: users }, { data: receipts }] = await Promise.all([
+      const [usersRes, receiptsRes] = await Promise.all([
         supabase.from('users').select('id, display_name').in('id', targetUserIds),
         supabase
           .from('announcement_receipts')
@@ -115,8 +121,10 @@ export default async function AnnouncementDetailPage({
           .eq('announcement_id', ann.id)
           .in('user_id', targetUserIds),
       ]);
-      const userById = new Map((users ?? []).map((u) => [u.id, u.display_name]));
-      const receiptByUser = new Map((receipts ?? []).map((r) => [r.user_id, r]));
+      const users = unwrapRows(usersRes, 'Ankuendigungen: Namen der Empfaenger');
+      const receipts = unwrapRows(receiptsRes, 'Ankuendigungen: Lesebestaetigungen der Empfaenger');
+      const userById = new Map(users.map((u) => [u.id, u.display_name]));
+      const receiptByUser = new Map(receipts.map((r) => [r.user_id, r]));
       recipients = targetUserIds.map((uid) => {
         const rec = receiptByUser.get(uid);
         return {
@@ -130,20 +138,22 @@ export default async function AnnouncementDetailPage({
   }
 
   // Author-Name
-  const { data: author } = ann.created_by
+  const authorRes = ann.created_by
     ? await supabase.from('users').select('display_name').eq('id', ann.created_by).maybeSingle()
-    : { data: null };
+    : { data: null, error: null };
+  const author = unwrapMaybeRow(authorRes, 'Ankuendigungen: Verfasser');
   const authorName = author?.display_name ?? '—';
 
   // Role name (falls Zielgruppe = role)
   let roleName: string | null = null;
   if (ann.target_type === 'role' && ann.target_role_key) {
-    const { data: r } = await supabase
+    const rRes = await supabase
       .from('roles')
       .select('name')
       .eq('tenant_id', ctx.tenantId)
       .eq('key', ann.target_role_key)
       .maybeSingle();
+    const r = unwrapMaybeRow(rRes, 'Ankuendigungen: Name der Zielrolle');
     roleName = r?.name ?? ann.target_role_key;
   }
 
@@ -152,9 +162,11 @@ export default async function AnnouncementDetailPage({
   const ackCount = recipients.filter((r) => r.acknowledged_at).length;
 
   const targetLine =
-    ann.target_type === 'role' ? `Rolle: ${roleName}` :
-    ann.target_type === 'users' ? `${ann.target_user_ids?.length ?? 0} ausgewählte Personen` :
-    'Alle Mitarbeiter';
+    ann.target_type === 'role'
+      ? `Rolle: ${roleName}`
+      : ann.target_type === 'users'
+        ? `${ann.target_user_ids?.length ?? 0} ausgewählte Personen`
+        : 'Alle Mitarbeiter';
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -205,7 +217,9 @@ export default async function AnnouncementDetailPage({
                 <div className="flex flex-col gap-3 text-sm">
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--color-muted-foreground)]">Gelesen:</span>
-                    <span>{myReceipt?.read_at ? formatAnnouncementDate(myReceipt.read_at) : '—'}</span>
+                    <span>
+                      {myReceipt?.read_at ? formatAnnouncementDate(myReceipt.read_at) : '—'}
+                    </span>
                   </div>
                   {ann.requires_acknowledgement && (
                     <div className="flex items-center gap-3">
@@ -213,7 +227,9 @@ export default async function AnnouncementDetailPage({
                       {myReceipt?.acknowledged_at ? (
                         <span>{formatAnnouncementDate(myReceipt.acknowledged_at)}</span>
                       ) : expired ? (
-                        <span className="text-[var(--color-muted-foreground)]">— Ankündigung ist abgelaufen —</span>
+                        <span className="text-[var(--color-muted-foreground)]">
+                          — Ankündigung ist abgelaufen —
+                        </span>
                       ) : (
                         <AcknowledgeButton
                           id={ann.id}
@@ -236,15 +252,21 @@ export default async function AnnouncementDetailPage({
             <CardBody>
               <dl className="space-y-3 text-sm">
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Zielgruppe</dt>
+                  <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                    Zielgruppe
+                  </dt>
                   <dd>{targetLine}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Veröffentlicht</dt>
+                  <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                    Veröffentlicht
+                  </dt>
                   <dd>{ann.published_at ? formatAnnouncementDate(ann.published_at) : '—'}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Ablauf</dt>
+                  <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                    Ablauf
+                  </dt>
                   <dd>{ann.expires_at ? formatAnnouncementDate(ann.expires_at) : 'unbefristet'}</dd>
                 </div>
               </dl>

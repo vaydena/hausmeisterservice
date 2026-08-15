@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { AnnouncementForm } from '../../announcement-form';
 import { updateAnnouncementAction } from '../../actions';
 import type { AnnouncementTargetType } from '@/lib/schemas/announcements';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Ankündigung bearbeiten' };
 
@@ -21,17 +22,18 @@ export default async function EditAnnouncementPage({
   if (!permissions.has('announcements.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: ann } = await supabase
+  const annRes = await supabase
     .from('announcements')
     .select(
       'id, title, body, status, target_type, target_role_key, target_user_ids, requires_acknowledgement, expires_at, created_by',
     )
     .eq('id', id)
     .maybeSingle();
+  const ann = unwrapMaybeRow(annRes, 'Ankuendigungen: announcements');
   if (!ann) notFound();
   if (ann.status !== 'draft' || ann.created_by !== ctx.userId) notFound();
 
-  const [{ data: roles }, { data: members }] = await Promise.all([
+  const [rolesRes, membersRes] = await Promise.all([
     supabase.from('roles').select('key, name').eq('tenant_id', ctx.tenantId).order('name'),
     supabase
       .from('memberships')
@@ -39,16 +41,19 @@ export default async function EditAnnouncementPage({
       .eq('tenant_id', ctx.tenantId)
       .eq('status', 'active'),
   ]);
+  const roles = unwrapRows(rolesRes, 'Ankuendigungen: roles');
+  const members = unwrapRows(membersRes, 'Ankuendigungen: memberships');
 
-  const memberIds = (members ?? []).map((m) => m.user_id);
-  const { data: users } =
+  const memberIds = members.map((m) => m.user_id);
+  const usersRes =
     memberIds.length > 0
       ? await supabase
           .from('users')
           .select('id, display_name')
           .in('id', memberIds)
           .order('display_name')
-      : { data: [] };
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Ankuendigungen: users');
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -60,8 +65,8 @@ export default async function EditAnnouncementPage({
         action={updateAnnouncementAction}
         cancelHref={`/announcements/${ann.id}`}
         submitLabel="Speichern"
-        roles={roles ?? []}
-        users={users ?? []}
+        roles={roles}
+        users={users}
         initial={{
           id: ann.id,
           title: ann.title,

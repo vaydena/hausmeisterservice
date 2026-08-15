@@ -6,21 +6,18 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { PropertyForm } from '../../property-form';
 import { updatePropertyAction, type PropertyFormState } from '../../actions';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Objekt bearbeiten' };
 
-export default async function EditPropertyPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EditPropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('properties.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: property } = await supabase
+  const propertyRes = await supabase
     .from('properties')
     .select(
       'id, code, name, property_type, street, house_number, postal_code, city, country, gps_lat, gps_lng, notes, access_notes, emergency_notes',
@@ -28,6 +25,7 @@ export default async function EditPropertyPage({
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
+  const property = unwrapMaybeRow(propertyRes, 'Objekte: properties');
 
   if (!property) notFound();
 

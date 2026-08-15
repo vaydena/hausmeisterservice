@@ -8,6 +8,7 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { clientEnv } from '@/lib/env';
 import { inviteEmployeeSchema, updateEmployeeSchema } from '@/lib/schemas/employees';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export type EmployeeFormState = {
   error?: string;
@@ -48,22 +49,30 @@ export async function inviteEmployeeAction(
 
   const parsed = parseInvite(formData);
   if (!parsed.success) {
-    return { fieldErrors: fieldErrorsFromZod(parsed.error), error: 'Bitte prüfen Sie die Eingaben.' };
+    return {
+      fieldErrors: fieldErrorsFromZod(parsed.error),
+      error: 'Bitte prüfen Sie die Eingaben.',
+    };
   }
   const { email, display_name, role_key } = parsed.data;
 
   const service = createSupabaseServiceClient();
 
   // Rolle im aktuellen Tenant nachschlagen (existiert dank Onboarding-Seed)
-  const { data: role } = await service
-    .from('roles')
-    .select('id')
-    .eq('tenant_id', ctx.tenantId)
-    .eq('key', role_key)
-    .maybeSingle();
+  const role = unwrapMaybeRow(
+    await service
+      .from('roles')
+      .select('id')
+      .eq('tenant_id', ctx.tenantId)
+      .eq('key', role_key)
+      .maybeSingle(),
+    'Mitarbeiter einladen: Rolle nachschlagen',
+  );
 
   if (!role) {
-    return { error: 'Die gewählte Rolle existiert im aktuellen Mandanten nicht.' };
+    return {
+      error: 'Die gewählte Rolle existiert im aktuellen Mandanten nicht.',
+    };
   }
 
   // User existiert bereits?
@@ -89,28 +98,40 @@ export async function inviteEmployeeAction(
   // Profil-Row via Service (setzt display_name, falls Trigger noch nicht gelaufen)
   await service.from('users').upsert({ id: userId, display_name }, { onConflict: 'id' });
 
-  // Membership
-  const { data: existingMembership } = await service
-    .from('memberships')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('tenant_id', ctx.tenantId)
-    .maybeSingle();
+  // Membership. Hier faengt der UNIQUE-Index (user_id, tenant_id) einen
+  // verschluckten Lesefehler noch ab — anders als bei der Rollenzuweisung
+  // weiter unten.
+  const existingMembership = unwrapMaybeRow(
+    await service
+      .from('memberships')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', ctx.tenantId)
+      .maybeSingle(),
+    'Mitarbeiter einladen: bestehende Mitgliedschaft',
+  );
 
   if (!existingMembership) {
-    const insMembership = await service
-      .from('memberships')
-      .insert({ user_id: userId, tenant_id: ctx.tenantId, status: 'active', is_owner: false });
+    const insMembership = await service.from('memberships').insert({
+      user_id: userId,
+      tenant_id: ctx.tenantId,
+      status: 'active',
+      is_owner: false,
+    });
     if (insMembership.error) return { error: 'Mitgliedschaft konnte nicht angelegt werden.' };
   }
 
-  // Employee-Row
-  const { data: existingEmployee } = await service
-    .from('employees')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('tenant_id', ctx.tenantId)
-    .maybeSingle();
+  // Employee-Row. Auch hier steht ein UNIQUE-Index (tenant_id, user_id)
+  // dahinter.
+  const existingEmployee = unwrapMaybeRow(
+    await service
+      .from('employees')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', ctx.tenantId)
+      .maybeSingle(),
+    'Mitarbeiter einladen: bestehender Mitarbeiter-Datensatz',
+  );
 
   if (!existingEmployee) {
     const insEmp = await service.from('employees').insert({
@@ -123,15 +144,23 @@ export async function inviteEmployeeAction(
     if (insEmp.error) return { error: 'Mitarbeiter-Profil konnte nicht angelegt werden.' };
   }
 
-  // Rolle zuweisen (idempotent)
-  const { data: existingRole } = await service
-    .from('user_roles')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('tenant_id', ctx.tenantId)
-    .eq('role_id', role.id)
-    .is('scope_type', null)
-    .maybeSingle();
+  // Rolle zuweisen (idempotent) — aber die Idempotenz haengt AUSSCHLIESSLICH
+  // an dieser Abfrage. Der UNIQUE-Index auf user_roles enthaelt scope_type
+  // und scope_id, die hier beide NULL sind, und NULLs gelten in einem
+  // UNIQUE-Index als verschieden. Verschluckt entstand also eine zweite,
+  // identische Zuweisung, die beim Entzug ueber user_role_id stehen bleibt.
+  // Dieselbe Stelle wie in settings/users/actions.ts (Sprint 112).
+  const existingRole = unwrapMaybeRow(
+    await service
+      .from('user_roles')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', ctx.tenantId)
+      .eq('role_id', role.id)
+      .is('scope_type', null)
+      .maybeSingle(),
+    'Mitarbeiter einladen: bestehende Rollenzuweisung',
+  );
 
   if (!existingRole) {
     const insRole = await service.from('user_roles').insert({
@@ -157,7 +186,10 @@ export async function updateEmployeeAction(
   const ctx = await requireTenantContext();
   const parsed = parseUpdate(formData);
   if (!parsed.success) {
-    return { fieldErrors: fieldErrorsFromZod(parsed.error), error: 'Bitte prüfen Sie die Eingaben.' };
+    return {
+      fieldErrors: fieldErrorsFromZod(parsed.error),
+      error: 'Bitte prüfen Sie die Eingaben.',
+    };
   }
   const { skills_csv, ...rest } = parsed.data;
 

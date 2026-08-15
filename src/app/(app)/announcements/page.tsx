@@ -15,6 +15,7 @@ import {
   formatAnnouncementDate,
   isExpired,
 } from '@/lib/schemas/announcements';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Ankündigungen' };
 
@@ -24,35 +25,47 @@ export default async function AnnouncementsPage() {
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
   // RLS filtert bereits: nur veröffentlichte, bei denen ich Empfänger bin, plus eigene Drafts + alles mit publish-Permission
-  const { data: allAnnouncements } = await supabase
+  const allAnnouncementsRes = await supabase
     .from('announcements')
     .select(
       'id, title, status, target_type, target_role_key, target_user_ids, requires_acknowledgement, published_at, expires_at, created_by, created_at',
     )
     .order('published_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false });
+  const rows = unwrapRows(allAnnouncementsRes, 'Ankuendigungen: announcements');
 
-  const rows = allAnnouncements ?? [];
   const ids = rows.map((r) => r.id);
   const authorIds = [
     ...new Set(rows.map((r) => r.created_by).filter((v): v is string => Boolean(v))),
   ];
 
-  const [{ data: myReceipts }, { data: authors }] = await Promise.all([
+  const [myReceiptsRes, authorsRes] = await Promise.all([
     ids.length > 0
       ? supabase
           .from('announcement_receipts')
           .select('announcement_id, read_at, acknowledged_at')
           .eq('user_id', ctx.userId)
           .in('announcement_id', ids)
-      : Promise.resolve({ data: [] as { announcement_id: string; read_at: string | null; acknowledged_at: string | null }[] }),
+      : Promise.resolve({
+          data: [] as {
+            announcement_id: string;
+            read_at: string | null;
+            acknowledged_at: string | null;
+          }[],
+          error: null,
+        }),
     authorIds.length > 0
       ? supabase.from('users').select('id, display_name').in('id', authorIds)
-      : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; display_name: string | null }[],
+          error: null,
+        }),
   ]);
+  const myReceipts = unwrapRows(myReceiptsRes, 'Ankuendigungen: announcement_receipts');
+  const authors = unwrapRows(authorsRes, 'Ankuendigungen: users');
 
-  const receiptByAnn = new Map((myReceipts ?? []).map((r) => [r.announcement_id, r]));
-  const authorById = new Map((authors ?? []).map((u) => [u.id, u.display_name]));
+  const receiptByAnn = new Map(myReceipts.map((r) => [r.announcement_id, r]));
+  const authorById = new Map(authors.map((u) => [u.id, u.display_name]));
 
   const canCreate = permissions.has('announcements.create');
   const canPublish = permissions.has('announcements.publish');
@@ -84,14 +97,22 @@ export default async function AnnouncementsPage() {
                 unreadCount > 0 ? ` · ${unreadCount} ungelesen` : ''
               }${pendingAckCount > 0 ? ` · ${pendingAckCount} zu bestätigen` : ''}`
         }
-        action={canCreate ? <LinkButton href="/announcements/new">Neue Ankündigung</LinkButton> : undefined}
+        action={
+          canCreate ? (
+            <LinkButton href="/announcements/new">Neue Ankündigung</LinkButton>
+          ) : undefined
+        }
       />
 
       {rows.length === 0 && (
         <EmptyState
           title="Noch keine Ankündigungen"
           description="Legen Sie eine neue Ankündigung an, um Ihr Team zu informieren."
-          action={canCreate ? <LinkButton href="/announcements/new">Neue Ankündigung</LinkButton> : undefined}
+          action={
+            canCreate ? (
+              <LinkButton href="/announcements/new">Neue Ankündigung</LinkButton>
+            ) : undefined
+          }
         />
       )}
 
@@ -107,7 +128,10 @@ export default async function AnnouncementsPage() {
                 const mine = a.created_by === ctx.userId;
                 const unread = !mine && !receipt?.read_at;
                 const needsAck =
-                  a.requires_acknowledgement && !mine && !receipt?.acknowledged_at && !isExpired(a.expires_at);
+                  a.requires_acknowledgement &&
+                  !mine &&
+                  !receipt?.acknowledged_at &&
+                  !isExpired(a.expires_at);
                 const expired = isExpired(a.expires_at);
                 return (
                   <li key={a.id}>
@@ -116,9 +140,7 @@ export default async function AnnouncementsPage() {
                       className="flex flex-col gap-1 py-3 transition hover:bg-[var(--color-muted)]"
                     >
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`truncate ${unread ? 'font-semibold' : 'font-medium'}`}
-                        >
+                        <span className={`truncate ${unread ? 'font-semibold' : 'font-medium'}`}>
                           {a.title}
                         </span>
                         {unread && <Badge tone="primary">neu</Badge>}

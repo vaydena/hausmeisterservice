@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { ResidentForm } from '../resident-form';
 import { createResidentAction } from '../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neuer Bewohner' };
 
@@ -15,15 +16,14 @@ export default async function NewResidentPage() {
   if (!permissions.has('residents.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: properties }, { data: buildings }, { data: units }] = await Promise.all([
-    supabase
-      .from('properties')
-      .select('id, name, code')
-      .is('deleted_at', null)
-      .order('name'),
+  const [propertiesRes, buildingsRes, unitsRes] = await Promise.all([
+    supabase.from('properties').select('id, name, code').is('deleted_at', null).order('name'),
     supabase.from('buildings').select('id, property_id, name').order('name'),
     supabase.from('units').select('id, building_id, property_id, code').order('code'),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Personen: properties');
+  const buildings = unwrapRows(buildingsRes, 'Personen: buildings');
+  const units = unwrapRows(unitsRes, 'Personen: units');
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -35,9 +35,9 @@ export default async function NewResidentPage() {
         action={createResidentAction}
         cancelHref="/people/residents"
         submitLabel="Bewohner anlegen"
-        properties={properties ?? []}
-        buildings={buildings ?? []}
-        units={units ?? []}
+        properties={properties}
+        buildings={buildings}
+        units={units}
       />
     </div>
   );

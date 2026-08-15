@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { TourForm } from '../../tour-form';
 import { updateTourAction, type TourFormState } from '../../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Tour bearbeiten' };
 
@@ -16,7 +17,7 @@ export default async function EditTourPage({ params }: { params: Promise<{ id: s
   if (!permissions.has('tours.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: tour }, { data: users }, { data: vehicles }] = await Promise.all([
+  const [tourRes, usersRes, vehiclesRes] = await Promise.all([
     supabase
       .from('tours')
       .select('id, title, planned_date, driver_user_id, vehicle_id, notes')
@@ -29,6 +30,9 @@ export default async function EditTourPage({ params }: { params: Promise<{ id: s
       .is('deleted_at', null)
       .order('license_plate'),
   ]);
+  const tour = unwrapMaybeRow(tourRes, 'Touren: tours');
+  const users = unwrapRows(usersRes, 'Touren: users');
+  const vehicles = unwrapRows(vehiclesRes, 'Touren: vehicles');
 
   if (!tour) notFound();
 
@@ -42,8 +46,8 @@ export default async function EditTourPage({ params }: { params: Promise<{ id: s
         action={wrapped}
         cancelHref={`/tours/${id}`}
         submitLabel="Änderungen speichern"
-        users={users ?? []}
-        vehicles={vehicles ?? []}
+        users={users}
+        vehicles={vehicles}
         initial={tour}
       />
     </div>

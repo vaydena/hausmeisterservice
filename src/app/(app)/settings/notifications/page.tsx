@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { PushSubscriptionsPanel } from './push-panel';
@@ -10,17 +11,25 @@ export const metadata: Metadata = { title: 'Benachrichtigungen' };
 function formatDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export default async function NotificationsSettingsPage() {
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
-  const { data: subs } = await supabase
-    .from('push_subscriptions')
-    .select('id, endpoint, user_agent, created_at, last_used_at, last_error')
-    .eq('user_id', ctx.userId)
-    .order('created_at', { ascending: false });
+  // Verschluckt stand hier "keine angemeldeten Geraete" — woraufhin sich
+  // jemand ein zweites Mal anmeldet und dieselbe Push-Nachricht doppelt
+  // bekommt.
+  const subs = unwrapRows(
+    await supabase
+      .from('push_subscriptions')
+      .select('id, endpoint, user_agent, created_at, last_used_at, last_error')
+      .eq('user_id', ctx.userId)
+      .order('created_at', { ascending: false }),
+    'Benachrichtigungen: angemeldete Geraete',
+  );
 
   const configured = Boolean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
 
@@ -38,7 +47,8 @@ export default async function NotificationsSettingsPage() {
         <CardBody>
           {!configured ? (
             <p className="text-sm text-[var(--color-muted-foreground)]">
-              Push-Benachrichtigungen sind derzeit nicht konfiguriert. Bitte VAPID-Keys in der Umgebung setzen.
+              Push-Benachrichtigungen sind derzeit nicht konfiguriert. Bitte VAPID-Keys in der
+              Umgebung setzen.
             </p>
           ) : (
             <PushSubscriptionsPanel />
@@ -53,7 +63,8 @@ export default async function NotificationsSettingsPage() {
         <CardBody>
           {!subs || subs.length === 0 ? (
             <p className="text-sm text-[var(--color-muted-foreground)]">
-              Kein Gerät angemeldet. Klicken Sie oben auf „Aktivieren", um dieses Gerät hinzuzufügen.
+              Kein Gerät angemeldet. Klicken Sie oben auf „Aktivieren", um dieses Gerät
+              hinzuzufügen.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -76,7 +87,9 @@ export default async function NotificationsSettingsPage() {
                       </td>
                       <td className="py-2">{formatDateTime(s.created_at)}</td>
                       <td className="py-2">{formatDateTime(s.last_used_at)}</td>
-                      <td className="py-2 text-xs text-[var(--color-destructive)]">{s.last_error ?? '—'}</td>
+                      <td className="py-2 text-xs text-[var(--color-destructive)]">
+                        {s.last_error ?? '—'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

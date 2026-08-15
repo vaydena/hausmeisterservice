@@ -21,6 +21,7 @@ import {
 } from '@/lib/schemas/materials';
 import { MovementForm } from '../movement-forms';
 import { softDeleteMaterialAction, setMaterialStatusAction } from '../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Artikel' };
 
@@ -37,55 +38,57 @@ type MovementRow = {
   unit_cost_at_time: number | null;
 };
 
-export default async function MaterialDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function MaterialDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: material } = await supabase
+  const materialRes = await supabase
     .from('materials')
     .select(
       'id, code, label, sku, category, unit, min_stock, current_stock, unit_cost, storage_location, supplier, status, notes, deleted_at, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();
+  const material = unwrapMaybeRow(materialRes, 'Material: materials');
 
   if (!material) notFound();
 
-  const [
-    { data: movementsRaw },
-    { data: propertiesForForm },
-    { data: workOrdersForForm },
-    { data: usersForForm },
-  ] = await Promise.all([
-    supabase
-      .from('stock_movements')
-      .select(
-        'id, kind, quantity, occurred_at, note, property_id, work_order_id, assignee_user_id, created_by, unit_cost_at_time',
-      )
-      .eq('material_id', id)
-      .order('occurred_at', { ascending: false })
-      .limit(200),
-    supabase
-      .from('properties')
-      .select('id, name, code')
-      .is('deleted_at', null)
-      .order('name'),
-    supabase
-      .from('work_orders')
-      .select('id, title, code')
-      .in('status', ['open', 'in_progress'])
-      .order('created_at', { ascending: false })
-      .limit(50),
-    supabase.from('users').select('id, display_name').order('display_name'),
-  ]);
+  const [movementsRawRes, propertiesForFormRes, workOrdersForFormRes, usersForFormRes] =
+    await Promise.all([
+      supabase
+        .from('stock_movements')
+        .select(
+          'id, kind, quantity, occurred_at, note, property_id, work_order_id, assignee_user_id, created_by, unit_cost_at_time',
+        )
+        .eq('material_id', id)
+        .order('occurred_at', { ascending: false })
+        .limit(200),
+      supabase.from('properties').select('id, name, code').is('deleted_at', null).order('name'),
+      supabase
+        .from('work_orders')
+        .select('id, title, code')
+        .in('status', ['open', 'in_progress'])
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase.from('users').select('id, display_name').order('display_name'),
+    ]);
+  const movementsRaw = unwrapRows(movementsRawRes, 'Material: stock_movements');
+  const propertiesForForm = unwrapRows(
+    propertiesForFormRes,
+    'Material: Objekte fuer das Buchungsformular',
+  );
+  const workOrdersForForm = unwrapRows(
+    workOrdersForFormRes,
+    'Material: Auftraege fuer das Buchungsformular',
+  );
+  const usersForForm = unwrapRows(
+    usersForFormRes,
+    'Material: Mitarbeiter fuer das Buchungsformular',
+  );
 
-  const movements: MovementRow[] = (movementsRaw ?? []).map((m) => ({
+  const movements: MovementRow[] = movementsRaw.map((m) => ({
     ...m,
     quantity: Number(m.quantity),
     unit_cost_at_time: m.unit_cost_at_time !== null ? Number(m.unit_cost_at_time) : null,
@@ -99,28 +102,39 @@ export default async function MaterialDetailPage({
   ];
   const referencedUserIds = [
     ...new Set(
-      [
-        ...movements.map((m) => m.assignee_user_id),
-        ...movements.map((m) => m.created_by),
-      ].filter((v): v is string => Boolean(v)),
+      [...movements.map((m) => m.assignee_user_id), ...movements.map((m) => m.created_by)].filter(
+        (v): v is string => Boolean(v),
+      ),
     ),
   ];
 
-  const [{ data: propsRefs }, { data: woRefs }, { data: userRefs }] = await Promise.all([
+  const [propsRefsRes, woRefsRes, userRefsRes] = await Promise.all([
     referencedPropIds.length > 0
       ? supabase.from('properties').select('id, name, code').in('id', referencedPropIds)
-      : Promise.resolve({ data: [] as { id: string; name: string; code: string | null }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; name: string; code: string | null }[],
+          error: null,
+        }),
     referencedWoIds.length > 0
       ? supabase.from('work_orders').select('id, title, code').in('id', referencedWoIds)
-      : Promise.resolve({ data: [] as { id: string; title: string; code: string | null }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; title: string; code: string | null }[],
+          error: null,
+        }),
     referencedUserIds.length > 0
       ? supabase.from('users').select('id, display_name').in('id', referencedUserIds)
-      : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
+      : Promise.resolve({
+          data: [] as { id: string; display_name: string | null }[],
+          error: null,
+        }),
   ]);
+  const propsRefs = unwrapRows(propsRefsRes, 'Material: Objektnamen zu den Bewegungen');
+  const woRefs = unwrapRows(woRefsRes, 'Material: Auftragstitel zu den Bewegungen');
+  const userRefs = unwrapRows(userRefsRes, 'Material: Namen zu den Bewegungen');
 
-  const propertyById = new Map((propsRefs ?? []).map((p) => [p.id, p]));
-  const woById = new Map((woRefs ?? []).map((w) => [w.id, w]));
-  const userById = new Map((userRefs ?? []).map((u) => [u.id, u.display_name]));
+  const propertyById = new Map(propsRefs.map((p) => [p.id, p]));
+  const woById = new Map(woRefs.map((w) => [w.id, w]));
+  const userById = new Map(userRefs.map((u) => [u.id, u.display_name]));
 
   const currentStock = Number(material.current_stock);
   const minStock = Number(material.min_stock);
@@ -223,9 +237,9 @@ export default async function MaterialDetailPage({
                 materialId={material.id}
                 unit={material.unit}
                 currentStock={currentStock}
-                properties={propertiesForForm ?? []}
-                workOrders={workOrdersForForm ?? []}
-                users={usersForForm ?? []}
+                properties={propertiesForForm}
+                workOrders={workOrdersForForm}
+                users={usersForForm}
                 defaultKind={canIssue && !canEdit ? 'issue' : 'issue'}
               />
             </Card>
@@ -291,7 +305,9 @@ export default async function MaterialDetailPage({
                                     href={`/properties/${property.id}`}
                                     className="text-[var(--color-primary)] hover:underline"
                                   >
-                                    {property.code ? `${property.code} · ${property.name}` : property.name}
+                                    {property.code
+                                      ? `${property.code} · ${property.name}`
+                                      : property.name}
                                   </Link>
                                 </div>
                               )}

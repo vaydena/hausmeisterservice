@@ -9,10 +9,14 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Select, Field } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { formatDuration, formatMinutes, parsePeriod } from '@/lib/reports/utils';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Auftragsbericht' };
 
-const STATUS_TONE: Record<string, 'muted' | 'primary' | 'success' | 'warning' | 'danger' | 'neutral'> = {
+const STATUS_TONE: Record<
+  string,
+  'muted' | 'primary' | 'success' | 'warning' | 'danger' | 'neutral'
+> = {
   open: 'warning',
   in_progress: 'primary',
   on_hold: 'muted',
@@ -41,24 +45,23 @@ export default async function WorkOrdersReportPage({
 
   let q = supabase
     .from('work_orders')
-    .select('id, code, title, status, priority, is_emergency, property_id, assignee_id, created_at, closed_at, actual_minutes, estimated_minutes')
+    .select(
+      'id, code, title, status, priority, is_emergency, property_id, assignee_id, created_at, closed_at, actual_minutes, estimated_minutes',
+    )
     .is('deleted_at', null)
     .gte('created_at', fromIso)
     .lte('created_at', toIso)
     .order('created_at', { ascending: false });
   if (propertyId) q = q.eq('property_id', propertyId);
 
-  const [{ data: rows }, { data: properties }] = await Promise.all([
+  const [rowsRes, propertiesRes] = await Promise.all([
     q,
-    supabase
-      .from('properties')
-      .select('id, name')
-      .is('deleted_at', null)
-      .order('name'),
+    supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
   ]);
+  const list = unwrapRows(rowsRes, 'Auswertungen: Auftragszeilen des Berichts');
+  const properties = unwrapRows(propertiesRes, 'Auswertungen: properties');
 
-  const list = rows ?? [];
-  const propById = new Map((properties ?? []).map((p) => [p.id, p.name]));
+  const propById = new Map(properties.map((p) => [p.id, p.name]));
 
   const statusCounts = list.reduce<Record<string, number>>((acc, o) => {
     acc[o.status] = (acc[o.status] ?? 0) + 1;
@@ -80,10 +83,15 @@ export default async function WorkOrdersReportPage({
       o.estimated_minutes !== null &&
       o.actual_minutes <= o.estimated_minutes,
   ).length;
-  const inTimeRate = closedList.length > 0 ? Math.round((inTimeCount / closedList.length) * 100) : null;
+  const inTimeRate =
+    closedList.length > 0 ? Math.round((inTimeCount / closedList.length) * 100) : null;
 
   const canDownload = permissions.has('reporting.download');
-  const csvQuery = new URLSearchParams({ from, to, ...(propertyId ? { property: propertyId } : {}) }).toString();
+  const csvQuery = new URLSearchParams({
+    from,
+    to,
+    ...(propertyId ? { property: propertyId } : {}),
+  }).toString();
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -117,7 +125,7 @@ export default async function WorkOrdersReportPage({
             <Field label="Objekt" htmlFor="property" optional>
               <Select id="property" name="property" defaultValue={propertyId}>
                 <option value="">Alle</option>
-                {(properties ?? []).map((p) => (
+                {properties.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
@@ -153,7 +161,9 @@ export default async function WorkOrdersReportPage({
         </CardHeader>
         <CardBody>
           {Object.keys(statusCounts).length === 0 ? (
-            <p className="text-sm text-[var(--color-muted-foreground)]">Keine Einträge im Zeitraum.</p>
+            <p className="text-sm text-[var(--color-muted-foreground)]">
+              Keine Einträge im Zeitraum.
+            </p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {Object.entries(statusCounts).map(([s, n]) => (
@@ -186,22 +196,34 @@ export default async function WorkOrdersReportPage({
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
               {list.map((o) => {
-                const lead =
-                  o.closed_at ? formatDuration(new Date(o.closed_at).getTime() - new Date(o.created_at).getTime()) : '—';
+                const lead = o.closed_at
+                  ? formatDuration(
+                      new Date(o.closed_at).getTime() - new Date(o.created_at).getTime(),
+                    )
+                  : '—';
                 return (
                   <tr key={o.id}>
                     <td className="py-2 pr-4 font-mono text-xs">{o.code}</td>
                     <td className="py-2 pr-4">
-                      <Link href={`/work-orders/${o.id}`} className="hover:text-[var(--color-primary)]">
+                      <Link
+                        href={`/work-orders/${o.id}`}
+                        className="hover:text-[var(--color-primary)]"
+                      >
                         {o.title}
                       </Link>
-                      {o.is_emergency && <span className="ml-2 text-xs text-[var(--color-destructive)]">⚡</span>}
+                      {o.is_emergency && (
+                        <span className="ml-2 text-xs text-[var(--color-destructive)]">⚡</span>
+                      )}
                     </td>
                     <td className="py-2 pr-4">
                       <Badge tone={STATUS_TONE[o.status] ?? 'neutral'}>{o.status}</Badge>
                     </td>
-                    <td className="py-2 pr-4 text-xs">{propById.get(o.property_id ?? '') ?? '—'}</td>
-                    <td className="py-2 pr-4 text-xs">{new Date(o.created_at).toLocaleDateString('de-DE')}</td>
+                    <td className="py-2 pr-4 text-xs">
+                      {propById.get(o.property_id ?? '') ?? '—'}
+                    </td>
+                    <td className="py-2 pr-4 text-xs">
+                      {new Date(o.created_at).toLocaleDateString('de-DE')}
+                    </td>
                     <td className="py-2 pr-4 text-xs">
                       {o.closed_at ? new Date(o.closed_at).toLocaleDateString('de-DE') : '—'}
                     </td>
@@ -238,12 +260,14 @@ function Kpi({
     accent === 'warning'
       ? 'text-[var(--color-warning)]'
       : accent === 'danger'
-      ? 'text-[var(--color-destructive)]'
-      : 'text-[var(--color-foreground)]';
+        ? 'text-[var(--color-destructive)]'
+        : 'text-[var(--color-foreground)]';
   return (
     <Card>
       <CardBody>
-        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{title}</p>
+        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+          {title}
+        </p>
         <p className={`mt-1 text-2xl font-semibold tabular-nums ${accentClass}`}>{value}</p>
       </CardBody>
     </Card>

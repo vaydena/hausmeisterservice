@@ -16,6 +16,7 @@ import {
   moveItemAction,
   type ItemFormState,
 } from '../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Checkliste' };
 
@@ -29,22 +30,22 @@ export default async function ChecklistTemplateDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: template } = await supabase
+  const templateRes = await supabase
     .from('checklist_templates')
     .select('id, code, title, description, category, active, created_at, updated_at')
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
+  const template = unwrapMaybeRow(templateRes, 'Checklisten: checklist_templates');
 
   if (!template) notFound();
 
-  const { data: itemsData } = await supabase
+  const itemsDataRes = await supabase
     .from('checklist_template_items')
     .select('id, position, kind, label, help_text, required, unit, min_value, max_value')
     .eq('template_id', template.id)
     .order('position');
-
-  const items = itemsData ?? [];
+  const items = unwrapRows(itemsDataRes, 'Checklisten: checklist_template_items');
 
   const canEdit = permissions.has('checklists.edit');
   const canDelete = permissions.has('checklists.delete');
@@ -112,14 +113,15 @@ export default async function ChecklistTemplateDetailPage({
                         {KIND_LABEL[item.kind as ChecklistItemKind] ?? item.kind}
                       </Badge>
                       {item.required && <Badge tone="warning">Pflicht</Badge>}
-                      {item.kind === 'number' && (item.unit || item.min_value !== null || item.max_value !== null) && (
-                        <span className="text-xs text-[var(--color-muted-foreground)]">
-                          {item.min_value !== null && `≥ ${item.min_value}`}
-                          {item.min_value !== null && item.max_value !== null && ' · '}
-                          {item.max_value !== null && `≤ ${item.max_value}`}
-                          {item.unit && ` ${item.unit}`}
-                        </span>
-                      )}
+                      {item.kind === 'number' &&
+                        (item.unit || item.min_value !== null || item.max_value !== null) && (
+                          <span className="text-xs text-[var(--color-muted-foreground)]">
+                            {item.min_value !== null && `≥ ${item.min_value}`}
+                            {item.min_value !== null && item.max_value !== null && ' · '}
+                            {item.max_value !== null && `≤ ${item.max_value}`}
+                            {item.unit && ` ${item.unit}`}
+                          </span>
+                        )}
                     </div>
                     {item.help_text && (
                       <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">

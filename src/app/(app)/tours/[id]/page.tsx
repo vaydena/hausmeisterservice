@@ -23,6 +23,7 @@ import {
 import { AddStopCard } from '../stop-form';
 import { RemoveStopButton, StopReorderControls, StopStatusSelect } from '../stop-actions';
 import { setTourStatusAction, softDeleteTourAction } from '../actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Tour' };
 
@@ -46,27 +47,32 @@ export default async function TourDetailPage({ params }: { params: Promise<{ id:
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: tour } = await supabase
+  const tourRes = await supabase
     .from('tours')
     .select(
       'id, code, title, planned_date, driver_user_id, vehicle_id, status, started_at, completed_at, notes, deleted_at, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();
+  const tour = unwrapMaybeRow(tourRes, 'Touren: tours');
 
   if (!tour) notFound();
 
-  const [{ data: driver }, { data: vehicle }, { data: stopsRaw }, { data: properties }] = await Promise.all([
+  const [driverRes, vehicleRes, stopsRawRes, propertiesRes] = await Promise.all([
     tour.driver_user_id
-      ? supabase.from('users').select('id, display_name').eq('id', tour.driver_user_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      ? supabase
+          .from('users')
+          .select('id, display_name')
+          .eq('id', tour.driver_user_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     tour.vehicle_id
       ? supabase
           .from('vehicles')
           .select('id, license_plate, make, model')
           .eq('id', tour.vehicle_id)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     supabase
       .from('tour_stops')
       .select(
@@ -80,11 +86,13 @@ export default async function TourDetailPage({ params }: { params: Promise<{ id:
       .is('deleted_at', null)
       .order('name'),
   ]);
+  const driver = unwrapMaybeRow(driverRes, 'Touren: users');
+  const vehicle = unwrapMaybeRow(vehicleRes, 'Touren: vehicles');
+  const stopsRaw = unwrapRows(stopsRawRes, 'Touren: tour_stops');
+  const properties = unwrapRows(propertiesRes, 'Touren: properties');
 
-  const stops: StopRow[] = stopsRaw ?? [];
-  const propertyById = new Map(
-    (properties ?? []).map((p) => [p.id, p] as const),
-  );
+  const stops: StopRow[] = stopsRaw;
+  const propertyById = new Map(properties.map((p) => [p.id, p] as const));
 
   const canEdit = permissions.has('tours.edit');
   const stopIds = stops.map((s) => s.id);
@@ -234,7 +242,7 @@ export default async function TourDetailPage({ params }: { params: Promise<{ id:
           </Card>
 
           {canEdit && !isDone && !tour.deleted_at && (
-            <AddStopCard tourId={tour.id} properties={properties ?? []} />
+            <AddStopCard tourId={tour.id} properties={properties} />
           )}
         </div>
 
@@ -289,7 +297,10 @@ export default async function TourDetailPage({ params }: { params: Promise<{ id:
                 <div className="flex flex-col gap-3">
                   <form action={setTourStatusAction} className="flex flex-col gap-2">
                     <input type="hidden" name="tour_id" value={tour.id} />
-                    <label htmlFor="status" className="text-xs text-[var(--color-muted-foreground)]">
+                    <label
+                      htmlFor="status"
+                      className="text-xs text-[var(--color-muted-foreground)]"
+                    >
                       Status ändern
                     </label>
                     <div className="flex gap-2">

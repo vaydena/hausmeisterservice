@@ -8,6 +8,7 @@ import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils/format';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Mitarbeiter' };
 
@@ -17,27 +18,26 @@ const STATUS_LABEL: Record<string, string> = {
   terminated: 'Beendet',
 };
 
-export default async function EmployeeDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: employee } = await supabase
-    .from('employees')
-    .select(
-      'id, user_id, employment_status, hire_date, termination_date, hourly_rate, phone, skills, notes',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  const employee = unwrapMaybeRow(
+    await supabase
+      .from('employees')
+      .select(
+        'id, user_id, employment_status, hire_date, termination_date, hourly_rate, phone, skills, notes',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Mitarbeiter: Datensatz',
+  );
 
   if (!employee) notFound();
 
-  const [{ data: profile }, { data: roleAssignments }] = await Promise.all([
+  const [profileRes, roleAssignmentsRes] = await Promise.all([
     supabase.from('users').select('display_name').eq('id', employee.user_id).maybeSingle(),
     supabase
       .from('user_roles')
@@ -45,12 +45,15 @@ export default async function EmployeeDetailPage({
       .eq('user_id', employee.user_id)
       .eq('tenant_id', ctx.tenantId),
   ]);
+  const profile = unwrapMaybeRow(profileRes, 'Personen: users');
+  const roleAssignments = unwrapRows(roleAssignmentsRes, 'Personen: user_roles');
 
-  const roleIds = [...new Set((roleAssignments ?? []).map((a) => a.role_id))];
-  const { data: roles } =
+  const roleIds = [...new Set(roleAssignments.map((a) => a.role_id))];
+  const rolesRes =
     roleIds.length > 0
       ? await supabase.from('roles').select('id, name, key').in('id', roleIds)
-      : { data: [] };
+      : { data: [], error: null };
+  const roles = unwrapRows(rolesRes, 'Personen: roles');
 
   const canEdit = permissions.has('employees.edit');
   const isSelf = ctx.userId === employee.user_id;
@@ -60,7 +63,9 @@ export default async function EmployeeDetailPage({
       <PageHeader
         title={profile?.display_name ?? '(Ohne Anzeigename)'}
         description={
-          isSelf ? 'Ihr Mitarbeiter-Profil' : `Status: ${STATUS_LABEL[employee.employment_status] ?? employee.employment_status}`
+          isSelf
+            ? 'Ihr Mitarbeiter-Profil'
+            : `Status: ${STATUS_LABEL[employee.employment_status] ?? employee.employment_status}`
         }
         action={
           canEdit ? (

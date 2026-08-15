@@ -13,6 +13,7 @@ import {
   tourInputSchema,
   tourStatusUpdateSchema,
 } from '@/lib/schemas/tours';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export type TourFormState = {
   error?: string;
@@ -161,13 +162,14 @@ export async function addStopAction(formData: FormData): Promise<void> {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: last } = await supabase
+  const lastRes = await supabase
     .from('tour_stops')
     .select('sequence')
     .eq('tour_id', parsed.data.tour_id)
     .order('sequence', { ascending: false })
     .limit(1)
     .maybeSingle();
+  const last = unwrapMaybeRow(lastRes, 'Touren: letzte Stopp-Nummer');
   const nextSeq = (last?.sequence ?? 0) + 1;
 
   const { error } = await supabase.from('tour_stops').insert({
@@ -254,11 +256,12 @@ export async function setStopStatusAction(formData: FormData): Promise<void> {
     patch.actual_arrival_at = nowIso;
     patch.actual_departure_at = null;
   } else if (parsed.data.status === 'completed') {
-    const { data: current } = await supabase
+    const currentRes = await supabase
       .from('tour_stops')
       .select('actual_arrival_at, tour_id')
       .eq('id', parsed.data.stop_id)
       .maybeSingle();
+    const current = unwrapMaybeRow(currentRes, 'Touren: Stopp zum Aktualisieren');
     if (!current?.actual_arrival_at) patch.actual_arrival_at = nowIso;
     patch.actual_departure_at = nowIso;
   } else if (parsed.data.status === 'pending') {

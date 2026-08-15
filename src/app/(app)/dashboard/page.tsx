@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { WelcomeOverlay } from './welcome-overlay';
 import { MfaReminderBanner } from './mfa-reminder-banner';
 
@@ -27,7 +28,7 @@ export default async function DashboardPage() {
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
 
-  const [enabledModules, permissions, tenant, roles] = await Promise.all([
+  const [enabledModules, permissions, tenantRes, rolesRes] = await Promise.all([
     getEnabledModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
     supabase
@@ -43,8 +44,24 @@ export default async function DashboardPage() {
       .returns<{ role_id: string; roles: { name: string } | null }[]>(),
   ]);
 
-  const tenantName = tenant.data?.name ?? 'Ihr Mandant';
-  const showWelcome = ctx.isOwner && !tenant.data?.onboarding_completed_at;
+  // Sprint 112: Beide Zeilen tragen eine Aussage ueber den Nutzer selbst, und
+  // beide fielen verschluckt auf einen glaubhaften Ersatzwert zurueck.
+  //
+  // onboarding_completed_at steuert das Willkommens-Overlay (Sprint 13). Ein
+  // Lesefehler liess es wieder aufgehen — vor einem Owner, der seinen Mandanten
+  // laengst eingerichtet hat. Das ist die Umkehrung von Sprint 108: dort log
+  // der Zustand den Mitarbeiter an, hier faellt eine erledigte Einrichtung
+  // zurueck auf "noch nicht erledigt".
+  //
+  // roleNames steht darunter als "Rolle: Inhaber". Verschluckt verschwand die
+  // Zeile ersatzlos — nicht als Fehler, sondern so, als haette der Nutzer
+  // schlicht keine Rolle. Wer hier nachsieht, weil er sich fragt, warum eine
+  // Aktion fehlt, bekommt eine Antwort auf die falsche Frage.
+  const tenant = unwrapMaybeRow(tenantRes, 'Dashboard: Mandant');
+  const roles = unwrapRows(rolesRes, 'Dashboard: eigene Rollen');
+
+  const tenantName = tenant?.name ?? 'Ihr Mandant';
+  const showWelcome = ctx.isOwner && !tenant?.onboarding_completed_at;
 
   // MFA-Reminder nur fuer Owner (nur sie koennen dem Tenant Schaden
   // zufuegen), nur ohne verifizierten Faktor, und nur wenn der letzte
@@ -63,14 +80,9 @@ export default async function DashboardPage() {
     }
   }
 
-  const roleNames =
-    (roles.data ?? [])
-      .map((r) => r.roles?.name)
-      .filter((n): n is string => Boolean(n));
+  const roleNames = roles.map((r) => r.roles?.name).filter((n): n is string => Boolean(n));
 
-  const activeToggleable = [...enabledModules].filter(
-    (key) => !MODULES_BY_KEY[key]?.core,
-  );
+  const activeToggleable = [...enabledModules].filter((key) => !MODULES_BY_KEY[key]?.core);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -84,7 +96,9 @@ export default async function DashboardPage() {
           {roleNames.length > 0 && (
             <>
               {' · '}Rolle{roleNames.length > 1 ? 'n' : ''}:{' '}
-              <span className="font-medium text-[var(--color-foreground)]">{roleNames.join(', ')}</span>
+              <span className="font-medium text-[var(--color-foreground)]">
+                {roleNames.join(', ')}
+              </span>
             </>
           )}
         </p>
@@ -119,9 +133,21 @@ function StatsGrid({
   isOwner: boolean;
 }) {
   const items: { label: string; value: string; hint?: string }[] = [
-    { label: 'Aktive Module', value: String(moduleCount), hint: 'zusätzlich zu den Kern-Modulen' },
-    { label: 'Ihre Berechtigungen', value: String(permissionCount), hint: 'effektive Permissions im Mandanten' },
-    { label: 'Rolle', value: isOwner ? 'Mandant-Owner' : 'Mitglied', hint: 'Zugriffsebene' },
+    {
+      label: 'Aktive Module',
+      value: String(moduleCount),
+      hint: 'zusätzlich zu den Kern-Modulen',
+    },
+    {
+      label: 'Ihre Berechtigungen',
+      value: String(permissionCount),
+      hint: 'effektive Permissions im Mandanten',
+    },
+    {
+      label: 'Rolle',
+      value: isOwner ? 'Mandant-Owner' : 'Mitglied',
+      hint: 'Zugriffsebene',
+    },
   ];
   return (
     <div className="grid gap-3 sm:grid-cols-3">

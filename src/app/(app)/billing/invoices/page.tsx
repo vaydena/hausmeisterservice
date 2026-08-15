@@ -9,7 +9,15 @@ import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
-import { formatCents, formatDate, INVOICE_STATUS_LABEL, INVOICE_STATUS_TONE, isOverdue, type InvoiceStatus } from '@/lib/schemas/billing';
+import {
+  formatCents,
+  formatDate,
+  INVOICE_STATUS_LABEL,
+  INVOICE_STATUS_TONE,
+  isOverdue,
+  type InvoiceStatus,
+} from '@/lib/schemas/billing';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Rechnungen' };
 
@@ -19,12 +27,12 @@ export default async function InvoicesPage() {
   if (!permissions.has('billing.view')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const { data: invoices } = await supabase
+  const invoicesRes = await supabase
     .from('invoices')
     .select('id, code, title, status, bill_to_name, issued_at, due_at, paid_at, gross_total_cents')
     .order('created_at', { ascending: false });
+  const rows = unwrapRows(invoicesRes, 'Abrechnung: invoices');
 
-  const rows = invoices ?? [];
   const canCreate = permissions.has('billing.create');
 
   return (
@@ -32,14 +40,22 @@ export default async function InvoicesPage() {
       <PageHeader
         title="Rechnungen"
         description={`${rows.length} Rechnung${rows.length === 1 ? '' : 'en'}`}
-        action={canCreate ? <LinkButton href="/billing/invoices/new">Neue Rechnung</LinkButton> : undefined}
+        action={
+          canCreate ? (
+            <LinkButton href="/billing/invoices/new">Neue Rechnung</LinkButton>
+          ) : undefined
+        }
       />
 
       {rows.length === 0 ? (
         <EmptyState
           title="Noch keine Rechnungen"
           description="Legen Sie eine Rechnung an, um Positionen zu erfassen und zu versenden."
-          action={canCreate ? <LinkButton href="/billing/invoices/new">Neue Rechnung</LinkButton> : undefined}
+          action={
+            canCreate ? (
+              <LinkButton href="/billing/invoices/new">Neue Rechnung</LinkButton>
+            ) : undefined
+          }
         />
       ) : (
         <Card>
@@ -63,12 +79,18 @@ export default async function InvoicesPage() {
                   return (
                     <tr key={i.id}>
                       <td className="p-3 font-mono text-xs">
-                        <Link href={`/billing/invoices/${i.id}`} className="hover:text-[var(--color-primary)]">
+                        <Link
+                          href={`/billing/invoices/${i.id}`}
+                          className="hover:text-[var(--color-primary)]"
+                        >
                           {i.code}
                         </Link>
                       </td>
                       <td className="p-3">
-                        <Link href={`/billing/invoices/${i.id}`} className="hover:text-[var(--color-primary)]">
+                        <Link
+                          href={`/billing/invoices/${i.id}`}
+                          className="hover:text-[var(--color-primary)]"
+                        >
                           {i.title}
                         </Link>
                       </td>
@@ -81,7 +103,9 @@ export default async function InvoicesPage() {
                       </td>
                       <td className="p-3 text-xs">{formatDate(i.issued_at)}</td>
                       <td className="p-3 text-xs">{formatDate(i.due_at)}</td>
-                      <td className="p-3 text-right tabular-nums font-medium">{formatCents(i.gross_total_cents)}</td>
+                      <td className="p-3 text-right tabular-nums font-medium">
+                        {formatCents(i.gross_total_cents)}
+                      </td>
                     </tr>
                   );
                 })}

@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { OWNER_KIND_LABEL, ownerDisplayName, type OwnerKind } from '@/lib/schemas/owners';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Eigentümer' };
 
@@ -17,7 +18,7 @@ export default async function OwnersPage() {
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const [{ data: owners }, { data: assignments }] = await Promise.all([
+  const [ownersRes, assignmentsRes] = await Promise.all([
     supabase
       .from('owners')
       .select('id, kind, first_name, last_name, company_name, email, phone, city')
@@ -27,10 +28,11 @@ export default async function OwnersPage() {
       .order('last_name'),
     supabase.from('owner_properties').select('owner_id, property_id'),
   ]);
+  const items = unwrapRows(ownersRes, 'Personen: owners');
+  const assignments = unwrapRows(assignmentsRes, 'Personen: owner_properties');
 
-  const items = owners ?? [];
   const propertyCountByOwner = new Map<string, number>();
-  for (const a of assignments ?? [])
+  for (const a of assignments)
     propertyCountByOwner.set(a.owner_id, (propertyCountByOwner.get(a.owner_id) ?? 0) + 1);
 
   const canCreate = permissions.has('owners.create');

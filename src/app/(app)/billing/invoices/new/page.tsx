@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { BillingDocumentForm } from '../../billing-form';
 import { createInvoiceAction } from '../../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neue Rechnung' };
 
@@ -15,7 +16,7 @@ export default async function NewInvoicePage() {
   if (!permissions.has('billing.create')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: properties }, { data: owners }, { data: workOrders }, { data: offers }] = await Promise.all([
+  const [propertiesRes, ownersRes, workOrdersRes, offersRes] = await Promise.all([
     supabase.from('properties').select('id, name').is('deleted_at', null).order('name'),
     supabase
       .from('owners')
@@ -35,26 +36,39 @@ export default async function NewInvoicePage() {
       .order('issued_at', { ascending: false })
       .limit(50),
   ]);
+  const properties = unwrapRows(propertiesRes, 'Abrechnung: properties');
+  const owners = unwrapRows(ownersRes, 'Abrechnung: owners');
+  const workOrders = unwrapRows(workOrdersRes, 'Abrechnung: work_orders');
+  const offers = unwrapRows(offersRes, 'Abrechnung: offers');
 
-  const ownerOpts = (owners ?? []).map((o) => ({
+  const ownerOpts = owners.map((o) => ({
     id: o.id,
     label:
       o.kind === 'company'
-        ? o.company_name ?? '—'
+        ? (o.company_name ?? '—')
         : `${o.first_name ?? ''} ${o.last_name ?? ''}`.trim() || '—',
   }));
-  const woOpts = (workOrders ?? []).map((w) => ({ id: w.id, label: `${w.code} · ${w.title}` }));
-  const offerOpts = (offers ?? []).map((o) => ({ id: o.id, label: `${o.code} · ${o.title}` }));
+  const woOpts = workOrders.map((w) => ({
+    id: w.id,
+    label: `${w.code} · ${w.title}`,
+  }));
+  const offerOpts = offers.map((o) => ({
+    id: o.id,
+    label: `${o.code} · ${o.title}`,
+  }));
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <PageHeader title="Neue Rechnung" description="Beleg-Kopf anlegen. Positionen werden auf der Detail-Seite ergänzt." />
+      <PageHeader
+        title="Neue Rechnung"
+        description="Beleg-Kopf anlegen. Positionen werden auf der Detail-Seite ergänzt."
+      />
       <BillingDocumentForm
         action={createInvoiceAction}
         cancelHref="/billing/invoices"
         submitLabel="Rechnung anlegen"
         kind="invoice"
-        properties={properties ?? []}
+        properties={properties}
         owners={ownerOpts}
         workOrders={woOpts}
         offers={offerOpts}

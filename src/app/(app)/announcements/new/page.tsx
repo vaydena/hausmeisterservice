@@ -6,6 +6,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { AnnouncementForm } from '../announcement-form';
 import { createAnnouncementAction } from '../actions';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neue Ankündigung' };
 
@@ -16,28 +17,27 @@ export default async function NewAnnouncementPage() {
 
   const supabase = await createSupabaseServerClient();
 
-  const [{ data: roles }, { data: members }] = await Promise.all([
-    supabase
-      .from('roles')
-      .select('key, name')
-      .eq('tenant_id', ctx.tenantId)
-      .order('name'),
+  const [rolesRes, membersRes] = await Promise.all([
+    supabase.from('roles').select('key, name').eq('tenant_id', ctx.tenantId).order('name'),
     supabase
       .from('memberships')
       .select('user_id')
       .eq('tenant_id', ctx.tenantId)
       .eq('status', 'active'),
   ]);
+  const roles = unwrapRows(rolesRes, 'Ankuendigungen: roles');
+  const members = unwrapRows(membersRes, 'Ankuendigungen: memberships');
 
-  const memberIds = (members ?? []).map((m) => m.user_id);
-  const { data: users } =
+  const memberIds = members.map((m) => m.user_id);
+  const usersRes =
     memberIds.length > 0
       ? await supabase
           .from('users')
           .select('id, display_name')
           .in('id', memberIds)
           .order('display_name')
-      : { data: [] };
+      : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Ankuendigungen: users');
 
   const canPublish = permissions.has('announcements.publish');
 
@@ -51,8 +51,8 @@ export default async function NewAnnouncementPage() {
         action={createAnnouncementAction}
         cancelHref="/announcements"
         submitLabel="Speichern"
-        roles={roles ?? []}
-        users={users ?? []}
+        roles={roles}
+        users={users}
         showPublishToggle={canPublish}
       />
     </div>

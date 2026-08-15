@@ -9,6 +9,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Field } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { formatEuro, formatNumber, parsePeriod } from '@/lib/reports/utils';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Materialbericht' };
 
@@ -27,7 +28,7 @@ export default async function MaterialsReportPage({
   const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
   const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
-  const [{ data: materials }, { data: movements }] = await Promise.all([
+  const [materialsRes, movementsRes] = await Promise.all([
     supabase
       .from('materials')
       .select('id, code, label, sku, unit, current_stock, min_stock, unit_cost, storage_location')
@@ -39,16 +40,16 @@ export default async function MaterialsReportPage({
       .gte('occurred_at', fromIso)
       .lte('occurred_at', toIso),
   ]);
-
-  const mats = materials ?? [];
-  const movs = movements ?? [];
+  const mats = unwrapRows(materialsRes, 'Auswertungen: materials');
+  const movs = unwrapRows(movementsRes, 'Auswertungen: stock_movements');
 
   const consumptionByMat = new Map<string, { qty: number; value: number }>();
   const inflowByMat = new Map<string, { qty: number; value: number }>();
   for (const m of movs) {
     const qty = Number(m.quantity ?? 0);
     const val = qty * Number(m.unit_cost_at_time ?? 0);
-    const target = m.kind === 'issue' ? consumptionByMat : m.kind === 'receipt' ? inflowByMat : null;
+    const target =
+      m.kind === 'issue' ? consumptionByMat : m.kind === 'receipt' ? inflowByMat : null;
     if (!target) continue;
     const prev = target.get(m.material_id) ?? { qty: 0, value: 0 };
     target.set(m.material_id, { qty: prev.qty + qty, value: prev.value + val });
@@ -63,7 +64,10 @@ export default async function MaterialsReportPage({
   const belowMin = mats.filter((m) => Number(m.current_stock) < Number(m.min_stock)).length;
 
   const topConsumers = [...mats]
-    .map((m) => ({ ...m, consumption: consumptionByMat.get(m.id) ?? { qty: 0, value: 0 } }))
+    .map((m) => ({
+      ...m,
+      consumption: consumptionByMat.get(m.id) ?? { qty: 0, value: 0 },
+    }))
     .sort((a, b) => b.consumption.value - a.consumption.value)
     .slice(0, 10);
 
@@ -113,7 +117,11 @@ export default async function MaterialsReportPage({
 
       <div className="grid gap-4 md:grid-cols-4">
         <Kpi title="Bestandswert" value={formatEuro(stockValue)} />
-        <Kpi title="Verbrauch" value={formatEuro(totalConsumption)} sub="Entnahmen zum Zeitpunkt-Preis" />
+        <Kpi
+          title="Verbrauch"
+          value={formatEuro(totalConsumption)}
+          sub="Entnahmen zum Zeitpunkt-Preis"
+        />
         <Kpi title="Wareneingänge" value={formatEuro(totalInflow)} />
         <Kpi
           title="Unter Mindest"
@@ -144,7 +152,11 @@ export default async function MaterialsReportPage({
                     <Link href={`/materials/${m.id}`} className="hover:text-[var(--color-primary)]">
                       {m.label}
                     </Link>
-                    {m.sku && <span className="ml-2 font-mono text-xs text-[var(--color-muted-foreground)]">{m.sku}</span>}
+                    {m.sku && (
+                      <span className="ml-2 font-mono text-xs text-[var(--color-muted-foreground)]">
+                        {m.sku}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2 pr-4 tabular-nums">
                     {formatNumber(m.consumption.qty, 2)} {m.unit ?? ''}
@@ -195,7 +207,10 @@ export default async function MaterialsReportPage({
                 return (
                   <tr key={m.id}>
                     <td className="py-2 pr-4">
-                      <Link href={`/materials/${m.id}`} className="hover:text-[var(--color-primary)]">
+                      <Link
+                        href={`/materials/${m.id}`}
+                        className="hover:text-[var(--color-primary)]"
+                      >
                         {m.label}
                       </Link>
                     </td>
@@ -233,12 +248,14 @@ function Kpi({
     accent === 'warning'
       ? 'text-[var(--color-warning)]'
       : accent === 'danger'
-      ? 'text-[var(--color-destructive)]'
-      : 'text-[var(--color-foreground)]';
+        ? 'text-[var(--color-destructive)]'
+        : 'text-[var(--color-foreground)]';
   return (
     <Card>
       <CardBody>
-        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{title}</p>
+        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+          {title}
+        </p>
         <p className={`mt-1 text-2xl font-semibold tabular-nums ${accentClass}`}>{value}</p>
         {sub && <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{sub}</p>}
       </CardBody>

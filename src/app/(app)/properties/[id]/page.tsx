@@ -9,20 +9,17 @@ import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTime } from '@/lib/utils/format';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Objekt' };
 
-export default async function PropertyDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function PropertyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: property } = await supabase
+  const propertyRes = await supabase
     .from('properties')
     .select(
       'id, code, name, property_type, street, house_number, postal_code, city, country, gps_lat, gps_lng, notes, access_notes, emergency_notes, updated_at',
@@ -30,6 +27,7 @@ export default async function PropertyDetailPage({
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle();
+  const property = unwrapMaybeRow(propertyRes, 'Objekte: properties');
 
   if (!property) notFound();
 
@@ -47,8 +45,15 @@ export default async function PropertyDetailPage({
 
   const canEdit = permissions.has('properties.edit');
   const canCreateOrder = permissions.has('work_orders.create');
-  const buildings = buildingsRes.data ?? [];
-  const openOrders = openOrdersRes.data ?? [];
+
+  // Sprint 112: openOrders ist die Liste, auf die jemand schaut, BEVOR er den
+  // Button "Auftrag anlegen" direkt daneben drueckt. Verschluckt stand dort
+  // der Leerzustand — also die Auskunft, an diesem Objekt sei nichts offen.
+  // Die Folge ist der Doppelauftrag: zwei Mitarbeiter fahren zur selben
+  // Sache. Dieselbe Anzeige beantwortet auch die Frage des Eigentuemers am
+  // Telefon, ob sich jemand kuemmert.
+  const buildings = unwrapRows(buildingsRes, 'Objekte: Gebaeude');
+  const openOrders = unwrapRows(openOrdersRes, 'Objekte: offene Auftraege');
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -57,15 +62,12 @@ export default async function PropertyDetailPage({
         description={
           property.code
             ? `${property.code}${property.property_type ? ` · ${property.property_type}` : ''}`
-            : property.property_type ?? undefined
+            : (property.property_type ?? undefined)
         }
         action={
           <div className="flex gap-2">
             {canCreateOrder && (
-              <LinkButton
-                variant="secondary"
-                href={`/work-orders/new?property_id=${property.id}`}
-              >
+              <LinkButton variant="secondary" href={`/work-orders/new?property_id=${property.id}`}>
                 Auftrag anlegen
               </LinkButton>
             )}

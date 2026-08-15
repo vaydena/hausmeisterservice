@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -55,7 +56,11 @@ function entityLink(entityType: string | null, entityId: string | null): string 
   return null;
 }
 
-function buildHref(currentStatus: string, currentEntity: string, next: { status?: string; entity?: string }): string {
+function buildHref(
+  currentStatus: string,
+  currentEntity: string,
+  next: { status?: string; entity?: string },
+): string {
   const params = new URLSearchParams();
   const status = next.status !== undefined ? next.status : currentStatus;
   const entity = next.entity !== undefined ? next.entity : currentEntity;
@@ -105,17 +110,21 @@ export default async function SentEmailsPage({
     query = query.is('entity_type', null);
   }
 
-  const { data: entries } = await query;
-  const rows = entries ?? [];
+  // Sprint 112: Dieses Log ist die einzige Stelle, an der sich nachsehen
+  // laesst, ob eine Rechnungs-Mail tatsaechlich rausgegangen ist. Verschluckt
+  // antwortete es "Keine E-Mails" — also genau das, was jemand befuerchtet,
+  // der hier nachschaut, und der Anlass, dieselbe Mail noch einmal zu senden.
+  const rows = unwrapRows(await query, 'E-Mail-Log: Vorgaenge');
 
-  const senderIds = [
-    ...new Set(rows.map((r) => r.sent_by).filter((v): v is string => Boolean(v))),
-  ];
-  const { data: senders } =
+  const senderIds = [...new Set(rows.map((r) => r.sent_by).filter((v): v is string => Boolean(v)))];
+  const senders =
     senderIds.length > 0
-      ? await service.from('users').select('id, display_name').in('id', senderIds)
-      : { data: [] };
-  const senderById = new Map((senders ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await service.from('users').select('id, display_name').in('id', senderIds),
+          'E-Mail-Log: Namen der Absender',
+        )
+      : [];
+  const senderById = new Map(senders.map((u) => [u.id, u.display_name]));
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -207,9 +216,7 @@ export default async function SentEmailsPage({
                         <span>{bereichLabel}</span>
                       )}
                     </td>
-                    <td className="px-4 py-2 text-xs">
-                      {formatRecipients(row.to_addresses)}
-                    </td>
+                    <td className="px-4 py-2 text-xs">{formatRecipients(row.to_addresses)}</td>
                     <td className="px-4 py-2">
                       <span className="line-clamp-1" title={row.subject}>
                         {row.subject}
@@ -220,7 +227,10 @@ export default async function SentEmailsPage({
                         {STATUS_LABEL[row.status] ?? row.status}
                       </Badge>
                       {row.status === 'failed' && row.error && (
-                        <p className="mt-1 text-[10px] text-[var(--color-destructive)]" title={row.error}>
+                        <p
+                          className="mt-1 text-[10px] text-[var(--color-destructive)]"
+                          title={row.error}
+                        >
                           {row.error.slice(0, 80)}
                           {row.error.length > 80 ? '…' : ''}
                         </p>
@@ -228,9 +238,7 @@ export default async function SentEmailsPage({
                     </td>
                     <td className="px-4 py-2 text-xs">{row.provider}</td>
                     <td className="px-4 py-2 text-xs">
-                      {row.sent_by
-                        ? (senderById.get(row.sent_by) ?? '(unbekannt)')
-                        : 'System'}
+                      {row.sent_by ? (senderById.get(row.sent_by) ?? '(unbekannt)') : 'System'}
                     </td>
                   </tr>
                 );

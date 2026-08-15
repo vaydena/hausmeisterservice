@@ -9,27 +9,25 @@ import { formatMessageTime } from '@/lib/schemas/messaging';
 import { markThreadReadAction } from '../actions';
 import { ReplyForm } from '../reply-form';
 import { AddParticipant, RemoveParticipantButton } from '../participant-actions';
+import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Nachricht' };
 
-export default async function ThreadDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ThreadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: thread } = await supabase
+  const threadRes = await supabase
     .from('message_threads')
     .select('id, subject, created_by, last_message_at, created_at')
     .eq('id', id)
     .maybeSingle();
+  const thread = unwrapMaybeRow(threadRes, 'Nachrichten: message_threads');
   if (!thread) notFound();
 
-  const [{ data: participants }, { data: messages }, { data: memberships }] = await Promise.all([
+  const [participantsRes, messagesRes, membershipsRes] = await Promise.all([
     supabase
       .from('message_thread_participants')
       .select('user_id, added_at, last_read_at')
@@ -39,13 +37,18 @@ export default async function ThreadDetailPage({
       .select('id, body, sent_at, author_user_id')
       .eq('thread_id', id)
       .order('sent_at', { ascending: true }),
-    supabase.from('memberships').select('user_id').eq('tenant_id', ctx.tenantId).eq('status', 'active'),
+    supabase
+      .from('memberships')
+      .select('user_id')
+      .eq('tenant_id', ctx.tenantId)
+      .eq('status', 'active'),
   ]);
+  const parts = unwrapRows(participantsRes, 'Nachrichten: message_thread_participants');
+  const msgs = unwrapRows(messagesRes, 'Nachrichten: messages');
+  const memberships = unwrapRows(membershipsRes, 'Nachrichten: memberships');
 
-  const parts = participants ?? [];
-  const msgs = messages ?? [];
   const partIds = parts.map((p) => p.user_id);
-  const allTenantMemberIds = (memberships ?? []).map((m) => m.user_id);
+  const allTenantMemberIds = memberships.map((m) => m.user_id);
 
   const authorIds = [
     ...new Set([
@@ -54,10 +57,11 @@ export default async function ThreadDetailPage({
       ...(thread.created_by ? [thread.created_by] : []),
     ]),
   ];
-  const { data: users } = authorIds.length
+  const usersRes = authorIds.length
     ? await supabase.from('users').select('id, display_name').in('id', authorIds)
-    : { data: [] };
-  const displayById = new Map((users ?? []).map((u) => [u.id, u.display_name ?? u.id.slice(0, 8)]));
+    : { data: [], error: null };
+  const users = unwrapRows(usersRes, 'Nachrichten: Namen der Verfasser');
+  const displayById = new Map(users.map((u) => [u.id, u.display_name ?? u.id.slice(0, 8)]));
 
   // Als gelesen markieren (falls neue Nachrichten vorhanden)
   const myPart = parts.find((p) => p.user_id === ctx.userId);
@@ -74,22 +78,23 @@ export default async function ThreadDetailPage({
       .eq('user_id', ctx.userId);
   }
 
-  const candidateUsers = (users ?? []).filter(
+  const candidateUsers = users.filter(
     (u) => allTenantMemberIds.includes(u.id) && !partIds.includes(u.id),
   );
   // Für Kandidaten müssen wir auch nicht-teilnehmende Members laden (die noch keinen Display-Namen im obigen Set haben):
   const missingCandidateIds = allTenantMemberIds.filter(
     (mid) => !partIds.includes(mid) && !authorIds.includes(mid),
   );
-  const { data: missingUsers } =
+  const missingUsersRes =
     missingCandidateIds.length > 0
       ? await supabase
           .from('users')
           .select('id, display_name')
           .in('id', missingCandidateIds)
           .order('display_name')
-      : { data: [] };
-  const candidates = [...candidateUsers, ...(missingUsers ?? [])].map((u) => ({
+      : { data: [], error: null };
+  const missingUsers = unwrapRows(missingUsersRes, 'Nachrichten: Namen fehlender Teilnehmer');
+  const candidates = [...candidateUsers, ...missingUsers].map((u) => ({
     id: u.id,
     display_name: u.display_name,
   }));
@@ -129,7 +134,7 @@ export default async function ThreadDetailPage({
                       >
                         <div className="flex items-center justify-between text-xs text-[var(--color-muted-foreground)]">
                           <span className="font-medium">
-                            {mine ? 'Sie' : displayById.get(m.author_user_id) ?? '—'}
+                            {mine ? 'Sie' : (displayById.get(m.author_user_id) ?? '—')}
                           </span>
                           <span>{formatMessageTime(m.sent_at)}</span>
                         </div>

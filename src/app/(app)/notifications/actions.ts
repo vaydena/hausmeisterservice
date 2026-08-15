@@ -10,6 +10,7 @@ import {
   notificationHref,
   type NotificationEntityType,
 } from '@/lib/schemas/notifications';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export async function markNotificationReadAction(formData: FormData): Promise<void> {
   await requireTenantContext();
@@ -66,11 +67,12 @@ export async function openNotificationAction(formData: FormData): Promise<void> 
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  const dataRes = await supabase
     .from('notifications')
     .select('entity_type, entity_id, url')
     .eq('id', parsed.data.notification_id)
     .maybeSingle();
+  const data = unwrapMaybeRow(dataRes, 'Benachrichtigungen: notifications');
 
   await supabase
     .from('notifications')

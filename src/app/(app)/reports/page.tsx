@@ -6,7 +6,14 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
-import { daysAgoIso, formatEuro, formatMinutes, formatNumber, todayIsoDate } from '@/lib/reports/utils';
+import {
+  daysAgoIso,
+  formatEuro,
+  formatMinutes,
+  formatNumber,
+  todayIsoDate,
+} from '@/lib/reports/utils';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Reporting' };
 
@@ -20,15 +27,18 @@ export default async function ReportsPage() {
   const today = todayIsoDate();
 
   const [
-    { data: allOrders },
-    { data: recentClosed },
-    { data: defects },
-    { data: materialRows },
-    { data: recentMovements },
-    { data: plans },
-    { data: timeEntries },
+    allOrdersRes,
+    recentClosedRes,
+    defectsRes,
+    materialRowsRes,
+    recentMovementsRes,
+    plansRes,
+    timeEntriesRes,
   ] = await Promise.all([
-    supabase.from('work_orders').select('id, status, is_emergency, created_at, closed_at').is('deleted_at', null),
+    supabase
+      .from('work_orders')
+      .select('id, status, is_emergency, created_at, closed_at')
+      .is('deleted_at', null),
     supabase
       .from('work_orders')
       .select('created_at, closed_at, actual_minutes, estimated_minutes')
@@ -47,11 +57,21 @@ export default async function ReportsPage() {
       .eq('active', true),
     supabase.from('time_entries').select('start_at, end_at').gte('start_at', since30),
   ]);
+  const orders = unwrapRows(allOrdersRes, 'Auswertungen: alle Auftraege der Periode');
+  const closedRecent = unwrapRows(
+    recentClosedRes,
+    'Auswertungen: zuletzt abgeschlossene Auftraege',
+  );
+  const defectRows = unwrapRows(defectsRes, 'Auswertungen: defect_reports');
+  const mats = unwrapRows(materialRowsRes, 'Auswertungen: materials');
+  const recentMovements = unwrapRows(recentMovementsRes, 'Auswertungen: stock_movements');
+  const activePlans = unwrapRows(plansRes, 'Auswertungen: maintenance_plans');
+  const timeEntries = unwrapRows(timeEntriesRes, 'Auswertungen: time_entries');
 
-  const orders = allOrders ?? [];
-  const openOrders = orders.filter((o) => !['completed', 'cancelled', 'closed', 'done'].includes(o.status));
+  const openOrders = orders.filter(
+    (o) => !['completed', 'cancelled', 'closed', 'done'].includes(o.status),
+  );
   const emergencyOpen = openOrders.filter((o) => o.is_emergency).length;
-  const closedRecent = recentClosed ?? [];
   const avgLeadMs =
     closedRecent.length > 0
       ? closedRecent.reduce((sum, o) => {
@@ -62,20 +82,19 @@ export default async function ReportsPage() {
       : 0;
   const avgLeadMinutes = avgLeadMs / 60_000;
 
-  const defectRows = defects ?? [];
-  const openDefects = defectRows.filter((d) => d.status === 'open' || d.status === 'in_review').length;
+  const openDefects = defectRows.filter(
+    (d) => d.status === 'open' || d.status === 'in_review',
+  ).length;
 
-  const mats = materialRows ?? [];
   const belowMin = mats.filter((m) => Number(m.current_stock) < Number(m.min_stock)).length;
   const stockValue = mats.reduce(
     (sum, m) => sum + Number(m.current_stock ?? 0) * Number(m.unit_cost ?? 0),
     0,
   );
-  const consumption30 = (recentMovements ?? [])
+  const consumption30 = recentMovements
     .filter((mv) => mv.kind === 'issue')
     .reduce((sum, mv) => sum + Number(mv.quantity ?? 0) * Number(mv.unit_cost_at_time ?? 0), 0);
 
-  const activePlans = plans ?? [];
   const overduePlans = activePlans.filter((p) => p.next_due_at && p.next_due_at < today).length;
   const due7Plans = activePlans.filter((p) => {
     if (!p.next_due_at) return false;
@@ -88,7 +107,7 @@ export default async function ReportsPage() {
       ? Math.round(((activePlans.length - overduePlans) / activePlans.length) * 100)
       : 100;
 
-  const totalMinutes30 = (timeEntries ?? []).reduce((sum, t) => {
+  const totalMinutes30 = timeEntries.reduce((sum, t) => {
     if (!t.end_at) return sum;
     const ms = new Date(t.end_at).getTime() - new Date(t.start_at).getTime();
     return sum + Math.max(0, ms) / 60_000;
@@ -104,20 +123,71 @@ export default async function ReportsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Kpi title="Offene Aufträge" value={formatNumber(openOrders.length)} accent={emergencyOpen > 0 ? 'danger' : 'muted'} sub={emergencyOpen > 0 ? `${emergencyOpen} Notfall` : undefined} />
-        <Kpi title="Ø Durchlaufzeit (30 T.)" value={formatMinutes(avgLeadMinutes)} sub={`${closedRecent.length} abgeschlossen`} />
-        <Kpi title="Offene Mängel" value={formatNumber(openDefects)} accent={openDefects > 0 ? 'warning' : 'muted'} sub={`${defectRows.length} gesamt`} />
-        <Kpi title="Wartungs-Compliance" value={`${complianceRate}%`} accent={complianceRate < 90 ? 'warning' : 'success'} sub={`${overduePlans} überfällig · ${due7Plans} in 7 T.`} />
-        <Kpi title="Bestandswert" value={formatEuro(stockValue)} sub={belowMin > 0 ? `${belowMin} unter Min.` : `${mats.length} Positionen`} accent={belowMin > 0 ? 'warning' : 'muted'} />
-        <Kpi title="Materialverbrauch (30 T.)" value={formatEuro(consumption30)} sub="Entnahmen zu Zeitpunkt-Preis" />
-        <Kpi title="Erfasste Stunden (30 T.)" value={formatMinutes(totalMinutes30)} sub="Alle Mitarbeiter" />
-        <Kpi title="Aktive Wartungspläne" value={formatNumber(activePlans.length)} sub={`Ø Intervall ${Math.round(activePlans.reduce((s, p) => s + (p.interval_days ?? 0), 0) / Math.max(1, activePlans.length))} Tage`} />
+        <Kpi
+          title="Offene Aufträge"
+          value={formatNumber(openOrders.length)}
+          accent={emergencyOpen > 0 ? 'danger' : 'muted'}
+          sub={emergencyOpen > 0 ? `${emergencyOpen} Notfall` : undefined}
+        />
+        <Kpi
+          title="Ø Durchlaufzeit (30 T.)"
+          value={formatMinutes(avgLeadMinutes)}
+          sub={`${closedRecent.length} abgeschlossen`}
+        />
+        <Kpi
+          title="Offene Mängel"
+          value={formatNumber(openDefects)}
+          accent={openDefects > 0 ? 'warning' : 'muted'}
+          sub={`${defectRows.length} gesamt`}
+        />
+        <Kpi
+          title="Wartungs-Compliance"
+          value={`${complianceRate}%`}
+          accent={complianceRate < 90 ? 'warning' : 'success'}
+          sub={`${overduePlans} überfällig · ${due7Plans} in 7 T.`}
+        />
+        <Kpi
+          title="Bestandswert"
+          value={formatEuro(stockValue)}
+          sub={belowMin > 0 ? `${belowMin} unter Min.` : `${mats.length} Positionen`}
+          accent={belowMin > 0 ? 'warning' : 'muted'}
+        />
+        <Kpi
+          title="Materialverbrauch (30 T.)"
+          value={formatEuro(consumption30)}
+          sub="Entnahmen zu Zeitpunkt-Preis"
+        />
+        <Kpi
+          title="Erfasste Stunden (30 T.)"
+          value={formatMinutes(totalMinutes30)}
+          sub="Alle Mitarbeiter"
+        />
+        <Kpi
+          title="Aktive Wartungspläne"
+          value={formatNumber(activePlans.length)}
+          sub={`Ø Intervall ${Math.round(activePlans.reduce((s, p) => s + (p.interval_days ?? 0), 0) / Math.max(1, activePlans.length))} Tage`}
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <ReportLink href="/reports/work-orders" title="Auftragsbericht" description="Backlog, Durchlaufzeit, Status-Verteilung." download={canDownload} />
-        <ReportLink href="/reports/materials" title="Materialbericht" description="Bestand, Verbrauch, Wareneingänge nach Zeitraum." download={canDownload} />
-        <ReportLink href="/reports/time" title="Zeitbericht" description="Stunden je Mitarbeiter und Zeitraum." download={canDownload} />
+        <ReportLink
+          href="/reports/work-orders"
+          title="Auftragsbericht"
+          description="Backlog, Durchlaufzeit, Status-Verteilung."
+          download={canDownload}
+        />
+        <ReportLink
+          href="/reports/materials"
+          title="Materialbericht"
+          description="Bestand, Verbrauch, Wareneingänge nach Zeitraum."
+          download={canDownload}
+        />
+        <ReportLink
+          href="/reports/time"
+          title="Zeitbericht"
+          description="Stunden je Mitarbeiter und Zeitraum."
+          download={canDownload}
+        />
       </div>
     </div>
   );
@@ -138,14 +208,16 @@ function Kpi({
     accent === 'success'
       ? 'text-[var(--color-success)]'
       : accent === 'warning'
-      ? 'text-[var(--color-warning)]'
-      : accent === 'danger'
-      ? 'text-[var(--color-destructive)]'
-      : 'text-[var(--color-foreground)]';
+        ? 'text-[var(--color-warning)]'
+        : accent === 'danger'
+          ? 'text-[var(--color-destructive)]'
+          : 'text-[var(--color-foreground)]';
   return (
     <Card>
       <CardBody>
-        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{title}</p>
+        <p className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+          {title}
+        </p>
         <p className={`mt-1 text-2xl font-semibold tabular-nums ${accentClass}`}>{value}</p>
         {sub && <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">{sub}</p>}
       </CardBody>

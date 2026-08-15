@@ -11,45 +11,51 @@ import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils/format';
 import { deleteResidentAction } from '../actions';
 import { PortalInviteButton, PortalRevokeButton } from './portal-access-panel';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Bewohner' };
 
-export default async function ResidentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ResidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: resident } = await supabase
-    .from('residents')
-    .select(
-      'id, first_name, last_name, email, phone, property_id, building_id, unit_id, moved_in, moved_out, notes, created_at, updated_at, user_id, portal_invited_at, portal_activated_at',
-    )
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
+  // Sprint 112: Diese Zeile traegt portal_invited_at / portal_activated_at und
+  // steuert damit die Portal-Einladung. Verschluckt endete das in einem 404 —
+  // fuer eine Bewohnerin, die es gibt.
+  const resident = unwrapMaybeRow(
+    await supabase
+      .from('residents')
+      .select(
+        'id, first_name, last_name, email, phone, property_id, building_id, unit_id, moved_in, moved_out, notes, created_at, updated_at, user_id, portal_invited_at, portal_activated_at',
+      )
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    'Bewohner: Datensatz',
+  );
 
   if (!resident) notFound();
 
-  const [{ data: property }, { data: building }, { data: unit }] = await Promise.all([
+  const [propertyRes, buildingRes, unitRes] = await Promise.all([
     resident.property_id
       ? supabase
           .from('properties')
           .select('id, code, name')
           .eq('id', resident.property_id)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     resident.building_id
       ? supabase.from('buildings').select('id, name').eq('id', resident.building_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     resident.unit_id
       ? supabase.from('units').select('id, code').eq('id', resident.unit_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
+  const property = unwrapMaybeRow(propertyRes, 'Personen: properties');
+  const building = unwrapMaybeRow(buildingRes, 'Personen: buildings');
+  const unit = unwrapMaybeRow(unitRes, 'Personen: units');
 
   const isMovedOut = resident.moved_out && new Date(resident.moved_out) < new Date();
   const canEdit = permissions.has('residents.edit');
@@ -160,7 +166,8 @@ export default async function ResidentDetailPage({
                     </span>
                   ) : resident.portal_invited_at ? (
                     <span className="text-[var(--color-muted-foreground)]">
-                      Einladung versendet am {formatDate(resident.portal_invited_at)} – noch nicht angemeldet
+                      Einladung versendet am {formatDate(resident.portal_invited_at)} – noch nicht
+                      angemeldet
                     </span>
                   ) : null}
                 </div>
@@ -171,7 +178,10 @@ export default async function ResidentDetailPage({
                 <p className="text-sm text-[var(--color-muted-foreground)]">
                   Sendet eine Einladung an <strong>{resident.email}</strong>. Der Bewohner setzt
                   sich anschließend selbst ein Passwort und meldet sich unter
-                  <code className="ml-1 rounded bg-[var(--color-muted)] px-1 py-0.5 text-xs">/portal</code> an.
+                  <code className="ml-1 rounded bg-[var(--color-muted)] px-1 py-0.5 text-xs">
+                    /portal
+                  </code>{' '}
+                  an.
                 </p>
                 <PortalInviteButton residentId={resident.id} />
               </div>

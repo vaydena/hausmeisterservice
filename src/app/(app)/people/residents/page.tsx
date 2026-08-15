@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils/format';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Bewohner' };
 
@@ -17,29 +18,34 @@ export default async function ResidentsPage() {
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: residents } = await supabase
-    .from('residents')
-    .select(
-      'id, first_name, last_name, email, phone, property_id, unit_id, moved_in, moved_out',
-    )
-    .is('deleted_at', null)
-    .order('last_name')
-    .order('first_name');
+  const residents = unwrapRows(
+    await supabase
+      .from('residents')
+      .select('id, first_name, last_name, email, phone, property_id, unit_id, moved_in, moved_out')
+      .is('deleted_at', null)
+      .order('last_name')
+      .order('first_name'),
+    'Bewohner: Liste',
+  );
 
-  const items = residents ?? [];
-  const propertyIds = [...new Set(items.map((r) => r.property_id).filter((v): v is string => Boolean(v)))];
+  const items = residents;
+  const propertyIds = [
+    ...new Set(items.map((r) => r.property_id).filter((v): v is string => Boolean(v))),
+  ];
   const unitIds = [...new Set(items.map((r) => r.unit_id).filter((v): v is string => Boolean(v)))];
 
-  const [{ data: properties }, { data: units }] = await Promise.all([
+  const [propertiesRes, unitsRes] = await Promise.all([
     propertyIds.length > 0
       ? supabase.from('properties').select('id, code, name').in('id', propertyIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
     unitIds.length > 0
       ? supabase.from('units').select('id, code').in('id', unitIds)
-      : Promise.resolve({ data: [] }),
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  const propertyById = new Map((properties ?? []).map((p) => [p.id, p]));
-  const unitById = new Map((units ?? []).map((u) => [u.id, u]));
+  const properties = unwrapRows(propertiesRes, 'Personen: properties');
+  const units = unwrapRows(unitsRes, 'Personen: units');
+  const propertyById = new Map(properties.map((p) => [p.id, p]));
+  const unitById = new Map(units.map((u) => [u.id, u]));
 
   const canCreate = permissions.has('residents.create');
 
