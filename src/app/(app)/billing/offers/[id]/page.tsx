@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,32 +21,45 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: offer } = await supabase
-    .from('offers')
-    .select(
-      'id, code, title, description, status, bill_to_name, bill_to_address, property_id, owner_id, issued_at, valid_until, notes, net_total_cents, tax_total_cents, gross_total_cents, created_by, created_at',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 107: siehe Rechnungs-Detailseite — ein Query-Fehler sah hier aus
+  // wie ein geloeschtes Angebot bzw. wie ein Angebot ohne Positionen unter
+  // voller Summe.
+  const offer = unwrapMaybeRow(
+    await supabase
+      .from('offers')
+      .select(
+        'id, code, title, description, status, bill_to_name, bill_to_address, property_id, owner_id, issued_at, valid_until, notes, net_total_cents, tax_total_cents, gross_total_cents, created_by, created_at',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Angebot',
+  );
   if (!offer) notFound();
 
-  const { data: items } = await supabase
-    .from('billing_line_items')
-    .select('id, position, description, quantity, unit, unit_price_cents, tax_rate, net_cents, tax_cents, gross_cents')
-    .eq('offer_id', offer.id)
-    .order('position');
+  const items = unwrapRows(
+    await supabase
+      .from('billing_line_items')
+      .select('id, position, description, quantity, unit, unit_price_cents, tax_rate, net_cents, tax_cents, gross_cents')
+      .eq('offer_id', offer.id)
+      .order('position'),
+    'Angebot: Positionen',
+  );
 
   const property = offer.property_id
-    ? (await supabase.from('properties').select('id, name').eq('id', offer.property_id).maybeSingle()).data
+    ? unwrapMaybeRow(
+        await supabase.from('properties').select('id, name').eq('id', offer.property_id).maybeSingle(),
+        'Angebot: Objekt',
+      )
     : null;
   const owner = offer.owner_id
-    ? (
+    ? unwrapMaybeRow(
         await supabase
           .from('owners')
           .select('kind, first_name, last_name, company_name, email')
           .eq('id', offer.owner_id)
-          .maybeSingle()
-      ).data
+          .maybeSingle(),
+        'Angebot: Eigentümer',
+      )
     : null;
 
   const status = offer.status as OfferStatus;
@@ -101,7 +115,7 @@ export default async function OfferDetailPage({ params }: { params: Promise<{ id
               </CardTitle>
             </CardHeader>
             <CardBody>
-              <LineItemsEditor kind="offer" parentId={offer.id} items={items ?? []} editable={canEdit && isDraft} />
+              <LineItemsEditor kind="offer" parentId={offer.id} items={items} editable={canEdit && isDraft} />
               <dl className="mt-4 grid gap-1 border-t border-[var(--color-border)] pt-3 text-sm">
                 <div className="flex items-center justify-between">
                   <dt className="text-[var(--color-muted-foreground)]">Netto</dt>

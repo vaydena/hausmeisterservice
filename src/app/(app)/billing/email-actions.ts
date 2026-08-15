@@ -3,6 +3,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
+import * as Sentry from '@sentry/nextjs';
 import { z } from 'zod';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -59,12 +60,20 @@ const sendBillingEmailSchema = z.object({
 export type SendBillingEmailState = {
   ok: boolean;
   message: string | null;
+  /**
+   * Sprint 107: Der Versand hat geklappt, die Nachbuchung nicht. Getrennt von
+   * `message`, weil der Dialog sich bei `ok` sonst einfach schliesst und die
+   * Meldung nie jemand sieht — sie ist aber genau die, auf die jemand
+   * reagieren muss.
+   */
+  warning: string | null;
   fieldErrors: Record<string, string>;
 };
 
 const emptyState: SendBillingEmailState = {
   ok: false,
   message: null,
+  warning: null,
   fieldErrors: {},
 };
 
@@ -108,6 +117,7 @@ export async function sendBillingEmailAction(
     return {
       ok: false,
       message: 'Bitte prüfen Sie die Eingaben.',
+      warning: null,
       fieldErrors: fieldErrorsFromZod(parsed.error),
     };
   }
@@ -195,7 +205,13 @@ export async function sendBillingEmailAction(
       ],
     });
 
-    await supabase
+    // Ab hier ist die E-Mail beim Empfaenger. Sprint 107: Keiner der
+    // folgenden Schritte darf noch werfen oder den Erfolg zurueckziehen —
+    // aber jeder darf auch nicht mehr stillschweigend danebengehen. Was
+    // scheitert, sammelt sich in `warnings` und geht mit dem Erfolg zurueck.
+    const warnings: string[] = [];
+
+    const logUpdate = await supabase
       .from('sent_emails')
       .update({
         status: 'sent',
@@ -203,46 +219,70 @@ export async function sendBillingEmailAction(
         sent_at: new Date().toISOString(),
       })
       .eq('id', logId);
-
-    if (kind === 'invoice') {
-      const { data: current } = await supabase
-        .from('invoices')
-        .select('status, issued_at')
-        .eq('id', id)
-        .maybeSingle();
-      if (current && current.status === 'draft') {
-        await supabase
-          .from('invoices')
-          .update({
-            status: 'sent',
-            issued_at: current.issued_at ?? new Date().toISOString().slice(0, 10),
-            updated_by: ctx.userId,
-          })
-          .eq('id', id);
-      }
-      revalidatePath(`/billing/invoices/${id}`);
-      revalidatePath('/billing/invoices');
-    } else {
-      const { data: current } = await supabase
-        .from('offers')
-        .select('status, issued_at')
-        .eq('id', id)
-        .maybeSingle();
-      if (current && current.status === 'draft') {
-        await supabase
-          .from('offers')
-          .update({
-            status: 'sent',
-            issued_at: current.issued_at ?? new Date().toISOString().slice(0, 10),
-            updated_by: ctx.userId,
-          })
-          .eq('id', id);
-      }
-      revalidatePath(`/billing/offers/${id}`);
-      revalidatePath('/billing/offers');
+    if (logUpdate.error) {
+      // Der Eintrag bleibt auf "queued" stehen. Im E-Mail-Log
+      // (/settings/emails) sieht das aus wie ein haengengebliebener Versand —
+      // und lockt zum zweiten Senden.
+      Sentry.captureException(new Error(logUpdate.error.message), {
+        extra: { where: 'sent_emails status update', logId, kind, id },
+      });
+      warnings.push(
+        'Der Eintrag im E-Mail-Log steht weiterhin auf „in Warteschlange", obwohl die ' +
+          'E-Mail raus ist — bitte nicht erneut senden.',
+      );
     }
 
-    return { ok: true, message: 'E-Mail wurde versendet.', fieldErrors: {} };
+    const table = kind === 'invoice' ? 'invoices' : 'offers';
+    const label = kind === 'invoice' ? 'Rechnung' : 'Angebot';
+
+    const currentResult = await supabase
+      .from(table)
+      .select('status, issued_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (currentResult.error) {
+      // Vorher: `const { data: current }` — der Fehler verschwand, `current`
+      // war null, der Statuswechsel unterblieb wortlos. Folge bei einer
+      // Rechnung: sie steht weiter als Entwurf und ist damit BEARBEITBAR,
+      // obwohl der Kunde das PDF schon hat. Jede spaetere Aenderung laesst
+      // gespeicherte Rechnung und ausgeliefertes Dokument auseinanderlaufen.
+      Sentry.captureException(new Error(currentResult.error.message), {
+        extra: { where: 'post-send status read', table, id },
+      });
+      warnings.push(
+        `Der Status der ${label} konnte nicht gelesen werden — sie steht möglicherweise ` +
+          'weiterhin als Entwurf und ist bearbeitbar. Bitte den Status von Hand setzen.',
+      );
+    } else if (currentResult.data && currentResult.data.status === 'draft') {
+      const statusUpdate = await supabase
+        .from(table)
+        .update({
+          status: 'sent',
+          issued_at: currentResult.data.issued_at ?? new Date().toISOString().slice(0, 10),
+          updated_by: ctx.userId,
+        })
+        .eq('id', id);
+      if (statusUpdate.error) {
+        Sentry.captureException(new Error(statusUpdate.error.message), {
+          extra: { where: 'post-send status update', table, id },
+        });
+        warnings.push(
+          `Die ${label} steht weiterhin als Entwurf und ist bearbeitbar, obwohl sie ` +
+            'bereits versendet wurde. Bitte den Status von Hand auf „Versendet" setzen.',
+        );
+      }
+    }
+
+    revalidatePath(`/billing/${kind}s/${id}`);
+    revalidatePath(`/billing/${kind}s`);
+
+    return {
+      ok: true,
+      message: 'E-Mail wurde versendet.',
+      warning: warnings.length > 0 ? warnings.join(' ') : null,
+      fieldErrors: {},
+    };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unbekannter Fehler.';
     console.error('[email] provider send failed', err);

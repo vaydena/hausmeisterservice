@@ -3,7 +3,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { parseTenantAddress, parseTenantInvoiceData } from '@/lib/schemas/tenant';
+import { findInvoiceDefects, INVOICE_DEFECT_LABEL } from '@/lib/billing/invoice-integrity';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,39 +30,80 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: invoice } = await supabase
-    .from('invoices')
-    .select(
-      'id, code, title, description, status, bill_to_name, bill_to_address, property_id, owner_id, work_order_id, offer_id, issued_at, due_at, paid_at, notes, net_total_cents, tax_total_cents, gross_total_cents',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 107: Alle Queries dieser Seite laufen ueber unwrap*. Vorher wurde
+  // ein Fehler bei `invoice` zu notFound() (die Rechnung wirkte geloescht)
+  // und ein Fehler bei `items` zu einer Rechnung ohne Positionen, unter der
+  // trotzdem die volle Summe stand.
+  const invoice = unwrapMaybeRow(
+    await supabase
+      .from('invoices')
+      .select(
+        'id, code, title, description, status, bill_to_name, bill_to_address, property_id, owner_id, work_order_id, offer_id, issued_at, due_at, paid_at, notes, net_total_cents, tax_total_cents, gross_total_cents',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Rechnung',
+  );
   if (!invoice) notFound();
 
-  const { data: items } = await supabase
-    .from('billing_line_items')
-    .select('id, position, description, quantity, unit, unit_price_cents, tax_rate, net_cents, tax_cents, gross_cents')
-    .eq('invoice_id', invoice.id)
-    .order('position');
+  const items = unwrapRows(
+    await supabase
+      .from('billing_line_items')
+      .select('id, position, description, quantity, unit, unit_price_cents, tax_rate, net_cents, tax_cents, gross_cents')
+      .eq('invoice_id', invoice.id)
+      .order('position'),
+    'Rechnung: Positionen',
+  );
 
   const property = invoice.property_id
-    ? (await supabase.from('properties').select('id, name').eq('id', invoice.property_id).maybeSingle()).data
+    ? unwrapMaybeRow(
+        await supabase.from('properties').select('id, name').eq('id', invoice.property_id).maybeSingle(),
+        'Rechnung: Objekt',
+      )
     : null;
   const owner = invoice.owner_id
-    ? (
+    ? unwrapMaybeRow(
         await supabase
           .from('owners')
           .select('kind, first_name, last_name, company_name, email')
           .eq('id', invoice.owner_id)
-          .maybeSingle()
-      ).data
+          .maybeSingle(),
+        'Rechnung: Eigentümer',
+      )
     : null;
   const workOrder = invoice.work_order_id
-    ? (await supabase.from('work_orders').select('id, code, title').eq('id', invoice.work_order_id).maybeSingle()).data
+    ? unwrapMaybeRow(
+        await supabase.from('work_orders').select('id, code, title').eq('id', invoice.work_order_id).maybeSingle(),
+        'Rechnung: verknüpfter Auftrag',
+      )
     : null;
   const offer = invoice.offer_id
-    ? (await supabase.from('offers').select('id, code, title').eq('id', invoice.offer_id).maybeSingle()).data
+    ? unwrapMaybeRow(
+        await supabase.from('offers').select('id, code, title').eq('id', invoice.offer_id).maybeSingle(),
+        'Rechnung: Basis-Angebot',
+      )
     : null;
+
+  const tenant = unwrapMaybeRow(
+    await supabase.from('tenants').select('name, address, invoice_data').eq('id', ctx.tenantId).maybeSingle(),
+    'Rechnung: Absenderdaten des Mandanten',
+  );
+  const tenantInvoiceData = parseTenantInvoiceData(tenant?.invoice_data);
+  const defects = findInvoiceDefects({
+    issuedAt: invoice.issued_at,
+    netTotalCents: invoice.net_total_cents,
+    taxTotalCents: invoice.tax_total_cents,
+    grossTotalCents: invoice.gross_total_cents,
+    lines: items,
+    sender: {
+      name: tenant?.name ?? null,
+      legalName: tenantInvoiceData.legal_name,
+      address: parseTenantAddress(tenant?.address),
+      taxId: tenantInvoiceData.tax_id,
+      vatId: tenantInvoiceData.vat_id,
+    },
+  });
+  const defectMessages = defects.map((d) => INVOICE_DEFECT_LABEL[d]);
 
   const status = invoice.status as InvoiceStatus;
   const canEdit = permissions.has('billing.edit');
@@ -89,6 +133,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 code={invoice.code}
                 title={invoice.title}
                 defaultTo={owner?.email ?? undefined}
+                defects={defectMessages}
               />
             )}
             {canEdit && isDraft && (
@@ -105,6 +150,27 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         }
       />
 
+      {defectMessages.length > 0 && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          role="status"
+        >
+          <p className="font-semibold">Diese Rechnung ist noch nicht versandfertig</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {defectMessages.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[var(--color-muted-foreground)]">
+            Absenderangaben stehen unter{' '}
+            <Link href="/settings/tenant" className="underline hover:text-[var(--color-primary)]">
+              Einstellungen → Mandant
+            </Link>
+            . Sie gelten danach für alle Rechnungen.
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
           <Card>
@@ -116,7 +182,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               </CardTitle>
             </CardHeader>
             <CardBody>
-              <LineItemsEditor kind="invoice" parentId={invoice.id} items={items ?? []} editable={canEdit && isDraft} />
+              <LineItemsEditor kind="invoice" parentId={invoice.id} items={items} editable={canEdit && isDraft} />
               <dl className="mt-4 grid gap-1 border-t border-[var(--color-border)] pt-3 text-sm">
                 <div className="flex items-center justify-between">
                   <dt className="text-[var(--color-muted-foreground)]">Netto</dt>

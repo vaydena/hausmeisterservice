@@ -9,19 +9,34 @@ interface Props {
   code: string;
   title: string;
   defaultTo?: string;
+  /**
+   * Sprint 107: Mängel, die den Beleg unbrauchbar machen (fehlende
+   * Steuernummer, Summe passt nicht zu den Positionen). Sie stehen hier
+   * bewusst im Dialog und nicht nur auf der Seite darunter: hier ist der
+   * Moment, in dem das Dokument das Haus verlässt.
+   */
+  defects?: string[];
 }
 
-const INITIAL: SendBillingEmailState = { ok: false, message: null, fieldErrors: {} };
+const INITIAL: SendBillingEmailState = {
+  ok: false,
+  message: null,
+  warning: null,
+  fieldErrors: {},
+};
 
 export function SendBillingEmailButton(props: Props) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [state, formAction, pending] = useActionState(sendBillingEmailAction, INITIAL);
 
   useEffect(() => {
-    if (state.ok && dialogRef.current?.open) {
+    // Nur bei sauberem Erfolg schliessen. Gab es eine Warnung zur
+    // Nachbuchung, bleibt der Dialog offen — sonst waere sie im selben
+    // Moment weg, in dem sie entsteht.
+    if (state.ok && !state.warning && dialogRef.current?.open) {
       dialogRef.current.close();
     }
-  }, [state.ok, state]);
+  }, [state.ok, state.warning, state]);
 
   const label = props.kind === 'invoice' ? 'Rechnung' : 'Angebot';
   const defaultMessage =
@@ -113,10 +128,38 @@ export function SendBillingEmailButton(props: Props) {
             Die {label.toLowerCase()} wird als PDF automatisch angehängt.
           </p>
 
+          {props.defects && props.defects.length > 0 && (
+            <div
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+              role="status"
+            >
+              <p className="font-semibold">Diese Rechnung ist unvollständig</p>
+              <ul className="mt-1 list-disc space-y-1 pl-4">
+                {props.defects.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[var(--color-muted-foreground)]">
+                Senden ist weiterhin möglich — der Empfänger wird die Rechnung aber
+                voraussichtlich beanstanden.
+              </p>
+            </div>
+          )}
+
           {state.message && !state.ok && (
             <p className="text-xs text-[var(--color-destructive)]" role="alert">
               {state.message}
             </p>
+          )}
+
+          {state.ok && state.warning && (
+            <div
+              className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs"
+              role="alert"
+            >
+              <p className="font-semibold">{state.message}</p>
+              <p className="mt-1">{state.warning}</p>
+            </div>
           )}
 
           <div className="flex justify-end gap-2 border-t border-[var(--color-border)] pt-3">

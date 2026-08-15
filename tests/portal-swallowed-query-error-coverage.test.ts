@@ -98,8 +98,46 @@ const AUTOMATION_FILES = [
   'src/app/(app)/settings/automations/actions.ts',    // -> "Regel nicht gefunden" bei Stoerung
 ];
 
+/**
+ * Der Rechnungspfad (Sprint 107).
+ *
+ * Die fuenfte Folge-Klasse: hier wird aus einem verschluckten Fehler weder
+ * ein Leerzustand noch eine Unterlassung, sondern eine FALSCHE ZAHL auf einem
+ * rechtsverbindlichen Dokument — und zwar auf einem, das anschliessend das
+ * Haus verlaesst.
+ *
+ *   - `recalcInvoiceTotals` rechnete bei einem Query-Fehler aus einer leeren
+ *     Liste und schrieb die Beleg-Summe auf 0. Ein Lesefehler wurde damit zu
+ *     einem falschen Wert IN DER DATENBANK.
+ *   - `loadBillingDocumentData` nimmt die Summen aus dem Kopfsatz, die
+ *     Positionen und die Umsatzsteuerzeile aber aus einer eigenen Query. Fiel
+ *     die aus, stand im PDF ein Gesamtbetrag ohne eine einzige Position und
+ *     ohne ausgewiesene Steuer — nach §14 Abs. 4 UStG keine gueltige Rechnung.
+ *     Der Fallback `tenant?.name ?? 'Ihr Unternehmen'` stellte sie zusaetzlich
+ *     unter einem Absender aus, den es nicht gibt.
+ *   - `addLineItemAction` liess die Positionsnummerierung bei einem Fehler
+ *     wieder bei 1 beginnen.
+ *
+ * Derselbe Loader haengt das PDF an die ausgehende E-Mail. Wie in Sprint 106
+ * ist der Schaden damit nicht mehr einzusammeln — anders als dort ist er aber
+ * auch fuer den Empfaenger nicht erkennbar: eine Rechnung ueber den falschen
+ * Betrag sieht aus wie eine ueber den richtigen.
+ */
+const BILLING_FILES = [
+  'src/lib/pdf/loader.ts',                      // -> PDF mit Summe ohne Positionen
+  'src/app/(app)/billing/actions.ts',           // -> gespeicherte Summe auf 0
+  'src/app/(app)/billing/email-actions.ts',     // -> versandte Rechnung bleibt Entwurf
+  'src/app/(app)/billing/invoices/[id]/page.tsx',
+  'src/app/(app)/billing/offers/[id]/page.tsx',
+];
+
 /** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
-const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES, ...AUTOMATION_FILES];
+const LISTED_FILES = [
+  ...GUARD_FILES,
+  ...EXPORT_ROUTES,
+  ...AUTOMATION_FILES,
+  ...BILLING_FILES,
+];
 
 function walk(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -194,7 +232,7 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export + Automations: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export + Automations + Billing: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
@@ -208,7 +246,7 @@ describe('Portal + Guards + DSGVO-Export + Automations: keine verschluckten Quer
       // an denen stiller Erfolg am teuersten ist.
       expect(
         existsSync(join(process.cwd(), listed)),
-        `${listed} steht in GUARD_FILES, EXPORT_ROUTES bzw. AUTOMATION_FILES, ` +
+        `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES bzw. BILLING_FILES, ` +
           `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
           `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);

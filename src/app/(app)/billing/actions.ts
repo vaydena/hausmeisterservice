@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import {
   computeDocumentTotals,
   computeLineTotals,
@@ -329,24 +330,61 @@ export async function deleteInvoiceAction(formData: FormData): Promise<void> {
 // Line items
 // ================================================================
 
-async function recalcOfferTotals(offerId: string): Promise<void> {
+/**
+ * Sprint 107: Die teuerste Stelle des Moduls.
+ *
+ * Vorher stand hier `computeDocumentTotals(items ?? [])`. Scheiterte die
+ * Positionen-Query, wurde aus einer leeren Liste gerechnet — und das Ergebnis
+ * (0/0/0) anschliessend in den Beleg GESCHRIEBEN. Ein Query-Fehler hat damit
+ * nicht nur eine Anzeige verfaelscht, sondern die gespeicherte Summe einer
+ * Rechnung dauerhaft auf null gesetzt, ohne dass irgendwo etwas rot wurde.
+ *
+ * Auch der `update` war ungeprueft: schlug er fehl, blieb die alte Summe
+ * stehen, waehrend die Positionen sich geaendert hatten.
+ *
+ * Beide werfen jetzt. Der Text nennt ausdruecklich, dass die Position bereits
+ * gespeichert ist — sonst legt der Nutzer sie ein zweites Mal an. Was danach
+ * offen bleibt (veraltete Summe), findet `findInvoiceDefects` als
+ * `totals_mismatch` auf der Detailseite wieder.
+ */
+async function recalcDocumentTotals(
+  table: 'offers' | 'invoices',
+  column: 'offer_id' | 'invoice_id',
+  documentId: string,
+): Promise<void> {
   const supabase = await createSupabaseServerClient();
-  const { data: items } = await supabase
+  const itemsResult = await supabase
     .from('billing_line_items')
     .select('net_cents, tax_cents, gross_cents')
-    .eq('offer_id', offerId);
-  const totals = computeDocumentTotals(items ?? []);
-  await supabase.from('offers').update(totals).eq('id', offerId);
+    .eq(column, documentId);
+  if (itemsResult.error) {
+    throw new Error(
+      'Die Position wurde gespeichert, aber die Summe des Belegs konnte nicht neu ' +
+        'berechnet werden — die angezeigte Summe ist veraltet. Bitte die Seite neu ' +
+        'laden und die Summe prüfen, bevor der Beleg versendet wird.',
+    );
+  }
+
+  // Kein `?? []` mehr: der Fehlerfall ist zwei Zeilen weiter oben behandelt,
+  // und genau dieses Fallback war der Bug — es hat die leere Liste des
+  // Fehlerfalls in eine Summe von 0 verwandelt.
+  const totals = computeDocumentTotals(itemsResult.data);
+  const update = await supabase.from(table).update(totals).eq('id', documentId);
+  if (update.error) {
+    throw new Error(
+      'Die Position wurde gespeichert, aber die neue Summe konnte nicht in den Beleg ' +
+        'geschrieben werden — die angezeigte Summe ist veraltet. Bitte die Seite neu ' +
+        'laden und die Summe prüfen, bevor der Beleg versendet wird.',
+    );
+  }
+}
+
+async function recalcOfferTotals(offerId: string): Promise<void> {
+  await recalcDocumentTotals('offers', 'offer_id', offerId);
 }
 
 async function recalcInvoiceTotals(invoiceId: string): Promise<void> {
-  const supabase = await createSupabaseServerClient();
-  const { data: items } = await supabase
-    .from('billing_line_items')
-    .select('net_cents, tax_cents, gross_cents')
-    .eq('invoice_id', invoiceId);
-  const totals = computeDocumentTotals(items ?? []);
-  await supabase.from('invoices').update(totals).eq('id', invoiceId);
+  await recalcDocumentTotals('invoices', 'invoice_id', invoiceId);
 }
 
 export async function addLineItemAction(formData: FormData): Promise<void> {
@@ -370,13 +408,18 @@ export async function addLineItemAction(formData: FormData): Promise<void> {
   const supabase = await createSupabaseServerClient();
   const parentCol = kind === 'offer' ? 'offer_id' : 'invoice_id';
 
-  const { data: existing } = await supabase
+  // Sprint 107: `existing?.position ?? 0` hat aus einem Query-Fehler eine
+  // neue Position 1 gemacht — auf einem Beleg, der bereits eine 1 hatte.
+  // Doppelte Positionsnummern auf einer Rechnung sind nicht nur haesslich:
+  // Rueckfragen ("Position 1 — welche der beiden?") laufen ins Leere.
+  const existingResult = await supabase
     .from('billing_line_items')
     .select('position')
     .eq(parentCol, parentId)
     .order('position', { ascending: false })
     .limit(1)
     .maybeSingle();
+  const existing = unwrapMaybeRow(existingResult, 'Beleg: höchste Positionsnummer');
   const nextPos = (existing?.position ?? 0) + 1;
 
   const { error } = await supabase.from('billing_line_items').insert({
