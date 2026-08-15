@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Calendar, Megaphone, Wrench, MessageSquare, Home, ChevronRight } from 'lucide-react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
 import { loadPortalUnreadThreadsSummary } from '@/lib/portal/unread-messages';
@@ -30,6 +30,33 @@ const STATUS_LABEL: Record<string, string> = {
   converted: 'In Bearbeitung',
   rejected: 'Abgelehnt',
 };
+
+// Sprint 78: Termin-Formatter analog zu portal/defects/[id]/page.tsx. Duplikat
+// bewusst — ein zweiter Verwender ist noch keine Abstraktion, und die
+// bewohnerorientierte Ausdrucksweise ("geplant vom … bis …") ist im Dashboard-
+// Panel identisch zum Meldung-Detail.
+function formatDateOnly(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatPlannedRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string | null {
+  if (start && end) return `geplant vom ${formatDateOnly(start)} bis ${formatDateOnly(end)}`;
+  if (start) return `geplanter Beginn am ${formatDateOnly(start)}`;
+  if (end) return `geplantes Ende am ${formatDateOnly(end)}`;
+  return null;
+}
+
+// Sprint 78: Offene Auftragsstati laut work_orders CHECK constraint —
+// 'done' und 'cancelled' schliessen wir aus (kein "kommender Termin" mehr).
+const OPEN_WORK_ORDER_STATUSES = ['new', 'planned', 'in_progress', 'blocked'];
 
 export default async function PortalDashboardPage() {
   const ctx = await getResidentContext();
@@ -61,8 +88,14 @@ export default async function PortalDashboardPage() {
     .maybeSingle();
   const showWelcomeOverlay = !onboardingRow?.portal_onboarding_completed_at;
 
-  const [announcementsRes, defectsRes, receiptsRes, threadsSummary, announcementsSummary] =
-    await Promise.all([
+  const [
+    announcementsRes,
+    defectsRes,
+    receiptsRes,
+    threadsSummary,
+    announcementsSummary,
+    upcomingWorkOrdersRes,
+  ] = await Promise.all([
       supabase
         .from('announcements')
         .select('id, title, published_at, requires_acknowledgement, target_type')
@@ -94,7 +127,42 @@ export default async function PortalDashboardPage() {
       // beide Helper sind via React cache() dedupliziert.
       loadPortalUnreadThreadsSummary(ctx.userId),
       loadPortalUnreadAnnouncementsSummary(ctx.userId),
+      // Sprint 78: Nutzt die neue RLS work_orders_select_resident_own_defect
+      // aus Sprint 77 — Bewohner sieht Auftraege, die aus seinen eigenen
+      // Meldungen entstanden sind. Wir holen bis zu 5 Termine sortiert nach
+      // planned_start und filtern abgelaufene planned_end anschliessend im
+      // Code, weil PostgREST-.or() mit Timestamp-Werten fragil ist. 5 ist
+      // ein Puffer fuer den Fall, dass die ersten Kandidaten schon
+      // abgelaufen sind — im Normalfall reicht der Top-Slot.
+      supabase
+        .from('work_orders')
+        .select('id, code, planned_start, planned_end, status')
+        .not('planned_start', 'is', null)
+        .in('status', OPEN_WORK_ORDER_STATUSES)
+        .order('planned_start', { ascending: true })
+        .limit(5),
     ]);
+
+  // Sprint 78: Abgelaufene Termine ausfiltern (planned_end < jetzt). NULL bei
+  // planned_end bedeutet "Ende offen" — solche Auftraege bleiben sichtbar.
+  const nowMs = Date.now();
+  const upcomingWorkOrder =
+    (upcomingWorkOrdersRes.data ?? []).find(
+      (wo) => !wo.planned_end || new Date(wo.planned_end).getTime() >= nowMs,
+    ) ?? null;
+
+  // Sprint 78: Zugehoerige Meldung nur laden, wenn ein Termin gefunden wurde
+  // — spart im Normalfall (kein anstehender Termin) den zweiten Roundtrip.
+  let upcomingDefect: { id: string; title: string } | null = null;
+  if (upcomingWorkOrder) {
+    const { data: defectData } = await supabase
+      .from('defect_reports')
+      .select('id, title')
+      .eq('converted_work_order_id', upcomingWorkOrder.id)
+      .eq('reporter_user_id', ctx.userId)
+      .maybeSingle();
+    upcomingDefect = defectData ?? null;
+  }
 
   const announcements = announcementsRes.data ?? [];
   // Sprint 68: Notfaelle zuerst, dann rest in SQL-Reihenfolge
@@ -183,6 +251,42 @@ export default async function PortalDashboardPage() {
           tone={unreadThreadsCount > 0 ? 'warning' : 'default'}
         />
       </div>
+
+      {upcomingWorkOrder && (
+        <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+              <Calendar className="size-5" aria-hidden />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+                Nächster Auftragstermin
+              </p>
+              <p className="mt-1 text-sm font-medium">
+                {upcomingWorkOrder.code ? `Auftrag ${upcomingWorkOrder.code}` : 'Auftrag'}
+                {upcomingDefect ? ` · ${upcomingDefect.title}` : ''}
+              </p>
+              {(() => {
+                const range = formatPlannedRange(
+                  upcomingWorkOrder.planned_start,
+                  upcomingWorkOrder.planned_end,
+                );
+                return range ? (
+                  <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">{range}</p>
+                ) : null;
+              })()}
+              {upcomingDefect && (
+                <Link
+                  href={`/portal/defects/${upcomingDefect.id}`}
+                  className="mt-2 inline-flex text-xs font-medium text-[var(--color-primary)] hover:underline"
+                >
+                  Zur Meldung →
+                </Link>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <Panel title="Neueste Ankündigungen" href="/portal/announcements">
