@@ -23,6 +23,14 @@ const STATUS_TONE: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
 };
 
+// Sprint 81: Sonder-Label + -Ton fuer converted defects, deren work_order
+// bereits abgeschlossen ist. Konsistent mit Timeline-Step aus Sprint 79 —
+// im Detail sieht der Bewohner "Auftrag abgeschlossen"; in der Liste soll
+// derselbe Zustand nicht mehr als "In Bearbeitung" erscheinen. Kein neuer
+// defect_reports.status noetig — wir spiegeln nur die work_order-Realitaet.
+const DONE_STATUS_LABEL = 'Erledigt';
+const DONE_STATUS_TONE = 'bg-emerald-500 text-white dark:bg-emerald-600';
+
 const PRIORITY_LABEL: Record<string, string> = {
   low: 'niedrig',
   normal: 'normal',
@@ -84,7 +92,7 @@ export default async function PortalDefectsPage({
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from('defect_reports')
-    .select('id, code, title, priority, status, category, created_at')
+    .select('id, code, title, priority, status, category, created_at, converted_work_order_id')
     .eq('reporter_user_id', ctx.userId)
     .order('created_at', { ascending: false });
   if (groupFilter) {
@@ -115,6 +123,26 @@ export default async function PortalDefectsPage({
   const attachmentCountMap = new Map<string, number>();
   for (const row of attachmentRows ?? []) {
     attachmentCountMap.set(row.entity_id, (attachmentCountMap.get(row.entity_id) ?? 0) + 1);
+  }
+
+  // Sprint 81: Batch-Query work_orders fuer converted defects. Nutzt die
+  // RLS work_orders_select_resident_own_defect aus Sprint 77 — Bewohner sieht
+  // hier nur die ihm zustehenden Auftraege. Wenn work_order.status = 'done',
+  // wird das Badge in der Liste zu "Erledigt" (siehe Rendering unten).
+  // Kein Roundtrip, wenn es keinen converted defect in der aktuellen
+  // Ansicht gibt.
+  const workOrderIds = defects
+    .map((d) => d.converted_work_order_id)
+    .filter((id): id is string => id !== null);
+  const { data: workOrderRows } = workOrderIds.length
+    ? await supabase
+        .from('work_orders')
+        .select('id, status')
+        .in('id', workOrderIds)
+    : { data: [] as { id: string; status: string }[] };
+  const workOrderStatusMap = new Map<string, string>();
+  for (const wo of workOrderRows ?? []) {
+    workOrderStatusMap.set(wo.id, wo.status);
   }
 
   return (
@@ -224,6 +252,15 @@ export default async function PortalDefectsPage({
           {defects.map((d) => {
             const isEmergency = d.priority === 'emergency';
             const attachmentCount = attachmentCountMap.get(d.id) ?? 0;
+            // Sprint 81: Work-Order-Status spiegeln, wenn abgeschlossen.
+            const woStatus = d.converted_work_order_id
+              ? workOrderStatusMap.get(d.converted_work_order_id)
+              : undefined;
+            const isDone = d.status === 'converted' && woStatus === 'done';
+            const statusLabel = isDone ? DONE_STATUS_LABEL : STATUS_LABEL[d.status] ?? d.status;
+            const statusTone = isDone
+              ? DONE_STATUS_TONE
+              : STATUS_TONE[d.status] ?? 'bg-[var(--color-muted)] text-[var(--color-foreground)]';
             return (
               <li key={d.id}>
                 <Link
@@ -277,11 +314,9 @@ export default async function PortalDefectsPage({
                     )}
                   </div>
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      STATUS_TONE[d.status] ?? 'bg-[var(--color-muted)] text-[var(--color-foreground)]'
-                    }`}
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${statusTone}`}
                   >
-                    {STATUS_LABEL[d.status] ?? d.status}
+                    {statusLabel}
                   </span>
                 </Link>
               </li>
