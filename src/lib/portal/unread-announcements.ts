@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { isAnnouncementUnread, needsAcknowledgement } from './announcement-read-state';
 
 export interface PortalUnreadAnnouncementsSummary {
   totalCount: number;
@@ -50,8 +51,8 @@ export const loadPortalUnreadAnnouncementsSummary = cache(
     let openAckCount = 0;
     for (const a of announcements) {
       const r = receiptMap.get(a.id);
-      if (!r?.read_at) unreadCount += 1;
-      if (a.requires_acknowledgement && !r?.acknowledged_at) openAckCount += 1;
+      if (isAnnouncementUnread(r)) unreadCount += 1;
+      if (needsAcknowledgement(a.requires_acknowledgement, r)) openAckCount += 1;
     }
 
     return {

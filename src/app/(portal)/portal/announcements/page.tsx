@@ -2,6 +2,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
+import {
+  isAnnouncementUnread,
+  needsAcknowledgement,
+} from '@/lib/portal/announcement-read-state';
+import { loadPortalUnreadAnnouncementsSummary } from '@/lib/portal/unread-announcements';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 import { markAllPortalAnnouncementsReadAction } from './actions';
@@ -73,12 +78,16 @@ export default async function PortalAnnouncementsPage({
     annQuery = annQuery.or(`title.ilike.%${searchSafe}%,body.ilike.%${searchSafe}%`);
   }
 
-  const [announcementsRes, receiptsRes] = await Promise.all([
+  const [announcementsRes, receiptsRes, unreadSummary] = await Promise.all([
     annQuery,
     supabase
       .from('announcement_receipts')
       .select('announcement_id, read_at, acknowledged_at')
       .eq('user_id', ctx.userId),
+    // Sprint 101: Fuer die Sichtbarkeit des "Alle als gelesen"-Buttons,
+    // siehe unten. Kostet hier nichts — das Portal-Layout ruft denselben
+    // Helper fuer den Nav-Badge, und React cache() dedupliziert ihn.
+    loadPortalUnreadAnnouncementsSummary(ctx.userId),
   ]);
 
   const announcements = announcementsRes.data ?? [];
@@ -88,9 +97,9 @@ export default async function PortalAnnouncementsPage({
   const visible = announcements.filter((a) => {
     if (activeGroup === 'alle') return true;
     const r = receiptMap.get(a.id);
-    if (activeGroup === 'ungelesen') return !r?.read_at;
+    if (activeGroup === 'ungelesen') return isAnnouncementUnread(r);
     if (activeGroup === 'zu_quittieren') {
-      return a.requires_acknowledgement && !r?.acknowledged_at;
+      return needsAcknowledgement(a.requires_acknowledgement, r);
     }
     return true;
   });
@@ -104,8 +113,8 @@ export default async function PortalAnnouncementsPage({
   // Im "zu_quittieren"-Tab ist die Priorisierung No-Op; wir wenden sie
   // trotzdem immer an, damit die Logik lokalisiert bleibt.
   const sortedVisible = [...visible].sort((a, b) => {
-    const needsAckA = a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at;
-    const needsAckB = b.requires_acknowledgement && !receiptMap.get(b.id)?.acknowledged_at;
+    const needsAckA = needsAcknowledgement(a.requires_acknowledgement, receiptMap.get(a.id));
+    const needsAckB = needsAcknowledgement(b.requires_acknowledgement, receiptMap.get(b.id));
     if (needsAckA === needsAckB) return 0;
     return needsAckA ? -1 : 1;
   });
@@ -113,7 +122,15 @@ export default async function PortalAnnouncementsPage({
   // Sprint 71: Button oben nur einblenden, wenn es tatsaechlich noch
   // etwas zu markieren gibt — ein disabled Button ohne Wirkung waere
   // fuer den Bewohner nur Rauschen.
-  const hasUnread = announcements.some((a) => !receiptMap.get(a.id)?.read_at);
+  //
+  // Sprint 101: Der Zaehler kommt aus dem Summary-Helper und nicht mehr
+  // aus `announcements`. Jene Liste ist suchgefiltert, die Aktion
+  // dahinter markiert aber ausnahmslos alle veroeffentlichten
+  // Ankuendigungen. Wer nach "Heizung" suchte und dort nur Gelesenes
+  // traf, sah den Button verschwinden, waehrend der Nav-Badge daneben
+  // weiter Ungelesenes zaehlte. Sichtbarkeit und Wirkung des Buttons
+  // haengen jetzt an derselben Zahl.
+  const hasUnread = unreadSummary.unreadCount > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -198,8 +215,8 @@ export default async function PortalAnnouncementsPage({
         <ul className="flex flex-col gap-3">
           {sortedVisible.map((a) => {
             const r = receiptMap.get(a.id);
-            const isUnread = !r?.read_at;
-            const needsAck = a.requires_acknowledgement && !r?.acknowledged_at;
+            const isUnread = isAnnouncementUnread(r);
+            const needsAck = needsAcknowledgement(a.requires_acknowledgement, r);
             // Sprint 70: Konsistent mit Sprint 66 (Ablauf-Warnung im
             // Detail). In der Liste reicht ein diskretes Badge — der
             // Bewohner soll die Kachel weiter oeffnen koennen, aber

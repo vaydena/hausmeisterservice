@@ -3,6 +3,10 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
+import {
+  isAnnouncementUnread,
+  needsAcknowledgement,
+} from '@/lib/portal/announcement-read-state';
 import { formatRelativeGerman } from '@/lib/schemas/notifications';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { portalAcknowledgeAnnouncementAction } from '../actions';
@@ -90,7 +94,7 @@ export default async function PortalAnnouncementDetailPage({
   // getrennt (weiterhin expliziter Button-Klick).
   const nowIso = new Date().toISOString();
   const readAt = r?.read_at ?? nowIso;
-  if (!r?.read_at) {
+  if (isAnnouncementUnread(r)) {
     await supabase.from('announcement_receipts').upsert(
       {
         announcement_id: id,
@@ -101,7 +105,7 @@ export default async function PortalAnnouncementDetailPage({
     );
   }
 
-  const needsAck = a.requires_acknowledgement && !r?.acknowledged_at;
+  const needsAck = needsAcknowledgement(a.requires_acknowledgement, r);
   // Sprint 66: Ablauf-Warnung. Das Datum "gültig bis" stand bisher
   // nur diskret im Header — Bewohner konnten so alte Aushänge lesen,
   // ohne zu bemerken, dass sie bereits abgelaufen sind. Der Ack-Button

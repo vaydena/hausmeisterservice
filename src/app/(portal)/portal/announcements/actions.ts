@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requireResidentContext } from '@/lib/portal/current';
+import { isAnnouncementUnread } from '@/lib/portal/announcement-read-state';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const idSchema = z.object({
@@ -60,7 +61,7 @@ export async function markAllPortalAnnouncementsReadAction(): Promise<void> {
 
   const now = new Date().toISOString();
   const toUpsert = (annRes.data ?? [])
-    .filter((a) => !receiptMap.get(a.id)?.read_at)
+    .filter((a) => isAnnouncementUnread(receiptMap.get(a.id)))
     .map((a) => ({
       announcement_id: a.id,
       user_id: ctx.userId,

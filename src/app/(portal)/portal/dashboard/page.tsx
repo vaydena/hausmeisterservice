@@ -7,6 +7,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getResidentContext } from '@/lib/portal/current';
 import { loadPortalUnreadThreadsSummary } from '@/lib/portal/unread-messages';
 import { loadPortalUnreadAnnouncementsSummary } from '@/lib/portal/unread-announcements';
+import {
+  isAnnouncementUnread,
+  needsAcknowledgement,
+} from '@/lib/portal/announcement-read-state';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { PortalMfaReminderBanner } from './portal-mfa-reminder-banner';
 import { PortalWelcomeOverlay } from './portal-welcome-overlay';
@@ -205,8 +209,8 @@ export default async function PortalDashboardPage() {
   const announcements = (announcementsRes.data ?? [])
     .slice()
     .sort((a, b) => {
-      const needsAckA = a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at;
-      const needsAckB = b.requires_acknowledgement && !receiptMap.get(b.id)?.acknowledged_at;
+      const needsAckA = needsAcknowledgement(a.requires_acknowledgement, receiptMap.get(a.id));
+      const needsAckB = needsAcknowledgement(b.requires_acknowledgement, receiptMap.get(b.id));
       if (needsAckA === needsAckB) return 0;
       return needsAckA ? -1 : 1;
     })
@@ -341,8 +345,8 @@ export default async function PortalDashboardPage() {
             <ul className="flex flex-col divide-y divide-[var(--color-border)]">
               {announcements.slice(0, 4).map((a) => {
                 const receipt = receiptMap.get(a.id);
-                const isUnread = !receipt?.read_at;
-                const needsAck = a.requires_acknowledgement && !receipt?.acknowledged_at;
+                const isUnread = isAnnouncementUnread(receipt);
+                const needsAck = needsAcknowledgement(a.requires_acknowledgement, receipt);
                 return (
                   <li key={a.id} className="py-2.5">
                     <Link

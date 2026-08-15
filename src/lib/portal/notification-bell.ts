@@ -3,6 +3,7 @@ import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadPortalUnreadThreadsSummary } from './unread-messages';
 import { isThreadUnread } from './thread-read-state';
+import { isAnnouncementUnread, needsAcknowledgement } from './announcement-read-state';
 import { loadPortalUnreadAnnouncementsSummary } from './unread-announcements';
 
 export type PortalBellItemKind = 'message' | 'announcement';
@@ -97,22 +98,16 @@ export const loadPortalNotificationBellFeed = cache(
       (receiptsRes.data ?? []).map((r) => [r.announcement_id, r]),
     );
     const unreadAnnouncements: PortalBellItem[] = (announcementsRes.data ?? [])
-      .filter((a) => {
-        const r = receiptMap.get(a.id);
-        return !r?.read_at;
-      })
+      .filter((a) => isAnnouncementUnread(receiptMap.get(a.id)))
       .slice(0, TOP_N_PER_KIND)
-      .map((a) => {
-        const r = receiptMap.get(a.id);
-        return {
-          id: a.id,
-          kind: 'announcement',
-          title: a.title,
-          href: `/portal/announcements/${a.id}`,
-          createdAt: a.published_at,
-          needsAck: Boolean(a.requires_acknowledgement && !r?.acknowledged_at),
-        };
-      });
+      .map((a) => ({
+        id: a.id,
+        kind: 'announcement',
+        title: a.title,
+        href: `/portal/announcements/${a.id}`,
+        createdAt: a.published_at,
+        needsAck: needsAcknowledgement(a.requires_acknowledgement, receiptMap.get(a.id)),
+      }));
 
     // Sprint 89: needsAck zuerst (analog Sprint 87 Liste + Sprint 88
     // Dashboard-Panel). Innerhalb der beiden Gruppen bleibt die
