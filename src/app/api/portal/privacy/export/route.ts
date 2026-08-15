@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { requireResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
+import {
+  collectExportFailures,
+  describeExportFailures,
+  summarizeExportFailures,
+} from '@/lib/privacy/export-failures';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,6 +63,40 @@ export async function GET() {
       .order('at', { ascending: false }),
   ]);
 
+  // Sprint 105: siehe Staff-Route. Fuer den Bewohner wiegt die stille Luecke
+  // eher schwerer als fuer den Mitarbeiter — er hat keinen zweiten Weg an
+  // seine Daten und muss dem Dokument glauben, das ihm seine Hausverwaltung
+  // ueber diese Software aushaendigt.
+  const categories = {
+    Profil: profile,
+    Bewohnerdaten: resident,
+    'Eigene Meldungen': defectReports,
+    'Verfasste Nachrichten': messagesAuthored,
+    'Teilnahme an Nachrichten-Verlaeufen': threadMemberships,
+    'Erhaltene Benachrichtigungen': notifications,
+    'Lesebestaetigungen zu Ankuendigungen': announcementReceipts,
+    'Push-Benachrichtigungen': pushSubs,
+    Anmeldeverlauf: loginEvents,
+  };
+  const failures = collectExportFailures(categories);
+
+  if (failures.length > 0) {
+    // return statt throw, und deshalb explizites captureException — die
+    // Begruendung steht ausfuehrlich in der Staff-Route.
+    Sentry.captureException(
+      new Error(summarizeExportFailures(failures, Object.keys(categories).length)),
+      {
+        extra: { userId: uid, tenantId: ctx.tenantId, role: 'resident', failures },
+      },
+    );
+    return new NextResponse(describeExportFailures(failures), {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  // Ab hier traegt kein Result mehr einen Fehler; die unwrap-Helper stehen
+  // fuer die Typisierung und halten den alten `?? []`-Griff draussen.
   const payload = {
     export_meta: {
       version: 1,
@@ -77,15 +118,21 @@ export async function GET() {
       created_at: user.created_at ?? null,
       confirmed_at: user.confirmed_at ?? null,
     },
-    profile: profile.data ?? null,
-    resident_records: resident.data ?? [],
-    defect_reports_created: defectReports.data ?? [],
-    messages_authored: messagesAuthored.data ?? [],
-    message_thread_memberships: threadMemberships.data ?? [],
-    notifications_received: notifications.data ?? [],
-    announcement_receipts: announcementReceipts.data ?? [],
-    push_subscriptions: pushSubs.data ?? [],
-    login_events: loginEvents.data ?? [],
+    profile: unwrapMaybeRow(profile, 'Portal-Datenauskunft: Profil'),
+    resident_records: unwrapRows(resident, 'Portal-Datenauskunft: Bewohnerdaten'),
+    defect_reports_created: unwrapRows(defectReports, 'Portal-Datenauskunft: Eigene Meldungen'),
+    messages_authored: unwrapRows(messagesAuthored, 'Portal-Datenauskunft: Verfasste Nachrichten'),
+    message_thread_memberships: unwrapRows(
+      threadMemberships,
+      'Portal-Datenauskunft: Thread-Teilnahmen',
+    ),
+    notifications_received: unwrapRows(notifications, 'Portal-Datenauskunft: Benachrichtigungen'),
+    announcement_receipts: unwrapRows(
+      announcementReceipts,
+      'Portal-Datenauskunft: Lesebestaetigungen',
+    ),
+    push_subscriptions: unwrapRows(pushSubs, 'Portal-Datenauskunft: Push-Benachrichtigungen'),
+    login_events: unwrapRows(loginEvents, 'Portal-Datenauskunft: Anmeldeverlauf'),
   };
 
   const body = JSON.stringify(payload, null, 2);

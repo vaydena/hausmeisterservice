@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
+import {
+  collectExportFailures,
+  describeExportFailures,
+  summarizeExportFailures,
+} from '@/lib/privacy/export-failures';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -74,6 +81,61 @@ export async function GET() {
     supabase.from('audit_log').select('*').eq('actor_id', uid),
   ]);
 
+  // Sprint 105: Vor dem Zusammenbauen pruefen, ob ueberhaupt alles gelesen
+  // werden konnte. Vorher landete jede gescheiterte Query als `?? []` im
+  // Export — eine Luecke, die im Dokument wie "dazu ist nichts gespeichert"
+  // aussieht, obwohl direkt darunter steht, es seien ALLE Daten enthalten.
+  //
+  // Die Schluessel sind der Klartext, den der Betroffene zu lesen bekommt,
+  // wenn ein Bereich fehlt. Deshalb hier Bereichsnamen und keine
+  // Tabellennamen.
+  const categories = {
+    Profil: profile,
+    Mitgliedschaften: memberships,
+    Mitarbeiterprofil: employee,
+    Bewohnerprofil: resident,
+    Rollenzuweisungen: userRoles,
+    Gruppenzugehoerigkeiten: userGroupMembers,
+    'Push-Benachrichtigungen': pushSubs,
+    Arbeitszeiten: timeEntries,
+    Zeitkorrekturen: timeCorrections,
+    Einsatzplanung: scheduleEntries,
+    'Verfasste Nachrichten': myMessages,
+    'Teilnahme an Nachrichten-Verlaeufen': threadMemberships,
+    'Erhaltene Benachrichtigungen': notifications,
+    'Lesebestaetigungen zu Ankuendigungen': announcementReceipts,
+    'Auftraege als Melder': workOrdersReported,
+    'Auftraege als Zustaendiger': workOrdersAssigned,
+    'Selbst angelegte Auftraege': workOrdersCreated,
+    'Selbst erstellte Meldungen': defectReports,
+    'Hochgeladene Dokumente': documents,
+    'Eigene Auftrags-Aktivitaeten': workOrderEvents,
+    'Protokollierte Aktionen': auditLog,
+  };
+  const failures = collectExportFailures(categories);
+
+  if (failures.length > 0) {
+    // Bewusst `return` statt `throw`: error.tsx greift nur beim Rendern von
+    // Server-Components, nicht in einem Route-Handler. Ein geworfener Fehler
+    // wuerde dem Nutzer hier nur einen abgebrochenen Download bescheren, ohne
+    // zu sagen warum. Weil damit aber auch onRequestError nicht feuert, muss
+    // die Meldung an Sentry explizit passieren.
+    Sentry.captureException(
+      new Error(summarizeExportFailures(failures, Object.keys(categories).length)),
+      {
+        extra: { userId: uid, tenantId: ctx.tenantId, failures },
+      },
+    );
+    return new NextResponse(describeExportFailures(failures), {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  // Ab hier ist erwiesen, dass kein Result einen Fehler traegt. Die
+  // unwrap-Helper koennen also nicht mehr werfen; sie stehen hier fuer die
+  // Typisierung (`T[]` statt `T[] | null`) und damit der alte `?? []`-Griff
+  // nicht durch die Hintertuer zurueckkommt.
   const payload = {
     export_meta: {
       version: 1,
@@ -94,27 +156,30 @@ export async function GET() {
       created_at: user.created_at ?? null,
       confirmed_at: user.confirmed_at ?? null,
     },
-    profile: profile.data ?? null,
-    memberships: memberships.data ?? [],
-    employee_profile: employee.data ?? [],
-    resident_profile: resident.data ?? [],
-    role_assignments: userRoles.data ?? [],
-    user_group_memberships: userGroupMembers.data ?? [],
-    push_subscriptions: pushSubs.data ?? [],
-    time_entries: timeEntries.data ?? [],
-    time_corrections: timeCorrections.data ?? [],
-    schedule_entries: scheduleEntries.data ?? [],
-    messages_authored: myMessages.data ?? [],
-    message_thread_memberships: threadMemberships.data ?? [],
-    notifications_received: notifications.data ?? [],
-    announcement_receipts: announcementReceipts.data ?? [],
-    work_orders_as_reporter: workOrdersReported.data ?? [],
-    work_orders_as_assignee: workOrdersAssigned.data ?? [],
-    work_orders_created: workOrdersCreated.data ?? [],
-    defect_reports_created: defectReports.data ?? [],
-    documents_uploaded: documents.data ?? [],
-    work_order_events_authored: workOrderEvents.data ?? [],
-    audit_log_actions: auditLog.data ?? [],
+    profile: unwrapMaybeRow(profile, 'Datenauskunft: Profil'),
+    memberships: unwrapRows(memberships, 'Datenauskunft: Mitgliedschaften'),
+    employee_profile: unwrapRows(employee, 'Datenauskunft: Mitarbeiterprofil'),
+    resident_profile: unwrapRows(resident, 'Datenauskunft: Bewohnerprofil'),
+    role_assignments: unwrapRows(userRoles, 'Datenauskunft: Rollenzuweisungen'),
+    user_group_memberships: unwrapRows(userGroupMembers, 'Datenauskunft: Gruppenzugehoerigkeiten'),
+    push_subscriptions: unwrapRows(pushSubs, 'Datenauskunft: Push-Benachrichtigungen'),
+    time_entries: unwrapRows(timeEntries, 'Datenauskunft: Arbeitszeiten'),
+    time_corrections: unwrapRows(timeCorrections, 'Datenauskunft: Zeitkorrekturen'),
+    schedule_entries: unwrapRows(scheduleEntries, 'Datenauskunft: Einsatzplanung'),
+    messages_authored: unwrapRows(myMessages, 'Datenauskunft: Verfasste Nachrichten'),
+    message_thread_memberships: unwrapRows(threadMemberships, 'Datenauskunft: Thread-Teilnahmen'),
+    notifications_received: unwrapRows(notifications, 'Datenauskunft: Benachrichtigungen'),
+    announcement_receipts: unwrapRows(announcementReceipts, 'Datenauskunft: Lesebestaetigungen'),
+    work_orders_as_reporter: unwrapRows(workOrdersReported, 'Datenauskunft: Auftraege als Melder'),
+    work_orders_as_assignee: unwrapRows(
+      workOrdersAssigned,
+      'Datenauskunft: Auftraege als Zustaendiger',
+    ),
+    work_orders_created: unwrapRows(workOrdersCreated, 'Datenauskunft: Angelegte Auftraege'),
+    defect_reports_created: unwrapRows(defectReports, 'Datenauskunft: Erstellte Meldungen'),
+    documents_uploaded: unwrapRows(documents, 'Datenauskunft: Hochgeladene Dokumente'),
+    work_order_events_authored: unwrapRows(workOrderEvents, 'Datenauskunft: Auftrags-Aktivitaeten'),
+    audit_log_actions: unwrapRows(auditLog, 'Datenauskunft: Protokollierte Aktionen'),
   };
 
   const body = JSON.stringify(payload, null, 2);

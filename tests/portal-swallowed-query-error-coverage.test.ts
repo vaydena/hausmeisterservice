@@ -59,6 +59,27 @@ const GUARD_FILES = [
   'src/lib/auth/ensure-tenant.ts',        // -> Tarifwahl geht still verloren
 ];
 
+/**
+ * Die DSGVO-Export-Routen (Sprint 105).
+ *
+ * Wieder eine andere Folge als in den beiden Schichten darueber. Hier wird
+ * aus einem verschluckten Fehler kein Leerzustand und keine falsche
+ * Berechtigungsantwort, sondern eine unvollstaendige Auskunft, die sich
+ * selbst als vollstaendig bezeichnet: `export_meta.legal_basis` behauptet im
+ * selben Dokument, es enthalte ALLE zum Konto gespeicherten Daten. Der
+ * Betroffene haelt seine Art.-15-Anfrage damit fuer beantwortet.
+ *
+ * Beide Routen liegen ausserhalb von PORTAL_DIRS — auch die Portal-Variante,
+ * die unter src/app/api/portal/ und nicht unter src/app/(portal)/ steht.
+ */
+const EXPORT_ROUTES = [
+  'src/app/api/privacy/export/route.ts',
+  'src/app/api/portal/privacy/export/route.ts',
+];
+
+/** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
+const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES];
+
 function walk(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -77,7 +98,7 @@ interface ScannedFile {
 
 const SCANNED_FILES: ScannedFile[] = [
   ...PORTAL_DIRS.flatMap(walk),
-  ...GUARD_FILES.map((f) => join(process.cwd(), f)),
+  ...LISTED_FILES.map((f) => join(process.cwd(), f)),
 ]
   .filter((abs) => existsSync(abs))
   .map((abs) => ({
@@ -152,23 +173,23 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
     });
 
-    it.each(GUARD_FILES)('Guard-Datei existiert noch: %s', (guard) => {
+    it.each(LISTED_FILES)('einzeln gelistete Datei existiert noch: %s', (listed) => {
       // Ohne diese Pruefung wuerde ein Umbenennen oder Verschieben die
       // Abdeckung dieser Datei still entfernen: SCANNED_FILES filtert
       // nicht-existente Pfade heraus, und ein Test, der nichts scannt,
-      // ist gruen. Die Guard-Schicht ist genau die Stelle, an der
-      // stiller Erfolg am teuersten ist.
+      // ist gruen. Guard-Schicht und Export-Routen sind genau die Stellen,
+      // an denen stiller Erfolg am teuersten ist.
       expect(
-        existsSync(join(process.cwd(), guard)),
-        `${guard} steht in GUARD_FILES, existiert aber nicht (mehr). Pfad in der ` +
-          `Liste korrigieren — oder wenn der Guard wirklich weg ist, den Eintrag ` +
-          `mitsamt Begruendung entfernen.`,
+        existsSync(join(process.cwd(), listed)),
+        `${listed} steht in GUARD_FILES bzw. EXPORT_ROUTES, existiert aber nicht ` +
+          `(mehr). Pfad in der Liste korrigieren — oder wenn die Datei wirklich weg ` +
+          `ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);
     });
 
