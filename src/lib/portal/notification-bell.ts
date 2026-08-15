@@ -2,6 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadPortalUnreadThreadsSummary } from './unread-messages';
+import { isThreadUnread } from './thread-read-state';
 import { loadPortalUnreadAnnouncementsSummary } from './unread-announcements';
 
 export type PortalBellItemKind = 'message' | 'announcement';
@@ -81,10 +82,7 @@ export const loadPortalNotificationBellFeed = cache(
       (participationRes.data ?? []).map((p) => [p.thread_id, p.last_read_at]),
     );
     const unreadThreads: PortalBellItem[] = (threadsRes.data ?? [])
-      .filter((t) => {
-        const lastRead = lastReadMap.get(t.id);
-        return !lastRead || (t.last_message_at !== null && lastRead < t.last_message_at);
-      })
+      .filter((t) => isThreadUnread(t.last_message_at, lastReadMap.get(t.id)))
       .slice(0, TOP_N_PER_KIND)
       .map((t) => ({
         id: t.id,

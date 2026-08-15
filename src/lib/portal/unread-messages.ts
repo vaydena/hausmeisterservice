@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { isThreadUnread } from './thread-read-state';
 
 export interface PortalUnreadThreadsSummary {
   totalCount: number;
@@ -14,11 +15,8 @@ export interface PortalUnreadThreadsSummary {
  * eines Requests, sodass der Layout-Call auf dem Dashboard-Pfad keine
  * zusaetzlichen Roundtrips ausloest.
  *
- * Die Logik ist bewusst identisch zu portal/messages/page.tsx: ein
- * Thread gilt als ungelesen, wenn (a) keine participant-Zeile existiert
- * bzw. last_read_at null ist ODER (b) last_message_at neuer ist als
- * last_read_at. RLS-Scoping erledigen die Basispolicies auf
- * message_threads / message_thread_participants.
+ * RLS-Scoping erledigen die Basispolicies auf message_threads /
+ * message_thread_participants.
  */
 export const loadPortalUnreadThreadsSummary = cache(
   async (userId: string): Promise<PortalUnreadThreadsSummary> => {
@@ -35,10 +33,9 @@ export const loadPortalUnreadThreadsSummary = cache(
     const participation = participationRes.data ?? [];
     const lastReadMap = new Map(participation.map((p) => [p.thread_id, p.last_read_at]));
 
-    const unreadCount = threads.filter((t) => {
-      const lastRead = lastReadMap.get(t.id);
-      return !lastRead || (t.last_message_at !== null && lastRead < t.last_message_at);
-    }).length;
+    const unreadCount = threads.filter((t) =>
+      isThreadUnread(t.last_message_at, lastReadMap.get(t.id)),
+    ).length;
 
     return {
       totalCount: threads.length,
