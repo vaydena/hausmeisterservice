@@ -122,6 +122,11 @@ export default async function PortalAnnouncementsPage({
             const r = receiptMap.get(a.id);
             const isUnread = !r?.read_at;
             const needsAck = a.requires_acknowledgement && !r?.acknowledged_at;
+            // Sprint 70: Konsistent mit Sprint 66 (Ablauf-Warnung im
+            // Detail). In der Liste reicht ein diskretes Badge — der
+            // Bewohner soll die Kachel weiter oeffnen koennen, aber
+            // sofort sehen, dass die Meldung nicht mehr aktuell ist.
+            const isExpired = a.expires_at ? new Date(a.expires_at).getTime() < Date.now() : false;
             return (
               <li key={a.id}>
                 <Link
@@ -129,7 +134,7 @@ export default async function PortalAnnouncementsPage({
                   className="flex flex-col gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4 transition hover:border-[var(--color-primary)]/50 md:flex-row md:items-start md:justify-between"
                 >
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {isUnread && (
                         <span
                           aria-label="ungelesen"
@@ -137,13 +142,22 @@ export default async function PortalAnnouncementsPage({
                         />
                       )}
                       <h2 className="text-sm font-semibold">{a.title}</h2>
+                      {isExpired && (
+                        <span className="rounded-full bg-[var(--color-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-muted-foreground)]">
+                          abgelaufen
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 line-clamp-2 text-sm text-[var(--color-muted-foreground)]">
                       {a.body}
                     </p>
                     <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
                       Veröffentlicht {formatDate(a.published_at)}
-                      {a.expires_at ? ` · gültig bis ${formatDate(a.expires_at)}` : ''}
+                      {a.expires_at
+                        ? isExpired
+                          ? ` · war gültig bis ${formatDate(a.expires_at)}`
+                          : ` · gültig bis ${formatDate(a.expires_at)}`
+                        : ''}
                     </p>
                   </div>
                   {needsAck && (
