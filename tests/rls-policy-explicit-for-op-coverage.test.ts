@@ -111,6 +111,18 @@ const INTENTIONALLY_FOR_ALL_POLICIES = new Set<string>([
   // squash zusammengezogen werden, koennen die Eintraege ersatzlos weg.
   '20260812081218_platform_layer_and_subscriptions.sql::plans_admin_all::platform.subscription_plans',
   '20260812081218_platform_layer_and_subscriptions.sql::invoices_admin_all::platform.invoices',
+  // Sprint 49 · Advisor-Signal fuer service-only Tabellen. Beide Tabellen
+  // (auth_rate_limits aus Sprint 20, auth_mfa_recovery_codes aus Sprint 26)
+  // werden ausschliesslich ueber SECURITY DEFINER-Functions und den
+  // service_role beschrieben. RLS ist enabled, die neuen deny-all-Policies
+  // machen die Absicht "kein Client-Zugriff auf beliebige Operation"
+  // explizit — SELECT/INSERT/UPDATE/DELETE teilen sich dieselbe (false)-
+  // Bedingung, weshalb ein Split in vier per-op-Policies reine Duplikation
+  // ohne Security-Gewinn waere. Vor der Migration meldete der Supabase-
+  // Advisor rls_enabled_no_policy (INFO), was mit den expliziten Policies
+  // verschwindet.
+  '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_rate_limits_deny_all_client::public.auth_rate_limits',
+  '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_mfa_recovery_codes_deny_all_client::public.auth_mfa_recovery_codes',
 ]);
 
 describe('RLS policy explicit FOR-op coverage', () => {

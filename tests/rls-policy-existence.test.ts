@@ -102,31 +102,19 @@ for (const p of POLICIES) {
  * or edge functions). Deny-all is the intended behavior. Empty today. Add
  * here only when there is a written rationale — the test also asserts stale
  * entries (once a policy appears the allowlist entry becomes an error).
+ *
+ * Historically auth_rate_limits (Sprint 20) und auth_mfa_recovery_codes
+ * (Sprint 26) standen hier drin, weil beide Tabellen RLS enabled aber
+ * KEINE Policies hatten. Postgres behandelt "RLS on + no policy" bereits
+ * als deny-all fuer alle Nicht-Superuser/Nicht-bypassrls-Rollen — dass
+ * war die Absicht. Sprint 49 hat das aequivalente Verhalten in EXPLIZITE
+ * `FOR ALL TO public USING (false) WITH CHECK (false)` Policies umgezogen,
+ * damit der Supabase-Advisor (der bei fehlender Policy einen INFO-Level
+ * rls_enabled_no_policy meldet) kein falsches Positiv mehr zeigt und die
+ * Absicht im Schema lesbar wird. Beide Tabellen haben deshalb jetzt
+ * Policies und stehen zu Recht nicht mehr in dieser Allowlist.
  */
-const INTENTIONALLY_DENY_ALL = new Set<string>([
-  // public.auth_rate_limits:
-  //   Rate-Limit-Zaehler fuer Auth-Endpoints (Sprint 20). Die Tabelle hat
-  //   RLS enabled aber keine Policy — das ist Absicht: kein authenticated
-  //   oder anon User darf jemals lesen oder schreiben, weder auf eigene
-  //   noch fremde Zaehler. Der Zugriff laeuft ausschliesslich ueber die
-  //   drei SECURITY DEFINER Functions (check_and_consume_auth_rate_limit,
-  //   reset_auth_rate_limit, cleanup_expired_auth_rate_limits) mit
-  //   execute-Grant nur an service_role. Eine Policy waere daher nicht nur
-  //   ueberfluessig, sondern eine Schwachstelle — sie wuerde einen Angreifer
-  //   in die Lage versetzen, den eigenen Zaehler zu resetten und damit
-  //   das Rate-Limit zu umgehen.
-  'auth_rate_limits',
-  // public.auth_mfa_recovery_codes:
-  //   MFA-Recovery-Codes (Sprint 26). RLS deny-all aus demselben Grund
-  //   wie auth_rate_limits: der User darf nicht mal die eigenen Hashes
-  //   sehen, sonst koennte er per Bruteforce offline vermeintlich
-  //   invalidierte Codes zurueckrechnen. Zugriff ausschliesslich ueber
-  //   die drei SECURITY DEFINER Functions (generate_mfa_recovery_codes_
-  //   for_user, consume_mfa_recovery_code, count_unused_mfa_recovery_codes)
-  //   mit execute-Grant nur an service_role. Eine Policy waere ein
-  //   Sicherheitsrisiko.
-  'auth_mfa_recovery_codes',
-]);
+const INTENTIONALLY_DENY_ALL = new Set<string>([]);
 
 describe('RLS policy existence for every RLS-enabled public.* table', () => {
   describe('sanity: extractors found something', () => {

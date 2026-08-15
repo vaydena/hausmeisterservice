@@ -107,6 +107,16 @@ const POLICIES = extractPolicies();
 const INTENTIONALLY_UNSCOPED_POLICIES = new Set<string>([
   '20260801000000_init.sql::tenants_insert::public.tenants',
   '20260801000000_init.sql::permissions_select::public.permissions',
+  // Sprint 49 · Explizite deny-all-Policies auf beiden service-only-Auth-
+  // Tabellen. `using (false)` + `with check (false)` verweigert jedem
+  // Client jeden Zugriff — eine Tenant-/User-Scoping-Referenz waere hier
+  // sinnlos, weil das Praedikat ohnehin nie zutrifft. Der App-Layer nutzt
+  // ausschliesslich SECURITY DEFINER-Functions (Sprint 20/21/26) und den
+  // service_role (bypassrls). Die Policies existieren nur, damit der
+  // Supabase-Advisor nicht mehr rls_enabled_no_policy meldet und die
+  // Absicht "kein Client-Zugriff" im Schema lesbar ist statt implizit.
+  '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_rate_limits_deny_all_client::public.auth_rate_limits',
+  '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_mfa_recovery_codes_deny_all_client::public.auth_mfa_recovery_codes',
 ]);
 
 function keyOf(p: Policy): string {
