@@ -96,12 +96,17 @@ export default async function PortalDashboardPage() {
     announcementsSummary,
     upcomingWorkOrdersRes,
   ] = await Promise.all([
+      // Sprint 88: Limit auf 15 (analog Sprint 68 defects) — die
+      // Zu-quittieren-Priorisierung weiter unten erwischt so auch
+      // aeltere requires_acknowledgement-Items, die sonst durch
+      // neuere Info-Aushaenge aus den Top-5 gedraengt wuerden. Nach
+      // der Sortierung slicen wir auf 5 zurueck.
       supabase
         .from('announcements')
         .select('id, title, published_at, requires_acknowledgement, target_type')
         .eq('status', 'published')
         .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(5),
+        .limit(15),
       // Sprint 48: count: 'exact' liefert die Gesamtzahl passender
       // Zeilen zusaetzlich zum limitierten data-Array. Ohne diesen
       // Zusatz zaehlte die SummaryCard nur die hier angezeigten Top-5
@@ -164,7 +169,6 @@ export default async function PortalDashboardPage() {
     upcomingDefect = defectData ?? null;
   }
 
-  const announcements = announcementsRes.data ?? [];
   // Sprint 68: Notfaelle zuerst, dann rest in SQL-Reihenfolge
   // (created_at DESC). Array.prototype.sort ist in JS spec-mandated
   // stable — die relative Reihenfolge gleicher Emergency-Bewertung
@@ -191,6 +195,22 @@ export default async function PortalDashboardPage() {
   const { unreadCount, openAckCount } = announcementsSummary;
 
   const receiptMap = new Map(receipts.map((r) => [r.announcement_id, r]));
+
+  // Sprint 88: Zu-quittieren zuerst im Dashboard-Panel (analog Sprint 87
+  // fuer die Ankuendigungen-Liste, Sprint 68 fuer Defect-Notfaelle).
+  // Panel zeigt nur 4 Zeilen — ohne Priorisierung koennte eine wichtige
+  // zu-quittierende Ankuendigung aus der Vorschau fallen, obwohl die
+  // SummaryCard "X noch zu quittieren" anzeigt. Stable sort erhaelt die
+  // Server-Reihenfolge (published_at DESC) innerhalb der beiden Gruppen.
+  const announcements = (announcementsRes.data ?? [])
+    .slice()
+    .sort((a, b) => {
+      const needsAckA = a.requires_acknowledgement && !receiptMap.get(a.id)?.acknowledged_at;
+      const needsAckB = b.requires_acknowledgement && !receiptMap.get(b.id)?.acknowledged_at;
+      if (needsAckA === needsAckB) return 0;
+      return needsAckA ? -1 : 1;
+    })
+    .slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
