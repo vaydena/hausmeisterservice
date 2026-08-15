@@ -65,13 +65,21 @@ const EMPTY_STATE_TEXT: Record<StatusGroup, string> = {
 export default async function PortalDefectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ info?: string; status?: string }>;
+  searchParams: Promise<{ info?: string; status?: string; q?: string }>;
 }) {
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
-  const { info, status: statusParam } = await searchParams;
+  const { info, status: statusParam, q: qParam } = await searchParams;
   const activeGroup: StatusGroup = isStatusGroup(statusParam) ? statusParam : 'alle';
   const groupFilter = STATUS_GROUPS[activeGroup];
+
+  // Sprint 72: Text-Suche nach Titel oder Code. RLS filtert bereits
+  // auf reporter_user_id, hier nur zusaetzliche ILIKE-Bedingung. Wildcards
+  // (%/_) und PostgREST-or()-Trennzeichen (,()) aus dem Query entfernen —
+  // Bewohner suchen mit normalen Woertern; Sonderzeichen sollen weder
+  // als Wildcard funktionieren noch den Filterausdruck aufbrechen.
+  const searchTerm = (qParam ?? '').trim();
+  const searchSafe = searchTerm.replace(/[%_,()]/g, ' ').trim();
 
   const supabase = await createSupabaseServerClient();
   let query = supabase
@@ -81,6 +89,9 @@ export default async function PortalDefectsPage({
     .order('created_at', { ascending: false });
   if (groupFilter) {
     query = query.in('status', groupFilter);
+  }
+  if (searchSafe.length > 0) {
+    query = query.or(`title.ilike.%${searchSafe}%,code.ilike.%${searchSafe}%`);
   }
   const { data } = await query;
 
@@ -124,10 +135,44 @@ export default async function PortalDefectsPage({
         </Link>
       </div>
 
+      <form method="get" action="/portal/defects" className="flex gap-2" role="search">
+        <input
+          type="search"
+          name="q"
+          defaultValue={searchTerm}
+          placeholder="Nach Titel oder Code suchen"
+          aria-label="Meldungen durchsuchen"
+          className="h-9 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none focus:border-[var(--color-primary)]"
+        />
+        {activeGroup !== 'alle' && (
+          <input type="hidden" name="status" value={activeGroup} />
+        )}
+        <button
+          type="submit"
+          className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+        >
+          Suchen
+        </button>
+        {searchTerm.length > 0 && (
+          <Link
+            href={activeGroup === 'alle' ? '/portal/defects' : `/portal/defects?status=${activeGroup}`}
+            className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+          >
+            Zurücksetzen
+          </Link>
+        )}
+      </form>
+
       <nav aria-label="Nach Status filtern" className="flex flex-wrap gap-2">
         {GROUP_TABS.map((tab) => {
           const isActive = tab.key === activeGroup;
-          const href = tab.key === 'alle' ? '/portal/defects' : `/portal/defects?status=${tab.key}`;
+          // Sprint 72: q bleibt beim Statuswechsel erhalten — wer nach
+          // "Wasser" sucht und dann zu "Offen" wechselt, verliert seinen
+          // Suchbegriff sonst und muss neu tippen.
+          const qParamPart = searchTerm.length > 0 ? `q=${encodeURIComponent(searchTerm)}` : '';
+          const statusParamPart = tab.key === 'alle' ? '' : `status=${tab.key}`;
+          const queryString = [statusParamPart, qParamPart].filter(Boolean).join('&');
+          const href = queryString ? `/portal/defects?${queryString}` : '/portal/defects';
           return (
             <Link
               key={tab.key}
@@ -161,13 +206,17 @@ export default async function PortalDefectsPage({
       {defects.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-10 text-center">
           <p className="text-sm text-[var(--color-muted-foreground)]">
-            {EMPTY_STATE_TEXT[activeGroup]}
+            {searchTerm.length > 0
+              ? `Keine Meldungen gefunden für „${searchTerm}“.`
+              : EMPTY_STATE_TEXT[activeGroup]}
           </p>
           <Link
             href="/portal/defects/new"
             className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-muted)]"
           >
-            {activeGroup === 'alle' ? 'Erste Meldung erstellen' : 'Neue Meldung erstellen'}
+            {activeGroup === 'alle' && searchTerm.length === 0
+              ? 'Erste Meldung erstellen'
+              : 'Neue Meldung erstellen'}
           </Link>
         </div>
       ) : (
