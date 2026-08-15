@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { CheckCircle2, Circle, XCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { WithdrawDefectButton } from './withdraw-defect-button';
@@ -51,7 +52,7 @@ export default async function PortalDefectDetailPage({
   const { data } = await supabase
     .from('defect_reports')
     .select(
-      'id, code, title, description, location_details, priority, status, category, created_at, reviewed_at, rejection_reason',
+      'id, code, title, description, location_details, priority, status, category, created_at, reviewed_at, updated_at, rejection_reason, converted_work_order_id',
     )
     .eq('id', id)
     .eq('reporter_user_id', ctx.userId)
@@ -134,12 +135,15 @@ export default async function PortalDefectDetailPage({
           </div>
         )}
 
-        {data.status === 'rejected' && data.rejection_reason && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100">
-            <p className="text-xs font-medium uppercase tracking-wider">Grund der Ablehnung</p>
-            <p className="mt-1">{data.rejection_reason}</p>
-          </div>
-        )}
+        {/*
+         * Sprint 60: Statuswechsel-Timeline rekonstruiert aus vorhandenen
+         * Timestamps (created_at, reviewed_at, updated_at). Kein separater
+         * Audit-Log noetig -- die drei Zeitmarker + Status/rejection_reason
+         * reichen fuer die aus Bewohnersicht relevanten Uebergaenge:
+         * Eingereicht -> In Pruefung -> In Bearbeitung/Abgelehnt.
+         */}
+        <StatusTimeline data={data} />
+
 
         <div>
           <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
@@ -242,6 +246,137 @@ function Row({ label, value }: { label: string; value: string }) {
         {label}
       </dt>
       <dd className="mt-0.5 text-sm">{value}</dd>
+    </div>
+  );
+}
+
+type TimelineStep = {
+  key: string;
+  label: string;
+  timestamp: string | null;
+  detail?: string | null;
+  state: 'done' | 'active' | 'rejected';
+};
+
+function buildTimeline(data: {
+  status: string;
+  created_at: string;
+  reviewed_at: string | null;
+  updated_at: string;
+  rejection_reason: string | null;
+  converted_work_order_id: string | null;
+}): TimelineStep[] {
+  const steps: TimelineStep[] = [
+    {
+      key: 'submitted',
+      label: 'Eingereicht',
+      timestamp: data.created_at,
+      state: 'done',
+    },
+  ];
+
+  if (data.reviewed_at) {
+    steps.push({
+      key: 'reviewing',
+      label: 'In Prüfung genommen',
+      timestamp: data.reviewed_at,
+      state: data.status === 'reviewing' ? 'active' : 'done',
+    });
+  } else if (data.status === 'new') {
+    steps.push({
+      key: 'waiting',
+      label: 'Wartet auf Sichtung',
+      timestamp: null,
+      state: 'active',
+    });
+  }
+
+  if (data.status === 'converted') {
+    steps.push({
+      key: 'converted',
+      label: 'In Bearbeitung als Auftrag',
+      timestamp: data.updated_at,
+      detail: data.converted_work_order_id
+        ? 'Die Hausverwaltung hat einen internen Auftrag erstellt.'
+        : null,
+      state: 'active',
+    });
+  } else if (data.status === 'rejected') {
+    steps.push({
+      key: 'rejected',
+      label: 'Abgelehnt',
+      timestamp: data.updated_at,
+      detail: data.rejection_reason,
+      state: 'rejected',
+    });
+  }
+
+  return steps;
+}
+
+function formatTimelineDate(iso: string | null): string {
+  if (!iso) return 'noch offen';
+  return new Date(iso).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function StatusTimeline({
+  data,
+}: {
+  data: {
+    status: string;
+    created_at: string;
+    reviewed_at: string | null;
+    updated_at: string;
+    rejection_reason: string | null;
+    converted_work_order_id: string | null;
+  };
+}) {
+  const steps = buildTimeline(data);
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+        Verlauf
+      </p>
+      <ol className="mt-2 flex flex-col gap-3">
+        {steps.map((step) => {
+          const Icon =
+            step.state === 'rejected' ? XCircle : step.state === 'done' ? CheckCircle2 : Circle;
+          const iconClass =
+            step.state === 'rejected'
+              ? 'text-red-600 dark:text-red-400'
+              : step.state === 'done'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-[var(--color-muted-foreground)]';
+          return (
+            <li key={step.key} className="flex gap-3">
+              <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconClass}`} aria-hidden />
+              <div className="flex-1">
+                <p className="text-sm font-medium">{step.label}</p>
+                <p className="text-xs text-[var(--color-muted-foreground)]">
+                  {formatTimelineDate(step.timestamp)}
+                </p>
+                {step.detail && (
+                  <p
+                    className={`mt-1 text-sm ${
+                      step.state === 'rejected'
+                        ? 'text-red-800 dark:text-red-200'
+                        : 'text-[var(--color-foreground)]'
+                    }`}
+                  >
+                    {step.detail}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
