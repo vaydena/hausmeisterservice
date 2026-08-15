@@ -164,7 +164,25 @@ const FAQ: FaqItem[] = [
   },
 ];
 
-export default function PortalHilfePage() {
+export default async function PortalHilfePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  // Sprint 90: Client-side FAQ-Suche. Der Nutzer tippt ein Schlagwort
+  // ("Passwort", "Mangel") und wir filtern die Fragen. Bewusst nur auf
+  // die Frage — die Antworten sind ReactNode mit Links und nicht ohne
+  // Serialisierungsaufwand durchsuchbar; die Fragen sind ohnehin so
+  // formuliert, dass ein sinnvolles Schlagwort darin vorkommt. Bei
+  // aktiver Suche werden alle Treffer aufgeklappt (Bewohner will
+  // sofort die Antwort sehen).
+  const { q: qParam } = await searchParams;
+  const searchTerm = (qParam ?? '').trim();
+  const searchLower = searchTerm.toLowerCase();
+  const visibleFaq =
+    searchLower.length > 0 ? FAQ.filter((item) => item.q.toLowerCase().includes(searchLower)) : FAQ;
+  const isSearching = searchLower.length > 0;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -174,38 +192,76 @@ export default function PortalHilfePage() {
         </p>
       </div>
 
+      <form method="get" action="/portal/hilfe" className="flex gap-2" role="search">
+        <input
+          type="search"
+          name="q"
+          defaultValue={searchTerm}
+          placeholder="In Fragen suchen"
+          aria-label="Hilfe durchsuchen"
+          className="h-9 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] px-3 text-sm outline-none focus:border-[var(--color-primary)]"
+        />
+        <button
+          type="submit"
+          className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+        >
+          Suchen
+        </button>
+        {isSearching && (
+          <Link
+            href="/portal/hilfe"
+            className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+          >
+            Zurücksetzen
+          </Link>
+        )}
+      </form>
+
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)]">
         <header className="border-b border-[var(--color-border)] px-5 py-3">
-          <h2 className="text-sm font-semibold">Häufige Fragen</h2>
+          <h2 className="text-sm font-semibold">
+            {isSearching ? `Treffer für „${searchTerm}"` : 'Häufige Fragen'}
+          </h2>
         </header>
-        <ul className="divide-y divide-[var(--color-border)]">
-          {FAQ.map((item, i) => (
-            <li key={i}>
-              <details className="group">
-                <summary className="flex cursor-pointer items-center justify-between gap-4 px-5 py-3 text-sm font-medium hover:bg-[var(--color-muted)]/50 [&::-webkit-details-marker]:hidden">
-                  <span>{item.q}</span>
-                  <svg
-                    className="size-4 shrink-0 text-[var(--color-muted-foreground)] transition group-open:rotate-180"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M4 6l4 4 4-4"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </summary>
-                <div className="px-5 pb-4 text-sm text-[var(--color-muted-foreground)]">
-                  {item.a}
-                </div>
-              </details>
-            </li>
-          ))}
-        </ul>
+        {visibleFaq.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-[var(--color-muted-foreground)]">
+            Keine Frage gefunden. Versuchen Sie ein anderes Schlagwort, oder
+            {' '}
+            <Link href="/portal/defects/new" className="text-[var(--color-primary)] underline">
+              stellen Sie Ihre Frage direkt an die Hausverwaltung
+            </Link>
+            .
+          </p>
+        ) : (
+          <ul className="divide-y divide-[var(--color-border)]">
+            {visibleFaq.map((item, i) => (
+              <li key={i}>
+                <details className="group" open={isSearching}>
+                  <summary className="flex cursor-pointer items-center justify-between gap-4 px-5 py-3 text-sm font-medium hover:bg-[var(--color-muted)]/50 [&::-webkit-details-marker]:hidden">
+                    <span>{item.q}</span>
+                    <svg
+                      className="size-4 shrink-0 text-[var(--color-muted-foreground)] transition group-open:rotate-180"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M4 6l4 4 4-4"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </summary>
+                  <div className="px-5 pb-4 text-sm text-[var(--color-muted-foreground)]">
+                    {item.a}
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5">
