@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { CheckCircle2, Circle, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, XCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { WithdrawDefectButton } from './withdraw-defect-button';
@@ -60,6 +60,13 @@ export default async function PortalDefectDetailPage({
 
   if (!data) notFound();
 
+  // Sprint 67: Konsistent mit Portal-Liste (Sprint 59) und -Dashboard
+  // (Sprint 64) — der Bewohner sieht auch im Detail auf einen Blick,
+  // dass er auf einer Notfall-Meldung ist. Grauer Text-Fluss im Header
+  // reichte nicht: bei einer echten Notfall-Meldung soll der Ernst der
+  // Sache sofort sichtbar sein.
+  const isEmergency = data.priority === 'emergency';
+
   // Sprint 55: Anhaenge zur eigenen Meldung. RLS
   // (documents_select_resident_own_defect + attachments_resident_select)
   // filtert auf reporter_user_id = auth.uid(), daher ist ein zusaetzlicher
@@ -105,14 +112,30 @@ export default async function PortalDefectDetailPage({
         </div>
       )}
 
-      <article className="flex flex-col gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-6">
-        <header className="flex flex-col gap-1">
-          <div className="flex items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
+      <article
+        className={`flex flex-col gap-4 rounded-2xl border bg-[var(--color-background)] p-6 ${
+          isEmergency
+            ? 'border-red-300 dark:border-red-800'
+            : 'border-[var(--color-border)]'
+        }`}
+      >
+        <header className="flex flex-col gap-2">
+          {isEmergency && (
+            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-950 dark:text-red-200">
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+              Notfall
+            </span>
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
             <span>{data.code ?? '—'}</span>
             <span>·</span>
             <span>{STATUS_LABEL[data.status] ?? data.status}</span>
-            <span>·</span>
-            <span>Priorität: {PRIORITY_LABEL[data.priority] ?? data.priority}</span>
+            {!isEmergency && (
+              <>
+                <span>·</span>
+                <span>Priorität: {PRIORITY_LABEL[data.priority] ?? data.priority}</span>
+              </>
+            )}
           </div>
           <h1 className="text-xl font-semibold">{data.title}</h1>
         </header>
