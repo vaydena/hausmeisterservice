@@ -37,6 +37,28 @@ function formatDateTime(iso: string | null | undefined): string {
   });
 }
 
+// Sprint 77: reine Datumsformatierung (kein Uhrzeit-Anteil) — planned_start und
+// planned_end sind Termine im Bewohner-Kontext ("Handwerker kommt am ..."),
+// da braucht es keine Minuten-Praezision.
+function formatDateOnly(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function formatPlannedRange(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string | null {
+  if (start && end) return `geplant vom ${formatDateOnly(start)} bis ${formatDateOnly(end)}`;
+  if (start) return `geplanter Beginn am ${formatDateOnly(start)}`;
+  if (end) return `geplantes Ende am ${formatDateOnly(end)}`;
+  return null;
+}
+
 // Sprint 74: Relative Zeit ergaenzen. formatRelativeGerman liefert bei
 // aelteren Timestamps (>7 Tage) ohnehin nur das Datum — dann ist der
 // Zusatz redundant und wir lassen ihn weg. So sieht der Bewohner bei
@@ -101,6 +123,23 @@ export default async function PortalDefectDetailPage({
       return { ...d, url: signed?.signedUrl ?? null };
     }),
   );
+
+  // Sprint 77: Auftrags-Details laden, wenn die Meldung bereits in Bearbeitung
+  // als interner Auftrag ist. Ohne dedizierte Portal-RLS auf work_orders
+  // (Migration 20260815152000_portal_work_orders_read_own_defect) blieb die
+  // "In Bearbeitung"-Info generisch — Bewohner sahen weder Auftrags-Code noch
+  // geplante Termine. Der Join liefert null, wenn die RLS den Zugriff
+  // verweigert (z. B. bei geloeschtem work_order) — die UI degradiert dann
+  // sauber auf den generischen Text.
+  const workOrder = data.converted_work_order_id
+    ? (
+        await supabase
+          .from('work_orders')
+          .select('id, code, status, planned_start, planned_end')
+          .eq('id', data.converted_work_order_id)
+          .maybeSingle()
+      ).data
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -179,7 +218,7 @@ export default async function PortalDefectDetailPage({
          * reichen fuer die aus Bewohnersicht relevanten Uebergaenge:
          * Eingereicht -> In Pruefung -> In Bearbeitung/Abgelehnt.
          */}
-        <StatusTimeline data={data} />
+        <StatusTimeline data={data} workOrder={workOrder} />
 
 
         <div>
@@ -302,14 +341,21 @@ type TimelineStep = {
   state: 'done' | 'active' | 'rejected';
 };
 
-function buildTimeline(data: {
-  status: string;
-  created_at: string;
-  reviewed_at: string | null;
-  updated_at: string;
-  rejection_reason: string | null;
-  converted_work_order_id: string | null;
-}): TimelineStep[] {
+function buildTimeline(
+  data: {
+    status: string;
+    created_at: string;
+    reviewed_at: string | null;
+    updated_at: string;
+    rejection_reason: string | null;
+    converted_work_order_id: string | null;
+  },
+  workOrder: {
+    code: string | null;
+    planned_start: string | null;
+    planned_end: string | null;
+  } | null,
+): TimelineStep[] {
   const steps: TimelineStep[] = [
     {
       key: 'submitted',
@@ -336,13 +382,26 @@ function buildTimeline(data: {
   }
 
   if (data.status === 'converted') {
+    // Sprint 77: Konkreter Auftrags-Code + geplanter Termin (wenn die
+    // work_orders-RLS den Zugriff freigibt). Fallback bleibt der generische
+    // Text — z. B. bei geloeschten work_orders oder wenn die Verwaltung
+    // noch kein Datum eingetragen hat.
+    const parts: string[] = [];
+    if (workOrder?.code) {
+      parts.push(`Auftrag ${workOrder.code}`);
+    } else if (data.converted_work_order_id) {
+      parts.push('Die Hausverwaltung hat einen internen Auftrag erstellt.');
+    }
+    const planned = formatPlannedRange(
+      workOrder?.planned_start,
+      workOrder?.planned_end,
+    );
+    if (planned) parts.push(planned);
     steps.push({
       key: 'converted',
       label: 'In Bearbeitung als Auftrag',
       timestamp: data.updated_at,
-      detail: data.converted_work_order_id
-        ? 'Die Hausverwaltung hat einen internen Auftrag erstellt.'
-        : null,
+      detail: parts.length > 0 ? parts.join(' · ') : null,
       state: 'active',
     });
   } else if (data.status === 'rejected') {
@@ -365,6 +424,7 @@ function formatTimelineDate(iso: string | null): string {
 
 function StatusTimeline({
   data,
+  workOrder,
 }: {
   data: {
     status: string;
@@ -374,8 +434,13 @@ function StatusTimeline({
     rejection_reason: string | null;
     converted_work_order_id: string | null;
   };
+  workOrder: {
+    code: string | null;
+    planned_start: string | null;
+    planned_end: string | null;
+  } | null;
 }) {
-  const steps = buildTimeline(data);
+  const steps = buildTimeline(data, workOrder);
   return (
     <div>
       <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
