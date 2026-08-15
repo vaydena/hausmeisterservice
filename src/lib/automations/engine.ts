@@ -1,7 +1,9 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
+import * as Sentry from '@sentry/nextjs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { parseActionConfig, parseTriggerConfig } from '@/lib/schemas/automations';
 import { sendPushToUser, isPushConfigured } from '@/lib/push/server';
 import { renderAutomationEmail } from '@/lib/email/automation-templates';
@@ -12,6 +14,12 @@ import {
 } from '@/lib/email/provider';
 import { clientEnv } from '@/lib/env';
 import { parseTenantInvoiceData } from '@/lib/schemas/tenant';
+import {
+  describeAbortedRun,
+  describeDispatchLogFailure,
+  technicalMessage,
+  type AbortPhase,
+} from './run-failures';
 import type { ActionKey, TriggerKey } from './registry';
 
 type Client = SupabaseClient<Database>;
@@ -72,14 +80,17 @@ async function evaluateInvoiceOverdue(
   tenantId: string,
 ): Promise<TriggerMatch[]> {
   const today = todayISO();
-  const { data } = await supabase
+  // Sprint 106: Werfen statt `?? []`. Ein Fehler hier hiess bisher "keine
+  // ueberfaellige Rechnung" — der Lauf wurde als sauber protokolliert und die
+  // Mahnung ist einfach nie rausgegangen.
+  const result = await supabase
     .from('invoices')
     .select('id, code, title, due_at, gross_total_cents')
     .eq('tenant_id', tenantId)
     .eq('status', 'sent')
     .not('due_at', 'is', null)
     .lt('due_at', today);
-  return (data ?? []).map((inv) => ({
+  return unwrapRows(result, 'Automation: überfällige Rechnungen').map((inv) => ({
     entity_type: 'invoice',
     entity_id: inv.id,
     dispatch_key: 'overdue',
@@ -97,7 +108,7 @@ async function evaluateInvoiceDueSoon(
 ): Promise<TriggerMatch[]> {
   const today = todayISO();
   const window = addDaysISO(today, daysBefore);
-  const { data } = await supabase
+  const result = await supabase
     .from('invoices')
     .select('id, code, title, due_at, gross_total_cents')
     .eq('tenant_id', tenantId)
@@ -105,7 +116,7 @@ async function evaluateInvoiceDueSoon(
     .not('due_at', 'is', null)
     .gte('due_at', today)
     .lte('due_at', window);
-  return (data ?? []).map((inv) => ({
+  return unwrapRows(result, 'Automation: bald fällige Rechnungen').map((inv) => ({
     entity_type: 'invoice',
     entity_id: inv.id,
     dispatch_key: `due:${inv.due_at}`,
@@ -121,7 +132,7 @@ async function evaluateDefectReportCreated(
   tenantId: string,
   ruleCreatedAt: string,
 ): Promise<TriggerMatch[]> {
-  const { data } = await supabase
+  const result = await supabase
     .from('defect_reports')
     .select('id, code, title, priority, property_id, created_at')
     .eq('tenant_id', tenantId)
@@ -132,7 +143,7 @@ async function evaluateDefectReportCreated(
     high: 'hoch',
     emergency: 'Notfall',
   };
-  return (data ?? []).map((rep) => ({
+  return unwrapRows(result, 'Automation: neue Mängelmeldungen').map((rep) => ({
     entity_type: 'defect_report',
     entity_id: rep.id,
     dispatch_key: 'created',
@@ -148,7 +159,7 @@ async function evaluateWorkOrderAssigned(
   tenantId: string,
   ruleCreatedAt: string,
 ): Promise<TriggerMatch[]> {
-  const { data } = await supabase
+  const result = await supabase
     .from('work_orders')
     .select('id, code, title, priority, assignee_id, updated_at, deadline')
     .eq('tenant_id', tenantId)
@@ -161,7 +172,7 @@ async function evaluateWorkOrderAssigned(
     high: 'hoch',
     emergency: 'Notfall',
   };
-  return (data ?? []).map((wo) => {
+  return unwrapRows(result, 'Automation: zugewiesene Aufträge').map((wo) => {
     const codeLabel = wo.code ? `${wo.code} · ` : '';
     const deadlineLine = wo.deadline
       ? ` Frist: ${formatGermanDate(wo.deadline.slice(0, 10))}.`
@@ -199,14 +210,14 @@ async function evaluateWorkOrderStatusChanged(
   tenantId: string,
   ruleCreatedAt: string,
 ): Promise<TriggerMatch[]> {
-  const { data } = await supabase
+  const result = await supabase
     .from('work_orders')
     .select('id, code, title, status, priority, assignee_id, updated_at')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .in('status', WORK_ORDER_STATUS_TRIGGERS as unknown as string[])
     .gte('updated_at', ruleCreatedAt);
-  return (data ?? []).map((wo) => {
+  return unwrapRows(result, 'Automation: Auftrags-Statuswechsel').map((wo) => {
     const codeLabel = wo.code ? `${wo.code} · ` : '';
     const statusLabel = WORK_ORDER_STATUS_LABEL[wo.status] ?? wo.status;
     return {
@@ -227,13 +238,13 @@ async function evaluateDefectReportStatusChanged(
   tenantId: string,
   ruleCreatedAt: string,
 ): Promise<TriggerMatch[]> {
-  const { data } = await supabase
+  const result = await supabase
     .from('defect_reports')
     .select('id, code, title, status, priority, updated_at')
     .eq('tenant_id', tenantId)
     .in('status', DEFECT_REPORT_STATUS_TRIGGERS as unknown as string[])
     .gte('updated_at', ruleCreatedAt);
-  return (data ?? []).map((rep) => {
+  return unwrapRows(result, 'Automation: Statuswechsel an Mängelmeldungen').map((rep) => {
     const codeLabel = rep.code ? `${rep.code} · ` : '';
     const statusLabel = DEFECT_REPORT_STATUS_LABEL[rep.status] ?? rep.status;
     return {
@@ -255,7 +266,7 @@ async function evaluateMaintenanceDueSoon(
 ): Promise<TriggerMatch[]> {
   const today = todayISO();
   const window = addDaysISO(today, daysBefore);
-  const { data } = await supabase
+  const result = await supabase
     .from('maintenance_plans')
     .select('id, title, next_due_at, property_id')
     .eq('tenant_id', tenantId)
@@ -263,7 +274,7 @@ async function evaluateMaintenanceDueSoon(
     .is('deleted_at', null)
     .gte('next_due_at', today)
     .lte('next_due_at', window);
-  return (data ?? []).map((plan) => ({
+  return unwrapRows(result, 'Automation: fällige Wartungen').map((plan) => ({
     entity_type: 'maintenance_plan',
     entity_id: plan.id,
     dispatch_key: `due:${plan.next_due_at}`,
@@ -302,6 +313,14 @@ export async function evaluateTrigger(
 
 /**
  * Filtert Matches, die bereits ausgelöst wurden.
+ *
+ * Sprint 106: Die einzige Stelle der Engine, an der ein verschluckter Fehler
+ * nicht zu einer Unterlassung, sondern zu einer AKTION führte. `existing ?? []`
+ * ergibt ein leeres seen-Set, damit gilt jeder bereits benachrichtigte Vorgang
+ * wieder als frisch — und dieselben E-Mails gehen erneut raus, in jedem
+ * Cron-Zyklus aufs Neue. Ein ausgelassener Lauf ist nachholbar, ein zu Unrecht
+ * verschickter Schwung E-Mails nicht. Deshalb wird hier geworfen und der Lauf
+ * abgebrochen, bevor irgendetwas versendet wird.
  */
 async function filterAlreadyDispatched(
   supabase: Client,
@@ -309,7 +328,7 @@ async function filterAlreadyDispatched(
   matches: TriggerMatch[],
 ): Promise<TriggerMatch[]> {
   if (matches.length === 0) return [];
-  const { data: existing } = await supabase
+  const existing = await supabase
     .from('automation_dispatches')
     .select('entity_type, entity_id, dispatch_key')
     .eq('rule_id', ruleId)
@@ -318,39 +337,53 @@ async function filterAlreadyDispatched(
       matches.map((m) => m.entity_id),
     );
   const seen = new Set(
-    (existing ?? []).map((e) => `${e.entity_type}|${e.entity_id}|${e.dispatch_key}`),
+    unwrapRows(existing, 'Automation: bereits ausgelöste Dispatches').map(
+      (e) => `${e.entity_type}|${e.entity_id}|${e.dispatch_key}`,
+    ),
   );
   return matches.filter(
     (m) => !seen.has(`${m.entity_type}|${m.entity_id}|${m.dispatch_key}`),
   );
 }
 
+/**
+ * Sprint 106: Ein Fehler in einer der drei Queries lieferte bisher eine leere
+ * Empfängerliste — ununterscheidbar von "die Rolle hat niemanden". Der Lauf
+ * zählte das anschliessend als `actionsFailed`, also als "die Benachrichtigung
+ * ist fehlgeschlagen". Tatsächlich war die Empfänger-Ermittlung gescheitert,
+ * und das ist ein anderer Defekt mit einer anderen Abhilfe.
+ */
 async function resolveUsersInRole(
   supabase: Client,
   tenantId: string,
   roleKey: string,
 ): Promise<string[]> {
-  const { data: role } = await supabase
+  const roleResult = await supabase
     .from('roles')
     .select('id')
     .eq('tenant_id', tenantId)
     .eq('key', roleKey)
     .maybeSingle();
+  const role = unwrapMaybeRow(roleResult, `Automation: Rolle "${roleKey}"`);
   if (!role) return [];
-  const { data: assignees } = await supabase
+  const assignees = await supabase
     .from('user_roles')
     .select('user_id')
     .eq('tenant_id', tenantId)
     .eq('role_id', role.id);
-  const userIds = [...new Set((assignees ?? []).map((a) => a.user_id))];
+  const userIds = [
+    ...new Set(
+      unwrapRows(assignees, 'Automation: Rollenzuweisungen').map((a) => a.user_id),
+    ),
+  ];
   if (userIds.length === 0) return [];
-  const { data: active } = await supabase
+  const active = await supabase
     .from('memberships')
     .select('user_id')
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
     .in('user_id', userIds);
-  return (active ?? []).map((a) => a.user_id);
+  return unwrapRows(active, 'Automation: aktive Mitgliedschaften').map((a) => a.user_id);
 }
 
 async function resolveRecipients(
@@ -363,37 +396,21 @@ async function resolveRecipients(
   if (actionKey === 'notify_users') {
     const rawIds = cfg.user_ids ?? [];
     if (rawIds.length === 0) return [];
-    const { data } = await supabase
+    const active = await supabase
       .from('memberships')
       .select('user_id')
       .eq('tenant_id', tenantId)
       .eq('status', 'active')
       .in('user_id', rawIds);
-    return (data ?? []).map((m) => m.user_id);
+    return unwrapRows(active, 'Automation: aktive Mitgliedschaften').map((m) => m.user_id);
   }
   if (actionKey === 'notify_role') {
     if (!cfg.role_key) return [];
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('key', cfg.role_key)
-      .maybeSingle();
-    if (!role) return [];
-    const { data: assignees } = await supabase
-      .from('user_roles')
-      .select('user_id')
-      .eq('tenant_id', tenantId)
-      .eq('role_id', role.id);
-    const userIds = [...new Set((assignees ?? []).map((a) => a.user_id))];
-    if (userIds.length === 0) return [];
-    const { data: active } = await supabase
-      .from('memberships')
-      .select('user_id')
-      .eq('tenant_id', tenantId)
-      .eq('status', 'active')
-      .in('user_id', userIds);
-    return (active ?? []).map((a) => a.user_id);
+    // Sprint 106: Hier stand bis eben eine zeichengleiche Kopie von
+    // resolveUsersInRole. Statt dieselbe Fehlerbehandlung zweimal zu
+    // schreiben (und die beiden Fassungen ab jetzt auseinanderlaufen zu
+    // lassen), ruft dieser Zweig den vorhandenen Helper auf.
+    return resolveUsersInRole(supabase, tenantId, cfg.role_key);
   }
   return [];
 }
@@ -420,6 +437,13 @@ async function dispatchNotification(
       subject: match.subject,
       message: error.message,
     });
+    // Der Lauf zaehlt das als actionsFailed und die Zahl steht ab Sprint 106
+    // in last_error. Welche Benachrichtigung an wen verloren ging, steht nur
+    // hier.
+    Sentry.captureException(
+      new Error(`Automation: Benachrichtigung konnte nicht angelegt werden: ${error.message}`),
+      { extra: { tenantId, userId, kind: match.notification_kind, entityId: match.entity_id } },
+    );
     return false;
   }
 
@@ -456,13 +480,13 @@ async function resolveEmailRecipients(
   if (kind === 'users') {
     userIds = cfg.user_ids ?? [];
     if (userIds.length === 0) return [];
-    const { data } = await supabase
+    const active = await supabase
       .from('memberships')
       .select('user_id')
       .eq('tenant_id', tenantId)
       .eq('status', 'active')
       .in('user_id', userIds);
-    userIds = (data ?? []).map((m) => m.user_id);
+    userIds = unwrapRows(active, 'Automation: aktive Mitgliedschaften').map((m) => m.user_id);
   } else if (kind === 'role') {
     if (!cfg.role_key) return [];
     userIds = await resolveUsersInRole(supabase, tenantId, cfg.role_key);
@@ -490,11 +514,16 @@ async function dispatchSendEmailAction(
     return { ok: [], failed: fresh.length };
   }
 
-  const { data: tenant } = await supabase
+  // Sprint 106: Absenderdaten. Ein verschluckter Fehler hiess hier, dass die
+  // Mail unter dem generischen Fallback-Namen und der Fallback-Adresse an die
+  // Kunden des Mandanten rausgeht — aussenwirksam und nicht ruecknehmbar.
+  // Geworfen wird noch vor dem ersten Versand, der Lauf bricht also sauber ab.
+  const tenantResult = await supabase
     .from('tenants')
     .select('name, invoice_data')
     .eq('id', rule.tenant_id)
     .maybeSingle();
+  const tenant = unwrapMaybeRow(tenantResult, 'Automation: Absenderdaten des Mandanten');
   const invoiceData = parseTenantInvoiceData(tenant?.invoice_data ?? null);
   const senderName = invoiceData.legal_name?.trim() || tenant?.name || 'Hausmeister-Service';
   const fromEnv = getDefaultFromAddress();
@@ -539,6 +568,15 @@ async function dispatchSendEmailAction(
       .single();
     if (insertLog.error || !insertLog.data) {
       console.error('[automations] sent_emails insert failed', insertLog.error);
+      // Der Zaehler landet als "Aktion(en) fehlgeschlagen: N" in last_error.
+      // Das WARUM steht nur hier — ohne Sentry sieht der Betreiber die Zahl
+      // und hat keinen Weg, sie zu erklaeren.
+      Sentry.captureException(
+        new Error(
+          `Automation: Versand-Log konnte nicht angelegt werden: ${insertLog.error?.message ?? 'kein Datensatz zurueckgeliefert'}`,
+        ),
+        { extra: { ruleId: rule.id, tenantId: rule.tenant_id, subject: rendered.subject } },
+      );
       failed += 1;
       continue;
     }
@@ -553,7 +591,13 @@ async function dispatchSendEmailAction(
         html: rendered.html,
         text: rendered.text,
       });
-      await supabase
+      // Bewusst NICHT geworfen: die Mail ist zu diesem Zeitpunkt bereits
+      // raus. Ein Abbruch wuerde die restlichen Matches ueberspringen UND
+      // die Dispatch-Eintraege der schon versendeten verlieren — also beim
+      // naechsten Lauf genau den Doppel-Versand ausloesen, den diese Engine
+      // verhindern soll. Der Eintrag im Versand-Log ist dann falsch
+      // ("queued" statt "sent"), das ist der kleinere Schaden.
+      const markSent = await supabase
         .from('sent_emails')
         .update({
           status: 'sent',
@@ -561,6 +605,14 @@ async function dispatchSendEmailAction(
           sent_at: new Date().toISOString(),
         })
         .eq('id', logId);
+      if (markSent.error) {
+        Sentry.captureException(
+          new Error(
+            `Automation: Versand-Log konnte nicht auf "sent" gesetzt werden: ${markSent.error.message}`,
+          ),
+          { extra: { ruleId: rule.id, tenantId: rule.tenant_id, logId } },
+        );
+      }
       ok.push(match);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -573,6 +625,90 @@ async function dispatchSendEmailAction(
     }
   }
   return { ok, failed };
+}
+
+/**
+ * Schreibt das Ergebnis eines Laufs in die beiden Kanäle, die die Oberfläche
+ * bereits liest: `automation_rules.last_error` (Badge "Fehler" in der Liste,
+ * rotes Panel auf der Detailseite) und `automation_runs.error` (Spalte
+ * "Fehlermeldung" in "Letzte Läufe").
+ *
+ * Sprint 106: Beide gibt es seit Sprint 174, beide standen seither ohne
+ * Ausnahme auf null — nicht weil nie etwas schiefging, sondern weil jeder
+ * Fehler verschluckt wurde, bevor er sie erreichen konnte. Diese Funktion ist
+ * ab jetzt die einzige Stelle, die sie füllt.
+ *
+ * Die Schreibvorgänge selbst dürfen den Lauf nicht kippen: wenn schon die
+ * Protokollierung scheitert, ist die Datenbank in einem Zustand, den ein
+ * weiterer geworfener Fehler nicht verbessert. Sie melden nach Sentry und
+ * geben auf.
+ */
+async function recordRun(
+  supabase: Client,
+  rule: RuleRow,
+  result: RunResult,
+): Promise<string | null> {
+  const ruleUpdate = await supabase
+    .from('automation_rules')
+    .update({ last_run_at: new Date().toISOString(), last_error: result.error })
+    .eq('id', rule.id);
+  if (ruleUpdate.error) {
+    Sentry.captureException(
+      new Error(`Automation: Regel-Status nicht aktualisierbar: ${ruleUpdate.error.message}`),
+      { extra: { ruleId: rule.id, tenantId: rule.tenant_id } },
+    );
+  }
+
+  const runInsert = await supabase
+    .from('automation_runs')
+    .insert({
+      tenant_id: rule.tenant_id,
+      rule_id: rule.id,
+      trigger_key: rule.trigger_key,
+      match_count: result.matches,
+      action_ok_count: result.actionsOk,
+      action_failed_count: result.actionsFailed,
+      error: result.error,
+    })
+    .select('id')
+    .single();
+  if (runInsert.error || !runInsert.data) {
+    // Ohne run_id werden die Dispatches unten mit run_id: null geschrieben —
+    // die Run-Detailseite zeigt den Lauf dann ohne die zugehoerigen Vorgaenge.
+    Sentry.captureException(
+      new Error(
+        `Automation: Lauf nicht protokollierbar: ${runInsert.error?.message ?? 'kein Datensatz zurueckgeliefert'}`,
+      ),
+      { extra: { ruleId: rule.id, tenantId: rule.tenant_id } },
+    );
+    return null;
+  }
+  return runInsert.data.id;
+}
+
+/**
+ * Bricht einen Lauf ab, bevor irgendetwas nach aussen gegangen ist, und
+ * hinterlässt den Grund an der Regel statt ihn zu verschlucken.
+ */
+async function abortRun(
+  supabase: Client,
+  rule: RuleRow,
+  result: RunResult,
+  phase: AbortPhase,
+  err: unknown,
+): Promise<RunResult> {
+  result.error = describeAbortedRun(phase, err);
+  Sentry.captureException(err instanceof Error ? err : new Error(technicalMessage(err)), {
+    extra: {
+      ruleId: rule.id,
+      tenantId: rule.tenant_id,
+      triggerKey: rule.trigger_key,
+      actionKey: rule.action_key,
+      phase,
+    },
+  });
+  await recordRun(supabase, rule, result);
+  return result;
 }
 
 /**
@@ -600,12 +736,19 @@ export async function runRule(supabase: Client, rule: RuleRow): Promise<RunResul
       rule.created_at,
     );
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown';
-    result.error = `evaluate failed: ${msg}`;
-    return result;
+    // Sprint 106: Bisher endete dieser Zweig mit einem blossen `return` —
+    // ohne last_error, ohne Lauf-Eintrag. Der Betreiber sah auf der Regel
+    // weiterhin den letzten erfolgreichen Lauf und hatte keinen Hinweis
+    // darauf, dass seit Tagen nichts mehr ausgewertet wird.
+    return abortRun(supabase, rule, result, 'evaluate', err);
   }
 
-  const fresh = await filterAlreadyDispatched(supabase, rule.id, matches);
+  let fresh: TriggerMatch[];
+  try {
+    fresh = await filterAlreadyDispatched(supabase, rule.id, matches);
+  } catch (err) {
+    return abortRun(supabase, rule, result, 'dispatch-filter', err);
+  }
   result.matches = fresh.length;
 
   // Erfolgreiche Matches werden während der Aktions-Phase gesammelt und erst
@@ -615,108 +758,138 @@ export async function runRule(supabase: Client, rule: RuleRow): Promise<RunResul
   const successfulMatches: TriggerMatch[] = [];
 
   if (fresh.length === 0) {
-    await supabase
-      .from('automation_rules')
-      .update({ last_run_at: new Date().toISOString(), last_error: null })
-      .eq('id', rule.id);
-    await supabase.from('automation_runs').insert({
-      tenant_id: rule.tenant_id,
-      rule_id: rule.id,
-      trigger_key: rule.trigger_key,
-      match_count: 0,
-      action_ok_count: 0,
-      action_failed_count: 0,
-    });
+    await recordRun(supabase, rule, result);
     return result;
   }
 
-  if (rule.action_key === 'send_email') {
-    const { ok, failed } = await dispatchSendEmailAction(supabase, rule, fresh);
-    result.actionsOk = ok.length;
-    result.actionsFailed = failed;
-    successfulMatches.push(...ok);
-  } else if (rule.action_key === 'notify_assignee') {
-    for (const match of fresh) {
-      const target = match.target_user_id;
-      if (!target) {
-        result.actionsFailed++;
-        continue;
+  // Alles, was in dieser Phase wirft, wirft in ihrer VORBEREITUNG —
+  // Empfängerlisten und Absenderdaten, also vor der ersten ausgehenden
+  // Nachricht. Nur deshalb darf die Abbruch-Meldung "es wurde nichts
+  // versendet" behaupten. Die beiden Stellen innerhalb der Schleifen
+  // (Membership-Check unten, sent_emails-Update in dispatchSendEmailAction)
+  // werfen aus genau diesem Grund bewusst nicht.
+  try {
+    if (rule.action_key === 'send_email') {
+      const { ok, failed } = await dispatchSendEmailAction(supabase, rule, fresh);
+      result.actionsOk = ok.length;
+      result.actionsFailed = failed;
+      successfulMatches.push(...ok);
+    } else if (rule.action_key === 'notify_assignee') {
+      for (const match of fresh) {
+        const target = match.target_user_id;
+        if (!target) {
+          result.actionsFailed++;
+          continue;
+        }
+        // Membership-Check: nur aktive Mitglieder dieses Tenants.
+        //
+        // Sprint 106: `error` wird hier explizit destrukturiert statt
+        // geworfen. Ein Abbruch mitten in der Schleife wuerde die bereits
+        // verschickten Benachrichtigungen ohne Dispatch-Eintrag
+        // zuruecklassen — und damit beim naechsten Lauf genau den
+        // Doppel-Versand ausloesen, den diese Engine verhindern soll. Der
+        // Unterschied zwischen "kein aktives Mitglied" und "Query kaputt"
+        // geht trotzdem nicht verloren: er landet in Sentry.
+        const { data: membership, error: membershipError } = await supabase
+          .from('memberships')
+          .select('user_id')
+          .eq('tenant_id', rule.tenant_id)
+          .eq('user_id', target)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (membershipError) {
+          Sentry.captureException(
+            new Error(
+              `Automation: Mitgliedschaft des Zustaendigen nicht pruefbar: ${membershipError.message}`,
+            ),
+            { extra: { ruleId: rule.id, tenantId: rule.tenant_id, targetUserId: target } },
+          );
+          result.actionsFailed++;
+          continue;
+        }
+        if (!membership) {
+          result.actionsFailed++;
+          continue;
+        }
+        const ok = await dispatchNotification(supabase, rule.tenant_id, target, match);
+        if (ok) {
+          result.actionsOk++;
+          successfulMatches.push(match);
+        } else {
+          result.actionsFailed++;
+        }
       }
-      // Membership-Check: nur aktive Mitglieder dieses Tenants.
-      const { data: membership } = await supabase
-        .from('memberships')
-        .select('user_id')
-        .eq('tenant_id', rule.tenant_id)
-        .eq('user_id', target)
-        .eq('status', 'active')
-        .maybeSingle();
-      if (!membership) {
-        result.actionsFailed++;
-        continue;
-      }
-      const ok = await dispatchNotification(supabase, rule.tenant_id, target, match);
-      if (ok) {
-        result.actionsOk++;
-        successfulMatches.push(match);
-      } else {
-        result.actionsFailed++;
-      }
-    }
-  } else {
-    const recipients = await resolveRecipients(
-      supabase,
-      rule.tenant_id,
-      rule.action_key as ActionKey,
-      rule.action_config,
-    );
+    } else {
+      const recipients = await resolveRecipients(
+        supabase,
+        rule.tenant_id,
+        rule.action_key as ActionKey,
+        rule.action_config,
+      );
 
-    for (const match of fresh) {
-      let matchOk = false;
-      for (const userId of recipients) {
-        const ok = await dispatchNotification(supabase, rule.tenant_id, userId, match);
-        if (ok) matchOk = true;
-      }
-      if (matchOk) {
-        result.actionsOk++;
-        successfulMatches.push(match);
-      } else {
-        result.actionsFailed++;
+      for (const match of fresh) {
+        let matchOk = false;
+        for (const userId of recipients) {
+          const ok = await dispatchNotification(supabase, rule.tenant_id, userId, match);
+          if (ok) matchOk = true;
+        }
+        if (matchOk) {
+          result.actionsOk++;
+          successfulMatches.push(match);
+        } else {
+          result.actionsFailed++;
+        }
       }
     }
+  } catch (err) {
+    return abortRun(supabase, rule, result, 'recipients', err);
   }
 
-  await supabase
-    .from('automation_rules')
-    .update({
-      last_run_at: new Date().toISOString(),
-      last_error: result.actionsFailed > 0 ? `Aktion(en) fehlgeschlagen: ${result.actionsFailed}` : null,
-    })
-    .eq('id', rule.id);
+  if (result.actionsFailed > 0) {
+    result.error = `Aktion(en) fehlgeschlagen: ${result.actionsFailed}`;
+  }
 
-  const runInsert = await supabase
-    .from('automation_runs')
-    .insert({
-      tenant_id: rule.tenant_id,
-      rule_id: rule.id,
-      trigger_key: rule.trigger_key,
-      match_count: result.matches,
-      action_ok_count: result.actionsOk,
-      action_failed_count: result.actionsFailed,
-    })
-    .select('id')
-    .single();
+  const runId = await recordRun(supabase, rule, result);
 
   if (successfulMatches.length > 0) {
-    await supabase.from('automation_dispatches').insert(
+    const dispatchInsert = await supabase.from('automation_dispatches').insert(
       successfulMatches.map((match) => ({
         rule_id: rule.id,
         entity_type: match.entity_type,
         entity_id: match.entity_id,
         dispatch_key: match.dispatch_key,
         tenant_id: rule.tenant_id,
-        run_id: runInsert.data?.id ?? null,
+        run_id: runId,
       })),
     );
+
+    if (dispatchInsert.error) {
+      // Der einzige Fehler der Engine, der sich nicht mehr abwenden laesst:
+      // die Aktionen sind gelaufen, aber der Eintrag, der sie als erledigt
+      // markiert, fehlt. Genau diesen Eintrag liest filterAlreadyDispatched —
+      // ohne ihn gehen dieselben Mails beim naechsten Zyklus erneut raus.
+      result.error = describeDispatchLogFailure(successfulMatches.length, dispatchInsert.error);
+      Sentry.captureException(
+        new Error(`Automation: Dispatch-Protokoll nicht schreibbar: ${dispatchInsert.error.message}`),
+        {
+          extra: {
+            ruleId: rule.id,
+            tenantId: rule.tenant_id,
+            dispatched: successfulMatches.length,
+            runId,
+          },
+        },
+      );
+      // recordRun lief oben bereits mit dem alten Text — beide Anzeigen
+      // nachziehen, damit die Warnung dort steht, wo hingeschaut wird.
+      await supabase
+        .from('automation_rules')
+        .update({ last_error: result.error })
+        .eq('id', rule.id);
+      if (runId) {
+        await supabase.from('automation_runs').update({ error: result.error }).eq('id', runId);
+      }
+    }
   }
 
   return result;
@@ -725,15 +898,43 @@ export async function runRule(supabase: Client, rule: RuleRow): Promise<RunResul
 export async function runAllEnabledRules(
   supabase: Client,
 ): Promise<{ ruleId: string; result: RunResult }[]> {
-  const { data: rules } = await supabase
+  // Sprint 106: der folgenschwerste `?? []` dieser Datei. Scheiterte diese
+  // Query, lief die Schleife ueber null Regeln — und die Cron-Route antwortete
+  // mit HTTP 200 und `total_rules: 0`. Fuer jedes Monitoring nicht von "dieser
+  // Mandant hat keine aktiven Regeln" zu unterscheiden. Das gesamte
+  // Automations-System konnte stillstehen, ohne irgendwo als Stoerung
+  // aufzutauchen. Der geworfene Fehler laeuft in den catch-Block der Route und
+  // wird dort zu einer 500 — dem einzigen Signal, das ein Cron-Dienst
+  // ueberhaupt auswertet.
+  const rulesResult = await supabase
     .from('automation_rules')
     .select('id, tenant_id, name, trigger_key, trigger_config, action_key, action_config, created_at')
     .eq('enabled', true);
+  const rules = unwrapRows(rulesResult, 'Automation: aktive Regeln');
 
   const out: { ruleId: string; result: RunResult }[] = [];
-  for (const rule of rules ?? []) {
-    const result = await runRule(supabase, rule as unknown as RuleRow);
-    out.push({ ruleId: rule.id, result });
+  for (const rule of rules) {
+    // runRule faengt seine Phasen selbst ab. Kommt trotzdem etwas
+    // Unerwartetes durch, darf es nicht die Regeln aller uebrigen Mandanten
+    // mitreissen — ein defekter Trigger bei einem Kunden ist kein Grund, die
+    // Automationen aller anderen ausfallen zu lassen.
+    try {
+      const result = await runRule(supabase, rule as unknown as RuleRow);
+      out.push({ ruleId: rule.id, result });
+    } catch (err) {
+      Sentry.captureException(err instanceof Error ? err : new Error(technicalMessage(err)), {
+        extra: { ruleId: rule.id, tenantId: rule.tenant_id, stage: 'runRule' },
+      });
+      out.push({
+        ruleId: rule.id,
+        result: {
+          matches: 0,
+          actionsOk: 0,
+          actionsFailed: 0,
+          error: `Unerwarteter Fehler: ${technicalMessage(err)}`,
+        },
+      });
+    }
   }
   return out;
 }

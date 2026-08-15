@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { automationRuleCreateSchema } from '@/lib/schemas/automations';
 import { runRule, type RuleRow } from '@/lib/automations/engine';
@@ -153,11 +154,12 @@ export async function resetAutomationRuleDispatchesAction(formData: FormData): P
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: rule } = await supabase
+  const ruleResult = await supabase
     .from('automation_rules')
     .select('id, tenant_id')
     .eq('id', id)
     .maybeSingle();
+  const rule = unwrapMaybeRow(ruleResult, 'Automation: Regel für Dispatch-Reset');
   if (!rule) throw new Error('Regel nicht gefunden.');
   if (rule.tenant_id !== ctx.tenantId) throw new Error('Fremder Mandant.');
 
@@ -197,22 +199,26 @@ export async function sendTestEmailFromRuleAction(formData: FormData): Promise<v
   if (authError || !user?.email) throw new Error('Eigene E-Mail-Adresse nicht ermittelbar.');
   const recipient = user.email.toLowerCase();
 
-  const { data: rule } = await supabase
+  const ruleResult = await supabase
     .from('automation_rules')
     .select('id, tenant_id, name, action_key')
     .eq('id', id)
     .maybeSingle();
+  const rule = unwrapMaybeRow(ruleResult, 'Automation: Regel für Testmail');
   if (!rule) throw new Error('Regel nicht gefunden.');
   if (rule.tenant_id !== ctx.tenantId) throw new Error('Fremder Mandant.');
   if (rule.action_key !== 'send_email') {
     throw new Error('Testmail nur für E-Mail-Regeln verfügbar.');
   }
 
-  const { data: tenant } = await supabase
+  // Absenderdaten — dieselbe Begruendung wie in der Engine: ein verschluckter
+  // Fehler laesst die Mail unter dem generischen Fallback-Absender rausgehen.
+  const tenantResult = await supabase
     .from('tenants')
     .select('name, invoice_data')
     .eq('id', ctx.tenantId)
     .maybeSingle();
+  const tenant = unwrapMaybeRow(tenantResult, 'Automation: Absenderdaten für Testmail');
   const invoiceData = parseTenantInvoiceData(tenant?.invoice_data ?? null);
   const senderName = invoiceData.legal_name?.trim() || tenant?.name || 'Hausmeister-Service';
   const fromEnv = getDefaultFromAddress();
@@ -304,16 +310,27 @@ export async function testRunAutomationRuleAction(formData: FormData): Promise<v
   if (!id) throw new Error('Ungültige ID.');
 
   const supabase = await createSupabaseServerClient();
-  const { data: rule } = await supabase
+  // Sprint 106: Ohne unwrapMaybeRow wurde aus einem Query-Fehler hier "Regel
+  // nicht gefunden" — eine Stoerung als Aussage ueber die Daten des Nutzers.
+  const ruleResult = await supabase
     .from('automation_rules')
     .select('id, tenant_id, name, trigger_key, trigger_config, action_key, action_config, created_at')
     .eq('id', id)
     .maybeSingle();
+  const rule = unwrapMaybeRow(ruleResult, 'Automation: Regel für Testlauf');
   if (!rule) throw new Error('Regel nicht gefunden.');
   if (rule.tenant_id !== ctx.tenantId) throw new Error('Fremder Mandant.');
 
   const service = createSupabaseServiceClient();
-  await runRule(service, rule as unknown as RuleRow);
+  const result = await runRule(service, rule as unknown as RuleRow);
+
+  // Sprint 106: Das Ergebnis wurde bisher weggeworfen. Wer auf "Testlauf"
+  // drueckt, bekam auch dann eine kommentarlos neu geladene Seite, wenn der
+  // Lauf abgebrochen ist — der Testlauf konnte also nicht einmal das Kaputte
+  // anzeigen, zu dessen Erkennung er da ist. runRule hat den Fehler zu diesem
+  // Zeitpunkt bereits an der Regel hinterlegt; das Werfen sorgt dafuer, dass
+  // der Ausloeser ihn sofort sieht statt ihn suchen zu muessen.
+  if (result.error) throw new Error(result.error);
 
   revalidatePath(`/settings/automations/${id}`);
 }

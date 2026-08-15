@@ -77,8 +77,29 @@ const EXPORT_ROUTES = [
   'src/app/api/portal/privacy/export/route.ts',
 ];
 
+/**
+ * Die Automations-Oberflaeche (Sprint 106).
+ *
+ * Die vierte Folge-Klasse und die einzige ohne Zuschauer: die Engine laeuft
+ * als Cron. Ein verschluckter Fehler wurde hier nicht zu einem Leerzustand,
+ * den jemand sieht, sondern zu einem Lauf, der sich selbst als sauber
+ * protokolliert — `match_count: 0`, `last_error: null`. Die Mahnung ging nie
+ * raus, und die Lauf-Historie bestaetigt, dass alles funktioniert hat.
+ *
+ * Zwei Stellen kippen dabei sogar in die andere Richtung: `?? []` auf der
+ * Dispatch-Abfrage laesst die Doppel-Versand-Sperre OFFEN ausfallen, und der
+ * ungeprueft geschriebene Dispatch-Log erzeugt dieselbe Folge vom anderen
+ * Ende. Das ist im ganzen Bogen 103–106 der einzige Fall, in dem ein
+ * verschluckter Fehler eine aussenwirksame, nicht ruecknehmbare Aktion
+ * ausloest statt einer Unterlassung — versendete E-Mails holt niemand zurueck.
+ */
+const AUTOMATION_FILES = [
+  'src/lib/automations/engine.ts',                    // -> stille Nicht-Ausfuehrung + Doppel-Versand
+  'src/app/(app)/settings/automations/actions.ts',    // -> "Regel nicht gefunden" bei Stoerung
+];
+
 /** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
-const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES];
+const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES, ...AUTOMATION_FILES];
 
 function walk(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -173,7 +194,7 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export + Automations: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
@@ -187,9 +208,9 @@ describe('Portal + Guards + DSGVO-Export: keine verschluckten Query-Fehler', () 
       // an denen stiller Erfolg am teuersten ist.
       expect(
         existsSync(join(process.cwd(), listed)),
-        `${listed} steht in GUARD_FILES bzw. EXPORT_ROUTES, existiert aber nicht ` +
-          `(mehr). Pfad in der Liste korrigieren — oder wenn die Datei wirklich weg ` +
-          `ist, den Eintrag mitsamt Begruendung entfernen.`,
+        `${listed} steht in GUARD_FILES, EXPORT_ROUTES bzw. AUTOMATION_FILES, ` +
+          `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
+          `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);
     });
 
