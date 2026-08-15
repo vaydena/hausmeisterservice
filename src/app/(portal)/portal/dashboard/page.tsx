@@ -74,13 +74,18 @@ export default async function PortalDashboardPage() {
       // Zusatz zaehlte die SummaryCard nur die hier angezeigten Top-5
       // (analog zum Bug, den Sprint 45 fuer Nachrichten und Sprint 47
       // fuer Ankuendigungen behoben haben).
+      // Sprint 68: Limit auf 15 statt 5 erhoeht, damit die
+       // Notfall-Priorisierung weiter unten auch aeltere Emergency-
+       // Meldungen erwischt, die sonst durch neuere Non-Emergencies aus
+       // den Top-5 gedraengt wuerden. Die SummaryCard zeigt weiterhin die
+       // exakte Gesamtzahl (count: 'exact' zaehlt vor limit).
       supabase
         .from('defect_reports')
         .select('id, code, title, status, priority, created_at', { count: 'exact' })
         .eq('reporter_user_id', ctx.userId)
         .in('status', ['new', 'reviewing'])
         .order('created_at', { ascending: false })
-        .limit(5),
+        .limit(15),
       supabase
         .from('announcement_receipts')
         .select('announcement_id, read_at, acknowledged_at')
@@ -92,7 +97,21 @@ export default async function PortalDashboardPage() {
     ]);
 
   const announcements = announcementsRes.data ?? [];
-  const defects = defectsRes.data ?? [];
+  // Sprint 68: Notfaelle zuerst, dann rest in SQL-Reihenfolge
+  // (created_at DESC). Array.prototype.sort ist in JS spec-mandated
+  // stable — die relative Reihenfolge gleicher Emergency-Bewertung
+  // bleibt also erhalten, so dass wir keine sekundaere created_at-
+  // Vergleich brauchen. priority ist ein text-Feld (kein enum),
+  // deshalb liefert eine SQL-order priority DESC die falsche
+  // alphabetische Reihenfolge — daher client-seitig.
+  const defects = (defectsRes.data ?? [])
+    .slice()
+    .sort((a, b) => {
+      const aEmergency = a.priority === 'emergency' ? 0 : 1;
+      const bEmergency = b.priority === 'emergency' ? 0 : 1;
+      return aEmergency - bEmergency;
+    })
+    .slice(0, 5);
   const defectsTotalCount = defectsRes.count ?? 0;
   const receipts = receiptsRes.data ?? [];
   const { totalCount: threadsTotalCount, unreadCount: unreadThreadsCount } = threadsSummary;
