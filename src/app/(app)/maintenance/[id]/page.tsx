@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
@@ -42,18 +43,25 @@ export default async function MaintenancePlanDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: plan } = await supabase
-    .from('maintenance_plans')
-    .select(
-      'id, code, title, description, category, property_id, building_id, unit_id, interval_days, estimated_minutes, priority, assigned_role, next_due_at, last_completed_at, active, notes, created_at, updated_at',
-    )
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle();
+  // Sprint 109: Ohne Fehlerpruefung wurde aus einer gescheiterten Query ein
+  // notFound() — die Seite behauptete, es gebe diesen Wartungsplan nicht.
+  // Bei einem Datensatz, der eine gesetzliche Pruefpflicht traegt, ist das
+  // die teuerste Verwechslung von allen.
+  const plan = unwrapMaybeRow(
+    await supabase
+      .from('maintenance_plans')
+      .select(
+        'id, code, title, description, category, property_id, building_id, unit_id, interval_days, estimated_minutes, priority, assigned_role, next_due_at, last_completed_at, active, notes, created_at, updated_at',
+      )
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    'Wartungsplan',
+  );
 
   if (!plan) notFound();
 
-  const [{ data: property }, { data: building }, { data: unit }] = await Promise.all([
+  const [propertyRes, buildingRes, unitRes] = await Promise.all([
     supabase
       .from('properties')
       .select('id, code, name')
@@ -61,11 +69,15 @@ export default async function MaintenancePlanDetailPage({
       .maybeSingle(),
     plan.building_id
       ? supabase.from('buildings').select('id, name').eq('id', plan.building_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     plan.unit_id
       ? supabase.from('units').select('id, code').eq('id', plan.unit_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
   ]);
+
+  const property = unwrapMaybeRow(propertyRes, 'Wartungsplan: Objekt');
+  const building = unwrapMaybeRow(buildingRes, 'Wartungsplan: Gebäude');
+  const unit = unwrapMaybeRow(unitRes, 'Wartungsplan: Einheit');
 
   const bucket = dueBucket(plan.next_due_at, plan.active);
   const diff = daysUntil(plan.next_due_at);

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { sanitizeOrFilterTerm } from '@/lib/utils/search';
 import { PageHeader } from '@/components/ui/page-header';
@@ -15,10 +16,20 @@ import {
   VEHICLE_TYPES,
   VEHICLE_TYPE_LABEL,
   dueLabel,
-  dueTone,
+  needsRoadDeadlines,
   type VehicleStatus,
   type VehicleType,
 } from '@/lib/schemas/vehicles';
+import {
+  DEADLINE_TONE,
+  type DeadlineStatus,
+  deadlineStatus,
+  describeDeadline,
+  describeDeadlineTally,
+  describeUnmonitored,
+  tallyWorstDeadlines,
+  worstDeadlineStatus,
+} from '@/lib/deadlines/status';
 
 export const metadata: Metadata = { title: 'Fahrzeuge' };
 
@@ -54,48 +65,80 @@ export default async function VehiclesPage({
     );
   }
 
-  const { data: vehiclesRaw } = await query;
-  let items = vehiclesRaw ?? [];
+  // Sprint 109: `const { data: vehiclesRaw }` verschluckte den Query-Fehler.
+  // Uebrig blieb "Keine Fahrzeuge" plus ein Seitenkopf ohne jede
+  // Fristen-Angabe — kein TUEV-Badge, kein Versicherungs-Badge, nichts.
+  // Genau so sieht auch ein Fuhrpark aus, bei dem alles in Ordnung ist.
+  const alle = unwrapRows(await query, 'Fahrzeuge');
 
-  // Filter „Frist ≤ 60 Tage" client-seitig (Datumsvergleich)
+  const now = new Date();
+  const fristenVon = (v: {
+    next_tuev_at: string | null;
+    next_service_at: string | null;
+    insurance_expires_at: string | null;
+  }) => [v.next_tuev_at, v.next_service_at, v.insurance_expires_at];
+
+  // Filter „Frist ≤ 60 Tage" client-seitig (Datumsvergleich). Abgelaufenes
+  // faellt weiterhin darunter — es ist die dringlichste Teilmenge.
+  let items = alle;
   if (params.due === '1') {
-    items = items.filter(
-      (v) =>
-        dueTone(v.next_tuev_at) === 'danger' ||
-        dueTone(v.next_tuev_at) === 'warning' ||
-        dueTone(v.next_service_at) === 'danger' ||
-        dueTone(v.next_service_at) === 'warning' ||
-        dueTone(v.insurance_expires_at) === 'danger' ||
-        dueTone(v.insurance_expires_at) === 'warning',
-    );
+    items = items.filter((v) => {
+      const worst = worstDeadlineStatus(fristenVon(v), now);
+      return worst === 'expired' || worst === 'critical' || worst === 'soon';
+    });
   }
 
   const driverIds = [
     ...new Set(items.map((v) => v.primary_driver_user_id).filter((x): x is string => Boolean(x))),
   ];
-  const { data: drivers } =
+  const drivers =
     driverIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', driverIds)
-      : { data: [] };
-  const driverById = new Map((drivers ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', driverIds),
+          'Fahrzeuge: Fahrernamen',
+        )
+      : [];
+  const driverById = new Map(drivers.map((u) => [u.id, u.display_name]));
 
   const canCreate = permissions.has('vehicles.create');
-  const dueCount = (vehiclesRaw ?? []).filter(
-    (v) =>
-      dueTone(v.next_tuev_at) === 'danger' ||
-      dueTone(v.next_tuev_at) === 'warning' ||
-      dueTone(v.next_service_at) === 'danger' ||
-      dueTone(v.next_service_at) === 'warning' ||
-      dueTone(v.insurance_expires_at) === 'danger' ||
-      dueTone(v.insurance_expires_at) === 'warning',
+
+  // Sprint 109: Bisher stand hier "N mit Frist in <= 60 Tagen" — eine
+  // Formulierung, die einen abgelaufenen TUEV zu einer kuenftigen Frist
+  // macht. Am 15.08.2026 betraf das DÜ-HM 200, dessen HU seit dem 30.07.
+  // abgelaufen ist: nach §29 StVZO darf das Fahrzeug in diesem Zustand
+  // nicht bewegt werden. Abgelaufenes steht jetzt getrennt und vorn.
+  const fristenNote = describeDeadlineTally(tallyWorstDeadlines(alle.map(fristenVon), now));
+
+  // Fahrzeuge ganz ohne hinterlegte Frist tauchen in keiner der obigen
+  // Zahlen auf — ohne Datum kein Zustand, kein Badge, kein Zaehler. Nur
+  // strassengebundene Arten pruefen, damit die Motorsaege ohne TUEV-Datum
+  // nicht jeden Tag eine Warnung ausloest.
+  const strassenfahrzeuge = alle.filter((v) => needsRoadDeadlines(v.vehicle_type));
+  const ohneTuev = strassenfahrzeuge.filter((v) => v.next_tuev_at === null).length;
+  const ohneVersicherung = strassenfahrzeuge.filter(
+    (v) => v.insurance_expires_at === null,
   ).length;
+  // Bei einer abgelaufenen Frist steht der Zustand im Badge, nicht nur die
+  // Farbe: "TÜV 30.07.2026" in Rot verlangt vom Leser, das Datum mit heute
+  // zu vergleichen. "TÜV abgelaufen seit 16 Tagen" nicht.
+  const fristText = (status: DeadlineStatus, date: string | null) =>
+    status === 'expired' ? describeDeadline(date, now) : dueLabel(date);
+
+  const unmonitoredNotes = [
+    describeUnmonitored(ohneTuev, { one: 'Fahrzeug', many: 'Fahrzeuge' }, 'TÜV-Frist'),
+    describeUnmonitored(
+      ohneVersicherung,
+      { one: 'Fahrzeug', many: 'Fahrzeuge' },
+      'Versicherungs-Frist',
+    ),
+  ].filter((v): v is string => v !== null);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <PageHeader
         title="Fahrzeuge"
         description={`${items.length} Fahrzeug${items.length === 1 ? '' : 'e'}${
-          dueCount > 0 ? ` · ${dueCount} mit Frist in ≤ 60 Tagen` : ''
+          fristenNote ? ` · ${fristenNote}` : ''
         }`}
         action={
           canCreate ? <LinkButton href="/vehicles/new">Neues Fahrzeug</LinkButton> : undefined
@@ -108,6 +151,20 @@ export default async function VehiclesPage({
         currentDue={params.due === '1'}
         currentQ={params.q}
       />
+
+      {unmonitoredNotes.length > 0 && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          role="status"
+        >
+          <p className="font-medium">Fristen ohne Termin</p>
+          <ul className="mt-1 flex flex-col gap-1 text-[var(--color-muted-foreground)]">
+            {unmonitoredNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {items.length === 0 ? (
         <EmptyState
@@ -128,9 +185,9 @@ export default async function VehiclesPage({
               const driver = v.primary_driver_user_id
                 ? driverById.get(v.primary_driver_user_id)
                 : null;
-              const tuevTone = dueTone(v.next_tuev_at);
-              const serviceTone = dueTone(v.next_service_at);
-              const insTone = dueTone(v.insurance_expires_at);
+              const tuevStatus = deadlineStatus(v.next_tuev_at, now);
+              const serviceStatus = deadlineStatus(v.next_service_at, now);
+              const insStatus = deadlineStatus(v.insurance_expires_at, now);
               return (
                 <li key={v.id}>
                   <Link
@@ -156,19 +213,19 @@ export default async function VehiclesPage({
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      {tuevTone && (
-                        <Badge tone={tuevTone}>
-                          TÜV {dueLabel(v.next_tuev_at)}
+                      {tuevStatus !== 'none' && (
+                        <Badge tone={DEADLINE_TONE[tuevStatus]}>
+                          TÜV {fristText(tuevStatus, v.next_tuev_at)}
                         </Badge>
                       )}
-                      {serviceTone && (
-                        <Badge tone={serviceTone}>
-                          Service {dueLabel(v.next_service_at)}
+                      {serviceStatus !== 'none' && (
+                        <Badge tone={DEADLINE_TONE[serviceStatus]}>
+                          Service {fristText(serviceStatus, v.next_service_at)}
                         </Badge>
                       )}
-                      {insTone && (
-                        <Badge tone={insTone}>
-                          Vers. {dueLabel(v.insurance_expires_at)}
+                      {insStatus !== 'none' && (
+                        <Badge tone={DEADLINE_TONE[insStatus]}>
+                          Vers. {fristText(insStatus, v.insurance_expires_at)}
                         </Badge>
                       )}
                       <Badge tone={STATUS_TONE[v.status as VehicleStatus] ?? 'neutral'}>

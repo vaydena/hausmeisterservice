@@ -167,6 +167,45 @@ const TIME_TRACKING_FILES = [
   'src/app/(app)/time-corrections/[id]/page.tsx',        // -> Freigabe ohne sichtbaren Ist-Stand
 ];
 
+/**
+ * Wartung und Fuhrpark (Sprint 109).
+ *
+ * Die siebte Folge-Klasse und die einzige in diesem Bogen, die sich
+ * nachtraeglich nicht mehr reparieren laesst. Eine fehlende Zeiterfassung
+ * kann man nachtragen, eine falsche Rechnung stornieren — ein verstrichener
+ * Prueftermin ist vorbei.
+ *
+ * Beide Listen sind die einzige Stelle, an der eine Frist ueberhaupt
+ * auffaellt, und beide meldeten bei einer gescheiterten Query eine
+ * Entwarnung:
+ *
+ *   - /maintenance: alle Zaehler auf 0, der Filter "Ueberfaellig" zeigt
+ *     "Keine ueberfaelligen Wartungen". Am 15.08.2026 waeren das drei
+ *     falsche Entwarnungen gewesen — Rauchmelder (DIN 14676), Aufzug
+ *     (BetrSichV) und Gruenpflege. Die Betreiberpflicht liegt beim
+ *     Hausmeisterservice, nicht bei der Software.
+ *   - /vehicles: "Keine Fahrzeuge", kein TUEV- und kein
+ *     Versicherungs-Badge. Im echten Bestand steht ein LKW, dessen HU seit
+ *     dem 30.07.2026 abgelaufen ist (§29 StVZO).
+ *
+ * Dazu in vehicles/actions.ts eine Schutzregel, die sich durch den
+ * verschluckten Fehler umdreht: der Km-Stand soll nur steigen, aber bei
+ * einem gescheiterten Lesevorgang wurde der Vergleichswert 0 — und jeder
+ * eingetragene Wert galt als groesser.
+ */
+const DEADLINE_FILES = [
+  'src/app/(app)/maintenance/page.tsx',           // -> "Keine ueberfaelligen Wartungen"
+  'src/app/(app)/maintenance/[id]/page.tsx',      // -> Pruefplan "existiert nicht"
+  'src/app/(app)/maintenance/[id]/edit/page.tsx',
+  'src/app/(app)/maintenance/new/page.tsx',
+  'src/app/(app)/maintenance/actions.ts',
+  'src/app/(app)/vehicles/page.tsx',              // -> Fuhrpark ohne Fristen-Badges
+  'src/app/(app)/vehicles/[id]/page.tsx',         // -> Historie sieht aus wie "nie gewartet"
+  'src/app/(app)/vehicles/[id]/edit/page.tsx',
+  'src/app/(app)/vehicles/new/page.tsx',
+  'src/app/(app)/vehicles/actions.ts',            // -> Km-Stand wird zurueckgedreht
+];
+
 /** Alles ausserhalb der Portal-Verzeichnisse, das trotzdem abgedeckt ist. */
 const LISTED_FILES = [
   ...GUARD_FILES,
@@ -174,6 +213,7 @@ const LISTED_FILES = [
   ...AUTOMATION_FILES,
   ...BILLING_FILES,
   ...TIME_TRACKING_FILES,
+  ...DEADLINE_FILES,
 ];
 
 function walk(dir: string): string[] {
@@ -269,7 +309,7 @@ const FIX_HINT =
   'geworfen werden soll (z. B. in einem Login-Formular, wo eine lesbare Meldung besser ist ' +
   'als eine Fehlerseite), destrukturiere `error` explizit und behandle ihn sichtbar.';
 
-describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung: keine verschluckten Query-Fehler', () => {
+describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung + Fristen: keine verschluckten Query-Fehler', () => {
   describe('sanity: Scanner findet ueberhaupt Dateien', () => {
     it('erfasst die Portal-Verzeichnisse', () => {
       expect(SCANNED_FILES.length).toBeGreaterThan(20);
@@ -283,8 +323,8 @@ describe('Portal + Guards + DSGVO-Export + Automations + Billing + Zeiterfassung
       // an denen stiller Erfolg am teuersten ist.
       expect(
         existsSync(join(process.cwd(), listed)),
-        `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES, BILLING_FILES ` +
-          `bzw. TIME_TRACKING_FILES, ` +
+        `${listed} steht in GUARD_FILES, EXPORT_ROUTES, AUTOMATION_FILES, BILLING_FILES, ` +
+          `TIME_TRACKING_FILES bzw. DEADLINE_FILES, ` +
           `existiert aber nicht (mehr). Pfad in der Liste korrigieren — oder wenn ` +
           `die Datei wirklich weg ist, den Eintrag mitsamt Begruendung entfernen.`,
       ).toBe(true);

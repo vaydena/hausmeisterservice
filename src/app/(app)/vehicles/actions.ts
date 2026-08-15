@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import {
   eventInputSchema,
   vehicleInputSchema,
@@ -200,11 +201,19 @@ export async function recordVehicleEventAction(formData: FormData): Promise<void
   }
 
   if (parsed.data.mileage_km !== null) {
-    const { data: current } = await supabase
-      .from('vehicles')
-      .select('mileage_km')
-      .eq('id', parsed.data.vehicle_id)
-      .maybeSingle();
+    // Sprint 109: Der Vergleich unten ist eine Schutzregel — der Km-Stand
+    // soll nur nach oben laufen. Ein verschluckter Query-Fehler drehte sie
+    // um: current wurde null, currentKm damit 0, und JEDER eingetragene
+    // Wert galt als groesser. Der Km-Stand wurde also gerade dann
+    // ueberschrieben, wenn der alte nicht gelesen werden konnte.
+    const current = unwrapMaybeRow(
+      await supabase
+        .from('vehicles')
+        .select('mileage_km')
+        .eq('id', parsed.data.vehicle_id)
+        .maybeSingle(),
+      'Fahrzeug-Ereignis: bisheriger Km-Stand',
+    );
     const currentKm = current?.mileage_km ?? 0;
     if (parsed.data.mileage_km > currentKm) {
       updates.mileage_km = parsed.data.mileage_km;

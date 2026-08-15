@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
@@ -15,12 +16,12 @@ import {
   STATUS_TONE,
   VEHICLE_TYPE_LABEL,
   dueLabel,
-  dueTone,
   type EventKind,
   type FuelType,
   type VehicleStatus,
   type VehicleType,
 } from '@/lib/schemas/vehicles';
+import { DEADLINE_TONE, deadlineStatus, describeDeadline } from '@/lib/deadlines/status';
 import { EventForm } from '../event-form';
 import { setVehicleStatusAction, softDeleteVehicleAction } from '../actions';
 
@@ -48,24 +49,29 @@ export default async function VehicleDetailPage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: vehicle } = await supabase
-    .from('vehicles')
-    .select(
-      'id, code, license_plate, make, model, vehicle_type, fuel_type, year, vin, status, mileage_km, primary_driver_user_id, next_tuev_at, next_service_at, next_service_due_km, insurance_expires_at, storage_location, notes, deleted_at, created_at, updated_at',
-    )
-    .eq('id', id)
-    .maybeSingle();
+  // Sprint 109: Ohne Fehlerpruefung wurde aus einer gescheiterten Query ein
+  // notFound() — das Fahrzeug samt seiner HU-Frist "existiert nicht".
+  const vehicle = unwrapMaybeRow(
+    await supabase
+      .from('vehicles')
+      .select(
+        'id, code, license_plate, make, model, vehicle_type, fuel_type, year, vin, status, mileage_km, primary_driver_user_id, next_tuev_at, next_service_at, next_service_due_km, insurance_expires_at, storage_location, notes, deleted_at, created_at, updated_at',
+      )
+      .eq('id', id)
+      .maybeSingle(),
+    'Fahrzeug',
+  );
 
   if (!vehicle) notFound();
 
-  const [{ data: driver }, { data: eventsRaw }] = await Promise.all([
+  const [driverRes, eventsRes] = await Promise.all([
     vehicle.primary_driver_user_id
       ? supabase
           .from('users')
           .select('id, display_name')
           .eq('id', vehicle.primary_driver_user_id)
           .maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     supabase
       .from('vehicle_events')
       .select(
@@ -76,7 +82,12 @@ export default async function VehicleDetailPage({
       .limit(200),
   ]);
 
-  const events: EventRow[] = (eventsRaw ?? []).map((e) => ({
+  const driver = unwrapMaybeRow(driverRes, 'Fahrzeug: Fahrer');
+  // Die Historie ist der Nachweis, dass eine Pruefung stattgefunden hat.
+  // Als leere Liste sah eine Stoerung aus wie "noch nie gewartet" — und
+  // genau dieser Block entscheidet weiter unten auch darueber, ob das
+  // Fahrzeug geloescht werden darf.
+  const events: EventRow[] = unwrapRows(eventsRes, 'Fahrzeug: Historie').map((e) => ({
     ...e,
     cost_eur: e.cost_eur !== null ? Number(e.cost_eur) : null,
   }));
@@ -84,18 +95,22 @@ export default async function VehicleDetailPage({
   const creatorIds = [
     ...new Set(events.map((e) => e.created_by).filter((v): v is string => Boolean(v))),
   ];
-  const { data: creators } =
+  const creators =
     creatorIds.length > 0
-      ? await supabase.from('users').select('id, display_name').in('id', creatorIds)
-      : { data: [] };
-  const creatorById = new Map((creators ?? []).map((u) => [u.id, u.display_name]));
+      ? unwrapRows(
+          await supabase.from('users').select('id, display_name').in('id', creatorIds),
+          'Fahrzeug: Namen der Erfasser',
+        )
+      : [];
+  const creatorById = new Map(creators.map((u) => [u.id, u.display_name]));
 
   const canEdit = permissions.has('vehicles.edit');
   const isRetired = vehicle.status === 'retired';
 
-  const tuevTone = dueTone(vehicle.next_tuev_at);
-  const serviceTone = dueTone(vehicle.next_service_at);
-  const insTone = dueTone(vehicle.insurance_expires_at);
+  const now = new Date();
+  const tuevStatus = deadlineStatus(vehicle.next_tuev_at, now);
+  const serviceStatus = deadlineStatus(vehicle.next_service_at, now);
+  const insStatus = deadlineStatus(vehicle.insurance_expires_at, now);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -137,20 +152,18 @@ export default async function VehicleDetailPage({
                 <div className="flex flex-col gap-1">
                   <span
                     className={`text-2xl font-semibold ${
-                      tuevTone === 'danger' ? 'text-[var(--color-destructive)]' : ''
+                      tuevStatus === 'expired' || tuevStatus === 'critical'
+                        ? 'text-[var(--color-destructive)]'
+                        : ''
                     }`}
                   >
                     {dueLabel(vehicle.next_tuev_at)}
                   </span>
-                  {tuevTone && (
-                    <Badge tone={tuevTone}>
-                      {tuevTone === 'danger'
-                        ? 'Fällig / abgelaufen'
-                        : tuevTone === 'warning'
-                        ? 'In ≤ 60 Tagen'
-                        : 'Aktuell'}
-                    </Badge>
-                  )}
+                  {/* Sprint 109: stand hier als "Fällig / abgelaufen" — eine
+                      Formulierung, die offenlässt, welches von beidem gilt. */}
+                  <Badge tone={DEADLINE_TONE[tuevStatus]}>
+                    {describeDeadline(vehicle.next_tuev_at, now)}
+                  </Badge>
                 </div>
               </CardBody>
             </Card>
@@ -163,7 +176,9 @@ export default async function VehicleDetailPage({
                 <div className="flex flex-col gap-1">
                   <span
                     className={`text-2xl font-semibold ${
-                      serviceTone === 'danger' ? 'text-[var(--color-destructive)]' : ''
+                      serviceStatus === 'expired' || serviceStatus === 'critical'
+                        ? 'text-[var(--color-destructive)]'
+                        : ''
                     }`}
                   >
                     {dueLabel(vehicle.next_service_at)}
@@ -173,15 +188,9 @@ export default async function VehicleDetailPage({
                       oder ab {vehicle.next_service_due_km.toLocaleString('de-DE')} km
                     </span>
                   )}
-                  {serviceTone && (
-                    <Badge tone={serviceTone}>
-                      {serviceTone === 'danger'
-                        ? 'Fällig'
-                        : serviceTone === 'warning'
-                        ? 'In ≤ 60 Tagen'
-                        : 'Aktuell'}
-                    </Badge>
-                  )}
+                  <Badge tone={DEADLINE_TONE[serviceStatus]}>
+                    {describeDeadline(vehicle.next_service_at, now)}
+                  </Badge>
                 </div>
               </CardBody>
             </Card>
@@ -194,20 +203,16 @@ export default async function VehicleDetailPage({
                 <div className="flex flex-col gap-1">
                   <span
                     className={`text-2xl font-semibold ${
-                      insTone === 'danger' ? 'text-[var(--color-destructive)]' : ''
+                      insStatus === 'expired' || insStatus === 'critical'
+                        ? 'text-[var(--color-destructive)]'
+                        : ''
                     }`}
                   >
                     {dueLabel(vehicle.insurance_expires_at)}
                   </span>
-                  {insTone && (
-                    <Badge tone={insTone}>
-                      {insTone === 'danger'
-                        ? 'Fällig / abgelaufen'
-                        : insTone === 'warning'
-                        ? 'In ≤ 60 Tagen'
-                        : 'Aktuell'}
-                    </Badge>
-                  )}
+                  <Badge tone={DEADLINE_TONE[insStatus]}>
+                    {describeDeadline(vehicle.insurance_expires_at, now)}
+                  </Badge>
                 </div>
               </CardBody>
             </Card>

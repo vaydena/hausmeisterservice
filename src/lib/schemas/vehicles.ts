@@ -64,6 +64,28 @@ export const VEHICLE_TYPES = [
 ] as const;
 export type VehicleType = (typeof VEHICLE_TYPES)[number];
 
+/**
+ * Sprint 109: Fahrzeugarten, die auf oeffentlichen Strassen bewegt werden
+ * und deshalb HU (§29 StVZO) und eine laufende Haftpflicht brauchen —
+ * Anhaenger eingeschlossen, die haben eine eigene HU.
+ *
+ * Baumaschinen und "Sonstiges" stehen bewusst nicht drin: eine Motorsaege
+ * ohne TUEV-Datum ist gepflegt, nicht unueberwacht. Ohne diese
+ * Unterscheidung wuerde die Warnung fuer fehlende Fristen bei jedem
+ * Geraet anschlagen und damit binnen einer Woche ignoriert.
+ */
+export const ROAD_VEHICLE_TYPES: ReadonlySet<string> = new Set<VehicleType>([
+  'car',
+  'van',
+  'truck',
+  'pickup',
+  'trailer',
+]);
+
+export function needsRoadDeadlines(vehicleType: string): boolean {
+  return ROAD_VEHICLE_TYPES.has(vehicleType);
+}
+
 export const FUEL_TYPES = ['petrol', 'diesel', 'electric', 'hybrid', 'lpg', 'other'] as const;
 export type FuelType = (typeof FUEL_TYPES)[number];
 
@@ -183,23 +205,14 @@ export const EVENT_KIND_TONE: Record<EventKind, 'success' | 'muted' | 'warning' 
 };
 
 /**
- * Ampel-Farbe für Fristen:
- *   danger  → bereits abgelaufen oder in ≤ 14 Tagen
- *   warning → in ≤ 60 Tagen
- *   muted   → mehr als 60 Tage entfernt
- *   null    → kein Datum gesetzt
+ * Sprint 109: `dueTone()` stand hier und lieferte drei Stufen — danger fuer
+ * "abgelaufen ODER in <= 14 Tagen", warning fuer "<= 60 Tage", muted sonst.
+ * Genau diese Zusammenlegung war das Problem: ein abgelaufener TUEV war von
+ * einem in zehn Tagen faelligen nicht zu unterscheiden. Ersetzt durch
+ * deadlineStatus() / DEADLINE_TONE in lib/deadlines/status.ts, das
+ * 'expired' als eigenen Zustand kennt und in Kalendertagen statt in
+ * 24-Stunden-Bloecken rechnet.
  */
-export function dueTone(dueDate: string | null | undefined): 'danger' | 'warning' | 'muted' | null {
-  if (!dueDate) return null;
-  const now = Date.now();
-  const due = new Date(dueDate).getTime();
-  if (Number.isNaN(due)) return null;
-  const daysLeft = Math.floor((due - now) / (24 * 60 * 60 * 1000));
-  if (daysLeft <= 14) return 'danger';
-  if (daysLeft <= 60) return 'warning';
-  return 'muted';
-}
-
 export function dueLabel(dueDate: string | null | undefined): string {
   if (!dueDate) return '—';
   const d = new Date(dueDate);

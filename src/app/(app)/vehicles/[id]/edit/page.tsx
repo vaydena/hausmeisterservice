@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { VehicleForm } from '../../vehicle-form';
@@ -20,7 +21,11 @@ export default async function EditVehiclePage({
   if (!permissions.has('vehicles.edit')) notFound();
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: vehicle }, { data: users }] = await Promise.all([
+  // Sprint 109: Dieses Formular traegt die Fristen-Felder. Ohne
+  // Fehlerpruefung wurde aus einer Stoerung ein notFound() — und wer hier
+  // gerade ein neues TUEV-Datum eintragen wollte, bekam die Auskunft, das
+  // Fahrzeug gebe es nicht.
+  const [vehicleRes, usersRes] = await Promise.all([
     supabase
       .from('vehicles')
       .select(
@@ -30,6 +35,9 @@ export default async function EditVehiclePage({
       .maybeSingle(),
     supabase.from('users').select('id, display_name').order('display_name'),
   ]);
+
+  const vehicle = unwrapMaybeRow(vehicleRes, 'Fahrzeug zur Bearbeitung');
+  const users = unwrapRows(usersRes, 'Fahrzeug: Fahrerauswahl');
 
   if (!vehicle) notFound();
 
@@ -46,7 +54,7 @@ export default async function EditVehiclePage({
         action={wrapped}
         cancelHref={`/vehicles/${id}`}
         submitLabel="Änderungen speichern"
-        users={users ?? []}
+        users={users}
         initial={vehicle}
       />
     </div>

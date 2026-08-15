@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import {
   intervalLabel,
   daysUntil,
 } from '@/lib/schemas/maintenance';
+import { describeOverdue, summarizeOverdue } from '@/lib/deadlines/status';
 
 export const metadata: Metadata = { title: 'Wartungen' };
 
@@ -31,15 +33,24 @@ export default async function MaintenancePage({
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
 
-  const { data: plans } = await supabase
-    .from('maintenance_plans')
-    .select(
-      'id, code, title, category, property_id, interval_days, next_due_at, last_completed_at, priority, active',
-    )
-    .is('deleted_at', null)
-    .order('next_due_at');
-
-  const items = plans ?? [];
+  // Sprint 109: Diese Liste ist die einzige Stelle, an der ueberfaellige
+  // Prueffristen auffallen. `const { data: plans }` machte aus einer
+  // gescheiterten Query eine leere Liste — alle Zaehler auf 0, und der
+  // Filter "Ueberfaellig" meldete "Keine ueberfaelligen Wartungen". Am
+  // 15.08.2026 waeren das drei falsche Entwarnungen gewesen, darunter
+  // Rauchmelder- und Aufzugspruefung. Anders als eine fehlende
+  // Zeiterfassung laesst sich ein verstrichener Prueftermin nicht
+  // nachtragen.
+  const items = unwrapRows(
+    await supabase
+      .from('maintenance_plans')
+      .select(
+        'id, code, title, category, property_id, interval_days, next_due_at, last_completed_at, priority, active',
+      )
+      .is('deleted_at', null)
+      .order('next_due_at'),
+    'Wartungsplaene',
+  );
   const filtered = items.filter((p) => {
     const bucket = dueBucket(p.next_due_at, p.active);
     if (filter === 'all') return true;
@@ -61,13 +72,28 @@ export default async function MaintenancePage({
   };
 
   const propertyIds = [...new Set(items.map((p) => p.property_id))];
-  const { data: properties } =
+  const properties =
     propertyIds.length > 0
-      ? await supabase.from('properties').select('id, code, name').in('id', propertyIds)
-      : { data: [] };
-  const propertyById = new Map((properties ?? []).map((p) => [p.id, p]));
+      ? unwrapRows(
+          await supabase.from('properties').select('id, code, name').in('id', propertyIds),
+          'Wartungsplaene: Objektnamen',
+        )
+      : [];
+  const propertyById = new Map(properties.map((p) => [p.id, p]));
 
   const canCreate = permissions.has('maintenance.create');
+
+  // Sprint 109: Ueberfaelliges stand bisher nur hinter einem Filter-Tab, den
+  // man anklicken muss. Wer die Seite mit dem Standardfilter oeffnet, sieht
+  // die drei ueberfaelligen Plaene zwischen den zwoelf aktuellen und liest
+  // die Zahl im Tab nicht. Der Hinweis nennt den aeltesten beim Namen,
+  // damit klar ist, was liegen geblieben ist.
+  const overdueNote = describeOverdue(
+    summarizeOverdue(
+      items.filter((p) => p.active).map((p) => ({ dueAt: p.next_due_at, label: p.title })),
+      new Date(),
+    ),
+  );
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -80,6 +106,16 @@ export default async function MaintenancePage({
       />
 
       <FilterTabs current={filter} counts={counts} />
+
+      {overdueNote && (
+        <div
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm"
+          role="status"
+        >
+          <p className="font-medium">Überfällige Prüfungen</p>
+          <p className="mt-1 text-[var(--color-muted-foreground)]">{overdueNote}</p>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState
