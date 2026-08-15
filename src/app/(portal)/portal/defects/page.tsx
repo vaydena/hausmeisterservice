@@ -30,21 +30,59 @@ const PRIORITY_LABEL: Record<string, string> = {
   emergency: 'Notfall',
 };
 
+// Sprint 63: Bewohner-orientierte Statusgruppen. 'offen' fasst
+// unbeantwortete Meldungen zusammen (aus Bewohnersicht "wartet auf
+// Reaktion"), 'in_bearbeitung' entspricht status='converted' (Auftrag
+// wurde erstellt), 'abgelehnt' ist rejected. 'alle' zeigt jede eigene
+// Meldung unabhaengig vom Status.
+const STATUS_GROUPS = {
+  alle: null,
+  offen: ['new', 'reviewing'],
+  in_bearbeitung: ['converted'],
+  abgelehnt: ['rejected'],
+} satisfies Record<string, string[] | null>;
+
+type StatusGroup = keyof typeof STATUS_GROUPS;
+
+const GROUP_TABS: { key: StatusGroup; label: string }[] = [
+  { key: 'alle', label: 'Alle' },
+  { key: 'offen', label: 'Offen' },
+  { key: 'in_bearbeitung', label: 'In Bearbeitung' },
+  { key: 'abgelehnt', label: 'Abgelehnt' },
+];
+
+function isStatusGroup(v: string | undefined): v is StatusGroup {
+  return v === 'alle' || v === 'offen' || v === 'in_bearbeitung' || v === 'abgelehnt';
+}
+
+const EMPTY_STATE_TEXT: Record<StatusGroup, string> = {
+  alle: 'Sie haben bisher keine Mängel gemeldet.',
+  offen: 'Aktuell warten keine Meldungen auf eine Reaktion der Hausverwaltung.',
+  in_bearbeitung: 'Keine Meldungen in Bearbeitung.',
+  abgelehnt: 'Keine abgelehnten Meldungen.',
+};
+
 export default async function PortalDefectsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ info?: string }>;
+  searchParams: Promise<{ info?: string; status?: string }>;
 }) {
   const ctx = await getResidentContext();
   if (!ctx) redirect('/portal/login');
-  const { info } = await searchParams;
+  const { info, status: statusParam } = await searchParams;
+  const activeGroup: StatusGroup = isStatusGroup(statusParam) ? statusParam : 'alle';
+  const groupFilter = STATUS_GROUPS[activeGroup];
 
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
+  let query = supabase
     .from('defect_reports')
     .select('id, code, title, priority, status, category, created_at')
     .eq('reporter_user_id', ctx.userId)
     .order('created_at', { ascending: false });
+  if (groupFilter) {
+    query = query.in('status', groupFilter);
+  }
+  const { data } = await query;
 
   const defects = data ?? [];
 
@@ -66,6 +104,27 @@ export default async function PortalDefectsPage({
         </Link>
       </div>
 
+      <nav aria-label="Nach Status filtern" className="flex flex-wrap gap-2">
+        {GROUP_TABS.map((tab) => {
+          const isActive = tab.key === activeGroup;
+          const href = tab.key === 'alle' ? '/portal/defects' : `/portal/defects?status=${tab.key}`;
+          return (
+            <Link
+              key={tab.key}
+              href={href}
+              aria-current={isActive ? 'page' : undefined}
+              className={`inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition ${
+                isActive
+                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-primary-foreground)]'
+                  : 'border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-foreground)] hover:bg-[var(--color-muted)]'
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
+      </nav>
+
       {info === 'withdrawn' && (
         <div
           role="status"
@@ -82,13 +141,13 @@ export default async function PortalDefectsPage({
       {defects.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-background)] p-10 text-center">
           <p className="text-sm text-[var(--color-muted-foreground)]">
-            Sie haben bisher keine Mängel gemeldet.
+            {EMPTY_STATE_TEXT[activeGroup]}
           </p>
           <Link
             href="/portal/defects/new"
             className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-4 text-sm font-medium hover:bg-[var(--color-muted)]"
           >
-            Erste Meldung erstellen
+            {activeGroup === 'alle' ? 'Erste Meldung erstellen' : 'Neue Meldung erstellen'}
           </Link>
         </div>
       ) : (
