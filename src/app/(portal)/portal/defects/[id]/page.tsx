@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, Circle, XCircle } from 'lucide-react';
 import { getResidentContext } from '@/lib/portal/current';
+import { formatRelativeGerman } from '@/lib/schemas/notifications';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { WithdrawDefectButton } from './withdraw-defect-button';
 import { PortalDefectUploadForm } from './portal-defect-upload-form';
@@ -34,6 +35,19 @@ function formatDateTime(iso: string | null | undefined): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+// Sprint 74: Relative Zeit ergaenzen. formatRelativeGerman liefert bei
+// aelteren Timestamps (>7 Tage) ohnehin nur das Datum — dann ist der
+// Zusatz redundant und wir lassen ihn weg. So sieht der Bewohner bei
+// juengeren Aktivitaeten sofort "vor 3 Tagen" ohne selbst rechnen zu
+// muessen; bei alten Meldungen bleibt der Text schlank.
+function formatDateTimeWithRelative(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const absolute = formatDateTime(iso);
+  const relative = formatRelativeGerman(iso);
+  const isRelative = relative === 'gerade eben' || relative.startsWith('vor ');
+  return isRelative ? `${absolute} · ${relative}` : absolute;
 }
 
 export default async function PortalDefectDetailPage({
@@ -141,8 +155,8 @@ export default async function PortalDefectDetailPage({
         </header>
 
         <dl className="grid gap-3 md:grid-cols-2">
-          <Row label="Eingereicht am" value={formatDateTime(data.created_at)} />
-          <Row label="In Prüfung seit" value={formatDateTime(data.reviewed_at)} />
+          <Row label="Eingereicht am" value={formatDateTimeWithRelative(data.created_at)} />
+          <Row label="In Prüfung seit" value={formatDateTimeWithRelative(data.reviewed_at)} />
           {data.category && <Row label="Kategorie" value={data.category} />}
           {data.location_details && <Row label="Ort" value={data.location_details} />}
         </dl>
@@ -339,13 +353,7 @@ function buildTimeline(data: {
 
 function formatTimelineDate(iso: string | null): string {
   if (!iso) return 'noch offen';
-  return new Date(iso).toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTimeWithRelative(iso);
 }
 
 function StatusTimeline({
