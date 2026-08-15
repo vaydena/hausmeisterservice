@@ -1,12 +1,18 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getResidentContext } from '@/lib/portal/current';
+import { loadPortalUnreadThreadsSummary } from '@/lib/portal/unread-messages';
 import { clientEnv } from '@/lib/env';
 import { PortalUserMenu } from './_components/portal-user-menu';
 import { PortalNav } from './_components/portal-nav';
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const ctx = await getResidentContext();
+  // Sprint 46: Nav-Badge fuer ungelesene Threads. Der Helper ist via
+  // React cache() dedupliziert — auf /portal/dashboard trifft er
+  // denselben Aufruf aus der Page und faellt auf denselben Wert
+  // zurueck, ohne Datenbank-Roundtrips zu verdoppeln.
+  const threadsSummary = ctx ? await loadPortalUnreadThreadsSummary(ctx.userId) : null;
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--color-muted)]">
@@ -28,7 +34,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
       {ctx && (
         <nav className="border-b border-[var(--color-border)] bg-[var(--color-background)]">
           <div className="mx-auto flex max-w-4xl gap-1 overflow-x-auto px-4 py-2 md:px-6">
-            <PortalNav />
+            <PortalNav badges={{ messages: threadsSummary?.unreadCount ?? 0 }} />
           </div>
         </nav>
       )}
