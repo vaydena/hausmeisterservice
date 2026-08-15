@@ -2,15 +2,36 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import sharp from 'sharp';
 import { z } from 'zod';
 import { requireResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import {
+  DOC_ALLOWED_MIME,
+  DOC_MAX_BYTES,
+  buildStoragePath,
+  inferKind,
+  isImageMime,
+  pickExtension,
+} from '@/lib/schemas/documents';
 
 const PRIORITIES = ['low', 'normal', 'high', 'emergency'] as const;
 
 const withdrawSchema = z.object({
   id: z.string().uuid('Ungültige Meldungs-ID.'),
 });
+
+const uploadDocSchema = z.object({
+  defect_id: z.string().uuid('Ungültige Meldungs-ID.'),
+  caption: z
+    .string()
+    .trim()
+    .max(500, 'Bildunterschrift darf maximal 500 Zeichen lang sein.')
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null)),
+});
+
+const ATTACHMENTS_BUCKET = 'attachments';
 
 const defectSchema = z.object({
   title: z.string().trim().min(3, 'Bitte einen aussagekräftigen Titel angeben.').max(200),
@@ -148,4 +169,112 @@ export async function withdrawPortalDefectAction(formData: FormData): Promise<vo
   revalidatePath('/portal/defects');
   revalidatePath('/portal/dashboard');
   redirect('/portal/defects?info=withdrawn');
+}
+
+/**
+ * Sprint 56: Portal-Bewohner haengt Foto oder Datei an eine eigene Meldung an.
+ * Ownership-Guard laeuft implizit ueber die documents_insert_resident_own_defect
+ * RLS-Policy (WHERE dr.reporter_user_id = auth.uid()); wir laden hier
+ * property_id via defect_reports-Select, der ebenfalls RLS-gefiltert ist. Wenn
+ * die defect_report nicht dem Bewohner gehoert, sieht er sie nicht → early
+ * error mit Rollback.
+ *
+ * EXIF/GPS wird bei Bildern durch sharp re-encode entfernt (analog zum Staff-
+ * Pfad in @/lib/documents/actions.ts). HEIC/HEIF → JPEG, damit Browser sie
+ * direkt anzeigen koennen.
+ */
+export async function uploadPortalDefectDocumentAction(formData: FormData): Promise<void> {
+  const ctx = await requireResidentContext();
+
+  const parsed = uploadDocSchema.safeParse({
+    defect_id: formData.get('defect_id'),
+    caption: formData.get('caption') ?? undefined,
+  });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
+  }
+
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error('Bitte eine Datei auswählen.');
+  }
+  if (file.size > DOC_MAX_BYTES) {
+    throw new Error('Datei ist zu groß (max. 25 MB).');
+  }
+  if (!DOC_ALLOWED_MIME.includes(file.type)) {
+    throw new Error('Dateityp wird nicht unterstützt.');
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  const { data: defect } = await supabase
+    .from('defect_reports')
+    .select('id, property_id')
+    .eq('id', parsed.data.defect_id)
+    .eq('reporter_user_id', ctx.userId)
+    .maybeSingle();
+
+  if (!defect) {
+    throw new Error('Meldung nicht gefunden.');
+  }
+
+  let buffer: Buffer = Buffer.from(await file.arrayBuffer());
+  let effectiveMime = file.type;
+  let effectiveExt = pickExtension(file.name, file.type);
+
+  if (isImageMime(file.type)) {
+    const img = sharp(buffer, { failOn: 'none' }).rotate();
+    if (file.type === 'image/png') {
+      buffer = await img.png().toBuffer();
+      effectiveMime = 'image/png';
+      effectiveExt = 'png';
+    } else if (file.type === 'image/webp') {
+      buffer = await img.webp({ quality: 88 }).toBuffer();
+      effectiveMime = 'image/webp';
+      effectiveExt = 'webp';
+    } else {
+      buffer = await img.jpeg({ quality: 88 }).toBuffer();
+      effectiveMime = 'image/jpeg';
+      effectiveExt = 'jpg';
+    }
+  }
+
+  const documentId = crypto.randomUUID();
+  const storagePath = buildStoragePath({
+    tenantId: ctx.tenantId,
+    entityType: 'defect_report',
+    entityId: parsed.data.defect_id,
+    documentId,
+    ext: effectiveExt,
+  });
+
+  const uploadBlob = new Blob([new Uint8Array(buffer)], { type: effectiveMime });
+  const { error: uploadErr } = await supabase.storage
+    .from(ATTACHMENTS_BUCKET)
+    .upload(storagePath, uploadBlob, { contentType: effectiveMime, upsert: false });
+  if (uploadErr) {
+    throw new Error('Upload fehlgeschlagen. Bitte erneut versuchen.');
+  }
+
+  const { error: insertErr } = await supabase.from('documents').insert({
+    id: documentId,
+    tenant_id: ctx.tenantId,
+    entity_type: 'defect_report',
+    entity_id: parsed.data.defect_id,
+    property_id: defect.property_id,
+    kind: inferKind(effectiveMime),
+    storage_path: storagePath,
+    original_filename: file.name.slice(0, 255),
+    mime_type: effectiveMime,
+    byte_size: uploadBlob.size,
+    caption: parsed.data.caption,
+    uploaded_by: ctx.userId,
+  });
+
+  if (insertErr) {
+    await supabase.storage.from(ATTACHMENTS_BUCKET).remove([storagePath]);
+    throw new Error('Speichern fehlgeschlagen. Bitte erneut versuchen.');
+  }
+
+  revalidatePath(`/portal/defects/${parsed.data.defect_id}`);
 }

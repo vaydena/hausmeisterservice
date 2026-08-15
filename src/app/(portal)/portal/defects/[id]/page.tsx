@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { WithdrawDefectButton } from './withdraw-defect-button';
+import { PortalDefectUploadForm } from './portal-defect-upload-form';
 
 export const metadata: Metadata = {
   title: 'Meldung · Bewohner-Portal',
@@ -124,11 +125,21 @@ export default async function PortalDefectDetailPage({
           </div>
         )}
 
+        <div>
+          <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            Anhänge
+          </p>
+          {attachments.length === 0 && (
+            <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+              Noch keine Anhänge. Fügen Sie ein Foto oder Dokument hinzu, um die
+              Meldung zu belegen.
+            </p>
+          )}
+        </div>
+
         {attachments.length > 0 && (
           <div>
-            <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
-              Anhänge
-            </p>
+            <p className="sr-only">Vorhandene Anhänge</p>
             <ul className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {attachments.map((a) => (
                 <li key={a.id}>
@@ -174,6 +185,10 @@ export default async function PortalDefectDetailPage({
             </ul>
           </div>
         )}
+
+        <div className="rounded-lg border border-dashed border-[var(--color-border)] p-4">
+          <PortalDefectUploadForm defectId={data.id} />
+        </div>
 
         {/*
          * Sprint 52: Zurueckziehen nur solange die Hausverwaltung noch nicht
