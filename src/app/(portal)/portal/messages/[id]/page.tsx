@@ -90,6 +90,11 @@ export default async function PortalMessageThreadPage({
           ← alle Nachrichten
         </Link>
         <h1 className="mt-2 text-xl font-semibold">{threadRes.data.subject}</h1>
+        {messages.length > 0 && (
+          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+            {messages.length === 1 ? '1 Nachricht' : `${messages.length} Nachrichten`}
+          </p>
+        )}
       </div>
 
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-4 text-sm">
