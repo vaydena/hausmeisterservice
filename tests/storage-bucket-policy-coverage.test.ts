@@ -179,12 +179,17 @@ describe('Storage bucket & policy coverage', () => {
       });
 
       it(`"${p.name}" (${p.file}, ${p.action}) enforces tenant scope`, () => {
+        // is_resident_of_tenant erfuellt semantisch dieselbe Sicherheitseigenschaft
+        // wie is_tenant_member (Sprint 55): der Bewohner ist auf seinen eigenen
+        // Tenant gescoped via residents.tenant_id-Match. Beide Helper sind der
+        // korrekte Weg, cross-tenant-Zugriff auf storage.objects zu verhindern.
         const hasTenantHelper =
           /app_auth\.is_tenant_member\s*\(/.test(p.body) ||
-          /app_auth\.current_tenant_id\s*\(/.test(p.body);
+          /app_auth\.current_tenant_id\s*\(/.test(p.body) ||
+          /app_auth\.is_resident_of_tenant\s*\(/.test(p.body);
         expect(
           hasTenantHelper,
-          `Storage policy "${p.name}" does not call app_auth.is_tenant_member(...) or app_auth.current_tenant_id() in its body. Without a tenant check any authenticated user of ANY tenant can access these files — cross-tenant leak.`,
+          `Storage policy "${p.name}" does not call app_auth.is_tenant_member(...), app_auth.current_tenant_id(), or app_auth.is_resident_of_tenant(...) in its body. Without a tenant check any authenticated user of ANY tenant can access these files — cross-tenant leak.`,
         ).toBe(true);
       });
 

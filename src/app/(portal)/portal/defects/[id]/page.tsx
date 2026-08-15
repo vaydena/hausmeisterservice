@@ -55,6 +55,27 @@ export default async function PortalDefectDetailPage({
 
   if (!data) notFound();
 
+  // Sprint 55: Anhaenge zur eigenen Meldung. RLS
+  // (documents_select_resident_own_defect + attachments_resident_select)
+  // filtert auf reporter_user_id = auth.uid(), daher ist ein zusaetzlicher
+  // Filter hier redundant. Signed URLs mit 1-Stunden-TTL — reicht fuer die
+  // Session-Betrachtung, Reload generiert neue.
+  const { data: docs } = await supabase
+    .from('documents')
+    .select('id, storage_path, original_filename, mime_type, byte_size, caption, kind, created_at')
+    .eq('entity_type', 'defect_report')
+    .eq('entity_id', id)
+    .order('created_at', { ascending: true });
+
+  const attachments = await Promise.all(
+    (docs ?? []).map(async (d) => {
+      const { data: signed } = await supabase.storage
+        .from('attachments')
+        .createSignedUrl(d.storage_path, 3600);
+      return { ...d, url: signed?.signedUrl ?? null };
+    }),
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -103,6 +124,57 @@ export default async function PortalDefectDetailPage({
           </div>
         )}
 
+        {attachments.length > 0 && (
+          <div>
+            <p className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+              Anhänge
+            </p>
+            <ul className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {attachments.map((a) => (
+                <li key={a.id}>
+                  {a.kind === 'photo' && a.url ? (
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block overflow-hidden rounded-lg border border-[var(--color-border)]"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={a.url}
+                        alt={a.caption ?? a.original_filename}
+                        className="aspect-square h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                      {a.caption && (
+                        <p className="border-t border-[var(--color-border)] bg-[var(--color-muted)] px-2 py-1 text-xs">
+                          {a.caption}
+                        </p>
+                      )}
+                    </a>
+                  ) : a.url ? (
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-full flex-col justify-between gap-1 rounded-lg border border-[var(--color-border)] p-3 text-xs hover:bg-[var(--color-muted)]"
+                    >
+                      <span className="font-medium">{a.original_filename}</span>
+                      <span className="text-[var(--color-muted-foreground)]">
+                        {formatBytes(a.byte_size)}
+                      </span>
+                    </a>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-muted-foreground)]">
+                      {a.original_filename} (nicht verfügbar)
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/*
          * Sprint 52: Zurueckziehen nur solange die Hausverwaltung noch nicht
          * reagiert hat (status='new'). Sobald der Status auf 'reviewing'
@@ -124,6 +196,12 @@ export default async function PortalDefectDetailPage({
       </article>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function Row({ label, value }: { label: string; value: string }) {
