@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { requireTenantContext } from '@/lib/tenant/current';
+import { getAvailableModules } from '@/lib/modules/enabled';
+import { moduleForPath } from '@/lib/modules/module-map';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { legalConfig, formatAddress } from '@/lib/legal/config';
@@ -9,6 +12,18 @@ export const metadata: Metadata = { title: 'Hilfe & Kontakt' };
 interface FaqItem {
   q: string;
   a: React.ReactNode;
+  /**
+   * Sprint 119: Die Route, um die es in der Frage geht — sofern sie zu einem
+   * abschaltbaren Modul gehoert. Hier steht bewusst der Pfad und kein
+   * Modulschluessel: das Modul wird ueber `moduleForPath` daraus abgeleitet,
+   * genau wie bei `ModuleLink`. Ein zweiter Ort, an dem Route und Modul von
+   * Hand zusammengefuehrt werden, laeuft beim naechsten Routen-Umbau
+   * auseinander.
+   *
+   * Antworten OHNE `topic` betreffen Kernrouten (/dashboard, /settings/...)
+   * und stehen jedem Mandanten zu.
+   */
+  topic?: string;
 }
 
 const FAQ: FaqItem[] = [
@@ -32,6 +47,7 @@ const FAQ: FaqItem[] = [
   },
   {
     q: 'Wie lade ich Mitarbeiter ein?',
+    topic: '/people/employees',
     a: (
       <>
         Unter{' '}
@@ -94,6 +110,7 @@ const FAQ: FaqItem[] = [
   },
   {
     q: 'Wie erstelle ich eine Rechnung an meinen Kunden?',
+    topic: '/billing',
     a: (
       <>
         Unter{' '}
@@ -111,6 +128,7 @@ const FAQ: FaqItem[] = [
   },
   {
     q: 'Kann ich meine Daten exportieren?',
+    topic: '/reports',
     a: (
       <>
         Ja. In den meisten Listen (Aufträge, Zeiterfassung, Materialien) finden
@@ -166,7 +184,19 @@ const FAQ: FaqItem[] = [
   },
 ];
 
-export default function HilfePage() {
+export default async function HilfePage() {
+  // Sprint 119: Eine Antwort zu einem abgeschalteten Modul ist schlimmer als
+  // keine Antwort — sie beschreibt eine Funktion, die dieser Mandant nicht
+  // hat, und schickt ihn ueber einen Link ins 404. Also faellt die Frage
+  // ganz weg, nicht nur ihr Link.
+  const ctx = await requireTenantContext();
+  const available = await getAvailableModules(ctx.tenantId);
+  const faq = FAQ.filter((item) => {
+    if (!item.topic) return true;
+    const moduleKey = moduleForPath(item.topic);
+    return moduleKey === null || available.has(moduleKey);
+  });
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
       <PageHeader
@@ -180,7 +210,7 @@ export default function HilfePage() {
         </CardHeader>
         <CardBody className="p-0">
           <ul className="divide-y divide-[var(--color-border)]">
-            {FAQ.map((item, i) => (
+            {faq.map((item, i) => (
               <li key={i}>
                 <details className="group">
                   <summary className="flex cursor-pointer items-center justify-between gap-4 px-4 py-3 text-sm font-medium hover:bg-[var(--color-muted)]/50 [&::-webkit-details-marker]:hidden">

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
@@ -301,24 +301,24 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
                             <td className="py-2 pr-3 text-xs text-[var(--color-muted-foreground)]">
                               {property && (
                                 <div>
-                                  <Link
+                                  <ModuleLink
                                     href={`/properties/${property.id}`}
                                     className="text-[var(--color-primary)] hover:underline"
                                   >
                                     {property.code
                                       ? `${property.code} · ${property.name}`
                                       : property.name}
-                                  </Link>
+                                  </ModuleLink>
                                 </div>
                               )}
                               {wo && (
                                 <div>
-                                  <Link
+                                  <ModuleLink
                                     href={`/work-orders/${wo.id}`}
                                     className="text-[var(--color-primary)] hover:underline"
                                   >
                                     {wo.code ? `${wo.code} · ${wo.title}` : wo.title}
-                                  </Link>
+                                  </ModuleLink>
                                 </div>
                               )}
                               {assignee && <div>an {assignee}</div>}

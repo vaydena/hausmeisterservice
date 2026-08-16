@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { describeUnclosedEntries, summarizeUnclosedEntries } from '@/lib/time-tracking/unclosed';
+import { ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Field } from '@/components/ui/input';
@@ -143,9 +144,12 @@ export default async function TimeReportPage({
           <p className="mt-1">{unclosedNote}</p>
           <p className="mt-2 text-[var(--color-muted-foreground)]">
             Auch der CSV-Export enthält diese Einträge nicht. Fehlende Enden lassen sich unter{' '}
-            <Link href="/time-tracking/team" className="underline hover:text-[var(--color-primary)]">
+            <ModuleLink
+              href="/time-tracking/team"
+              className="underline hover:text-[var(--color-primary)]"
+            >
               Zeiterfassung → Team
-            </Link>{' '}
+            </ModuleLink>{' '}
             zuordnen und nachtragen.
           </p>
         </div>

@@ -7,6 +7,7 @@ import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { parseTenantAddress, parseTenantInvoiceData } from '@/lib/schemas/tenant';
 import { findInvoiceDefects, INVOICE_DEFECT_LABEL } from '@/lib/billing/invoice-integrity';
+import { ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -237,9 +238,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <div>
                     <dt className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">Auftrag</dt>
                     <dd>
-                      <Link href={`/work-orders/${workOrder.id}`} className="hover:text-[var(--color-primary)]">
+                      <ModuleLink
+                        href={`/work-orders/${workOrder.id}`}
+                        className="hover:text-[var(--color-primary)]"
+                      >
                         {workOrder.code} · {workOrder.title}
-                      </Link>
+                      </ModuleLink>
                     </dd>
                   </div>
                 )}

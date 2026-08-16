@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Select, Field } from '@/components/ui/input';
@@ -205,12 +206,12 @@ export default async function WorkOrdersReportPage({
                   <tr key={o.id}>
                     <td className="py-2 pr-4 font-mono text-xs">{o.code}</td>
                     <td className="py-2 pr-4">
-                      <Link
+                      <ModuleLink
                         href={`/work-orders/${o.id}`}
                         className="hover:text-[var(--color-primary)]"
                       >
                         {o.title}
-                      </Link>
+                      </ModuleLink>
                       {o.is_emergency && (
                         <span className="ml-2 text-xs text-[var(--color-destructive)]">⚡</span>
                       )}

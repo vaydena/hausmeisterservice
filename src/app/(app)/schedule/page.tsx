@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -256,10 +257,11 @@ export default async function SchedulePage({
                             ) : (
                               <div className="flex flex-col gap-1">
                                 {cell?.workOrders.map((w) => (
-                                  <Link
+                                  <ModuleLink
                                     key={w.id}
                                     href={`/work-orders/${w.id}`}
                                     className="rounded-md border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)] px-2 py-1 text-xs hover:bg-[color-mix(in_srgb,var(--color-primary)_15%,transparent)]"
+                                    unavailableClassName="block rounded-md border border-[var(--color-border)] px-2 py-1 text-xs"
                                     title={w.title}
                                   >
                                     <div className="flex items-center gap-1">
@@ -273,7 +275,7 @@ export default async function SchedulePage({
                                     <div className="line-clamp-2 font-medium">
                                       {w.code ? `${w.code} · ${w.title}` : w.title}
                                     </div>
-                                  </Link>
+                                  </ModuleLink>
                                 ))}
                                 {cell?.scheduleEntries.map((e) => (
                                   <Link

@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { isModuleAvailable } from '@/lib/modules/enabled';
+import { ModuleGate, ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,9 +56,6 @@ export default async function KeyDetailPage({
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
-  // Sprint 117: Seit /qr unter dem Modul-Gate steht, fuehrt dieser Button
-  // ins 404, wenn der Mandant QR-Codes abgeschaltet hat.
-  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
 
   const key = unwrapMaybeRow(
     await supabase
@@ -167,11 +163,11 @@ export default async function KeyDetailPage({
         description={key.code ?? undefined}
         action={
           <div className="flex gap-2">
-            {qrAvailable && (
+            <ModuleGate href={`/qr/key/${key.id}`}>
               <LinkButton variant="outline" href={`/qr/key/${key.id}`}>
                 QR-Code
               </LinkButton>
-            )}
+            </ModuleGate>
             {canEdit && !key.deleted_at && (
               <LinkButton variant="outline" href={`/keys/${key.id}/edit`}>
                 Bearbeiten
@@ -333,12 +329,12 @@ export default async function KeyDetailPage({
                   <dt className="text-[var(--color-muted-foreground)]">Objekt</dt>
                   <dd>
                     {property ? (
-                      <Link
+                      <ModuleLink
                         href={`/properties/${property.id}`}
                         className="text-[var(--color-primary)] hover:underline"
                       >
                         {property.code ? `${property.code} · ${property.name}` : property.name}
-                      </Link>
+                      </ModuleLink>
                     ) : (
                       '–'
                     )}

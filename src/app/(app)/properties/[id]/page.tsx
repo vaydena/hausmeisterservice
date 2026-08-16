@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { isModuleAvailable } from '@/lib/modules/enabled';
+import { ModuleGate, ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,9 +45,6 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
 
   const canEdit = permissions.has('properties.edit');
   const canCreateOrder = permissions.has('work_orders.create');
-  // Sprint 117: Seit /qr unter dem Modul-Gate steht, fuehrt dieser Button
-  // ins 404, wenn der Mandant QR-Codes abgeschaltet hat.
-  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
 
   // Sprint 112: openOrders ist die Liste, auf die jemand schaut, BEVOR er den
   // Button "Auftrag anlegen" direkt daneben drueckt. Verschluckt stand dort
@@ -71,15 +67,17 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
         action={
           <div className="flex gap-2">
             {canCreateOrder && (
-              <LinkButton variant="secondary" href={`/work-orders/new?property_id=${property.id}`}>
-                Auftrag anlegen
-              </LinkButton>
+              <ModuleGate href={`/work-orders/new?property_id=${property.id}`}>
+                <LinkButton variant="secondary" href={`/work-orders/new?property_id=${property.id}`}>
+                  Auftrag anlegen
+                </LinkButton>
+              </ModuleGate>
             )}
-            {qrAvailable && (
+            <ModuleGate href={`/qr/property/${property.id}`}>
               <LinkButton variant="outline" href={`/qr/property/${property.id}`}>
                 QR-Code
               </LinkButton>
-            )}
+            </ModuleGate>
             {canEdit && (
               <LinkButton variant="outline" href={`/properties/${property.id}/edit`}>
                 Bearbeiten
@@ -149,15 +147,16 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
                 <ul className="divide-y divide-[var(--color-border)]">
                   {openOrders.map((wo) => (
                     <li key={wo.id}>
-                      <Link
+                      <ModuleLink
                         href={`/work-orders/${wo.id}`}
                         className="flex items-center gap-3 py-3 transition hover:opacity-80"
+                        unavailableClassName="flex items-center gap-3 py-3"
                       >
                         {wo.code && <Badge tone="muted">{wo.code}</Badge>}
                         <span className="flex-1 truncate text-sm">{wo.title}</span>
                         <StatusBadge status={wo.status} />
                         {wo.priority !== 'normal' && <PriorityBadge priority={wo.priority} />}
-                      </Link>
+                      </ModuleLink>
                     </li>
                   ))}
                 </ul>

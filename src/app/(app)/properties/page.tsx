@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { isModuleAvailable } from '@/lib/modules/enabled';
+import { ModuleGate } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,9 +35,6 @@ export default async function PropertiesPage() {
   }
 
   const canCreate = permissions.has('properties.create');
-  // Sprint 117: /qr steht unter dem Modul-Gate — ohne diese Pruefung waere
-  // der Sammel-Druck ein Link ins 404.
-  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
   const items = properties ?? [];
 
   return (
@@ -47,14 +44,16 @@ export default async function PropertiesPage() {
         description="Liegenschaften mit Adresse, Zugangs- und Notfallhinweisen."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {qrAvailable && items.length > 0 && (
-              <Link
-                href={`/qr/print?type=property&ids=${items.slice(0, 60).map((p) => p.id).join(',')}`}
-                target="_blank"
-                className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
-              >
-                QR-Sammel-Druck ({Math.min(items.length, 60)})
-              </Link>
+            {items.length > 0 && (
+              <ModuleGate href="/qr/print">
+                <Link
+                  href={`/qr/print?type=property&ids=${items.slice(0, 60).map((p) => p.id).join(',')}`}
+                  target="_blank"
+                  className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+                >
+                  QR-Sammel-Druck ({Math.min(items.length, 60)})
+                </Link>
+              </ModuleGate>
             )}
             {canCreate && <LinkButton href="/properties/new">Neues Objekt</LinkButton>}
           </div>

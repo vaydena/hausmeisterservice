@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -166,12 +166,13 @@ export default async function TourDetailPage({ params }: { params: Promise<{ id:
                             <td className="py-2 pr-3">
                               <div className="flex flex-col gap-1">
                                 {prop ? (
-                                  <Link
+                                  <ModuleLink
                                     href={`/properties/${prop.id}`}
                                     className="font-medium hover:underline"
+                                    unavailableClassName="font-medium"
                                   >
                                     {s.label}
-                                  </Link>
+                                  </ModuleLink>
                                 ) : (
                                   <span className="font-medium">{s.label}</span>
                                 )}
@@ -265,9 +266,9 @@ export default async function TourDetailPage({ params }: { params: Promise<{ id:
                   <dt className="text-[var(--color-muted-foreground)]">Fahrzeug</dt>
                   <dd className="text-right">
                     {vehicle ? (
-                      <Link href={`/vehicles/${vehicle.id}`} className="hover:underline">
+                      <ModuleLink href={`/vehicles/${vehicle.id}`} className="hover:underline">
                         {vehicle.license_plate} · {vehicle.make} {vehicle.model}
-                      </Link>
+                      </ModuleLink>
                     ) : (
                       <span className="text-[var(--color-muted-foreground)]">—</span>
                     )}

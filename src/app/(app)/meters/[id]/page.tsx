@@ -12,7 +12,7 @@ import {
   latestEntry,
 } from '@/lib/meters/consumption';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { isModuleAvailable } from '@/lib/modules/enabled';
+import { ModuleGate, ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,9 +41,6 @@ export default async function MeterDetailPage({
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
-  // Sprint 117: Seit /qr unter dem Modul-Gate steht, fuehrt dieser Button
-  // ins 404, wenn der Mandant QR-Codes abgeschaltet hat.
-  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
 
   // Sprint 111: getrennt von notFound(). Ein verschluckter Lesefehler hat
   // vorher behauptet, den Zähler gebe es nicht.
@@ -126,11 +123,11 @@ export default async function MeterDetailPage({
         description={meter.code ?? undefined}
         action={
           <div className="flex gap-2">
-            {qrAvailable && (
+            <ModuleGate href={`/qr/meter/${meter.id}`}>
               <LinkButton variant="outline" href={`/qr/meter/${meter.id}`}>
                 QR-Code
               </LinkButton>
-            )}
+            </ModuleGate>
             {canEdit && !meter.deleted_at && (
               <LinkButton variant="outline" href={`/meters/${meter.id}/edit`}>
                 Bearbeiten
@@ -336,12 +333,12 @@ export default async function MeterDetailPage({
                   <dt className="text-[var(--color-muted-foreground)]">Objekt</dt>
                   <dd>
                     {property ? (
-                      <Link
+                      <ModuleLink
                         href={`/properties/${property.id}`}
                         className="text-[var(--color-primary)] hover:underline"
                       >
                         {property.code ? `${property.code} · ${property.name}` : property.name}
-                      </Link>
+                      </ModuleLink>
                     ) : (
                       '–'
                     )}

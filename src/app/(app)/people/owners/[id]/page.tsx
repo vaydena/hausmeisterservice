@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
@@ -156,12 +156,13 @@ export default async function OwnerDetailPage({ params }: { params: Promise<{ id
                   <li key={a.property_id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0 flex-1">
                       {p ? (
-                        <Link
+                        <ModuleLink
                           href={`/properties/${p.id}`}
                           className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                          unavailableClassName="text-sm font-medium"
                         >
                           {p.code ? `${p.code} · ${p.name}` : p.name}
-                        </Link>
+                        </ModuleLink>
                       ) : (
                         <span className="text-sm text-[var(--color-muted-foreground)]">
                           Objekt entfernt

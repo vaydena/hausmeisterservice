@@ -8,6 +8,7 @@ import { WorkOrderForm } from '../work-order-form';
 import { createWorkOrderAction } from '../actions';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LinkButton } from '@/components/ui/button';
+import { ModuleGate } from '@/components/ui/module-link';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Neuer Auftrag' };
@@ -39,7 +40,9 @@ export default async function NewWorkOrderPage({
           description="Aufträge werden immer einer Liegenschaft zugeordnet. Legen Sie zuerst mindestens ein Objekt an."
           action={
             permissions.has('properties.create') ? (
-              <LinkButton href="/properties/new">Objekt anlegen</LinkButton>
+              <ModuleGate href="/properties/new">
+                <LinkButton href="/properties/new">Objekt anlegen</LinkButton>
+              </ModuleGate>
             ) : undefined
           }
         />

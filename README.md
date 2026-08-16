@@ -78,6 +78,17 @@ Warum 404 und nicht 403: abschalten war eine Entscheidung des Inhabers, keine Re
 
 `MODULE_PATHS` ist bewusst eine eigene Tabelle und nicht aus `MODULES[].menuPath` abgeleitet: ein Modul hat mehr Routen als Menüpunkte (`/time-corrections` gehört zur Zeiterfassung, `/checklist-runs` zu den Checklisten, `/qr` hat gar keinen Eintrag). Wer eine neue Seite unter `src/app/(app)` anlegt, muss ihren Präfix entweder in `MODULE_PATHS` eintragen oder in `UNGATED_PREFIXES` in `tests/module-map.test.ts` — der Test kennt sonst keine dritte Möglichkeit und schlägt fehl.
 
+**Links auf fremde Module (Sprint 119).** Das Gate aus Sprint 117 hat eine Folge, die nicht dort auftaucht, wo sie entsteht: wer `qr_codes` abschaltet, erwartet Folgen im QR-Bereich — nicht einen toten Knopf auf der Schlüsselseite. Ein Scan fand 30 Stellen, an denen eine Seite auf ein *anderes* Modul verlinkt (Auftrag → Objekt, Materialbericht → Material, Tour → Fahrzeug). Dafür gibt es `src/components/ui/module-link.tsx`:
+
+| Komponente | Verhalten bei abgeschaltetem Zielmodul | wofür |
+|---|---|---|
+| `<ModuleLink href="…">` | Text bleibt stehen, nur der Link fällt weg (`<span>`) | Inline-Verweise — „Objekt: Musterstraße 1" ist die Auskunft, derentwegen der Nutzer die Seite geöffnet hat |
+| `<ModuleGate href="…">` | Kind verschwindet komplett | Buttons — ein ausgegrauter „Auftrag anlegen" verspricht eine Funktion, die dieser Mandant abbestellt hat |
+
+Beide leiten das Zielmodul über `moduleForPath(href)` ab; ein `module`-Prop gäbe es bewusst nicht (zweite Wahrheit neben `MODULE_PATHS`, läuft beim nächsten Routen-Umbau auseinander, und ein falsch benannter Key sieht einfach immer verfügbar aus). Optional: `unavailableClassName` für den `<span>`-Fall, wo `className` Layout und nicht nur Link-Optik trägt. `tests/cross-module-links.test.ts` scannt alle `href`s unter `src/app/(app)` und schlägt fehl, sobald einer auf ein fremdes Modul zeigt, ohne durch eine der beiden Komponenten zu laufen. Ausnahmen brauchen einen Eintrag in `ALTERNATIVE_GUARD` *mit* dem Mechanismus, der stattdessen greift — `/hilfe` etwa filtert ganze FAQ-Antworten über `FaqItem.topic`, weil eine Antwort zu einem abgeschalteten Modul schlimmer ist als keine.
+
+`ModuleLink` ist `server-only`. In Client-Komponenten gehört die Prüfung in die Server-Elternkomponente.
+
 ### 3.f Dashboards
 
 Rollenspezifisch: Admin (KPIs, §56), Mitarbeiter (§55), Bewohner (§54), Eigentümer (§25). Erst Skeletons mit echten Daten-Slots, keine Fake-Zahlen.

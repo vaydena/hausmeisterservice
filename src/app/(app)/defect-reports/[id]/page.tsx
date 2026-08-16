@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
@@ -157,12 +157,13 @@ export default async function DefectReportDetailPage({
                 <CardTitle>Übernommener Auftrag</CardTitle>
               </CardHeader>
               <CardBody>
-                <Link
+                <ModuleLink
                   href={`/work-orders/${workOrderRes.data.id}`}
                   className="inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)] hover:underline"
+                  unavailableClassName="inline-flex items-center gap-2 text-sm font-medium"
                 >
                   {workOrderRes.data.code ?? '–'} · {workOrderRes.data.title}
-                </Link>
+                </ModuleLink>
               </CardBody>
             </Card>
           )}
@@ -199,12 +200,12 @@ export default async function DefectReportDetailPage({
                   <dt className="text-[var(--color-muted-foreground)]">Objekt</dt>
                   <dd>
                     {property ? (
-                      <Link
+                      <ModuleLink
                         href={`/properties/${property.id}`}
                         className="text-[var(--color-primary)] hover:underline"
                       >
                         {property.code ? `${property.code} · ${property.name}` : property.name}
-                      </Link>
+                      </ModuleLink>
                     ) : (
                       '–'
                     )}

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { PageHeader } from '@/components/ui/page-header';
@@ -115,12 +115,13 @@ export default async function ChecklistRunPage({ params }: { params: Promise<{ i
           {answeredCount} / {items.length} beantwortet
         </span>
         {workOrder && (
-          <Link
+          <ModuleLink
             href={`/work-orders/${workOrder.id}`}
             className="text-xs text-[var(--color-primary)] hover:underline"
+            unavailableClassName="text-xs text-[var(--color-muted-foreground)]"
           >
             → Auftrag {workOrder.code ?? workOrder.title}
-          </Link>
+          </ModuleLink>
         )}
       </div>
 

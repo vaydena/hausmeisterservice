@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
@@ -190,9 +190,10 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                     const tpl = templateById.get(r.template_id);
                     return (
                       <li key={r.id}>
-                        <Link
+                        <ModuleLink
                           href={`/checklist-runs/${r.id}`}
                           className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] p-3 hover:bg-[var(--color-muted)]"
+                          unavailableClassName="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] p-3"
                         >
                           <div className="flex min-w-0 flex-1 flex-col">
                             <span className="truncate text-sm font-medium">
@@ -207,7 +208,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                           <Badge tone={RUN_STATUS_TONE[r.status as ChecklistRunStatus]}>
                             {RUN_STATUS_LABEL[r.status as ChecklistRunStatus]}
                           </Badge>
-                        </Link>
+                        </ModuleLink>
                       </li>
                     );
                   })}
@@ -298,12 +299,13 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             </CardHeader>
             <CardBody>
               {property ? (
-                <Link
+                <ModuleLink
                   href={`/properties/${property.id}`}
                   className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+                  unavailableClassName="text-sm font-medium"
                 >
                   {property.code ? `${property.code} · ${property.name}` : property.name}
-                </Link>
+                </ModuleLink>
               ) : (
                 <span className="text-sm text-[var(--color-muted-foreground)]">–</span>
               )}

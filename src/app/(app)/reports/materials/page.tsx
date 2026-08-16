@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { ModuleLink } from '@/components/ui/module-link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Field } from '@/components/ui/input';
@@ -148,9 +149,12 @@ export default async function MaterialsReportPage({
               {topConsumers.map((m) => (
                 <tr key={m.id}>
                   <td className="py-2 pr-4">
-                    <Link href={`/materials/${m.id}`} className="hover:text-[var(--color-primary)]">
+                    <ModuleLink
+                      href={`/materials/${m.id}`}
+                      className="hover:text-[var(--color-primary)]"
+                    >
                       {m.label}
-                    </Link>
+                    </ModuleLink>
                     {m.sku && (
                       <span className="ml-2 font-mono text-xs text-[var(--color-muted-foreground)]">
                         {m.sku}
@@ -206,12 +210,12 @@ export default async function MaterialsReportPage({
                 return (
                   <tr key={m.id}>
                     <td className="py-2 pr-4">
-                      <Link
+                      <ModuleLink
                         href={`/materials/${m.id}`}
                         className="hover:text-[var(--color-primary)]"
                       >
                         {m.label}
-                      </Link>
+                      </ModuleLink>
                     </td>
                     <td className="py-2 pr-4 tabular-nums">
                       {formatNumber(stock, 2)} {m.unit ?? ''}

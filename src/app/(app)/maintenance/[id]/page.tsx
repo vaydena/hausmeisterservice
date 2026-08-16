@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Link from 'next/link';
+import { ModuleLink } from '@/components/ui/module-link';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
@@ -174,12 +174,12 @@ export default async function MaintenancePlanDetailPage({
               <dl className="grid grid-cols-1 gap-2 text-sm">
                 <Row label="Objekt">
                   {property ? (
-                    <Link
+                    <ModuleLink
                       href={`/properties/${property.id}`}
                       className="text-[var(--color-primary)] hover:underline"
                     >
                       {property.code ? `${property.code} · ${property.name}` : property.name}
-                    </Link>
+                    </ModuleLink>
                   ) : (
                     '–'
                   )}
