@@ -32,6 +32,7 @@ import {
   LifeBuoy,
   Lock,
   User,
+  QrCode,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -67,6 +68,7 @@ export const NAV_ICONS = {
   'life-buoy': LifeBuoy,
   lock: Lock,
   user: User,
+  'qr-code': QrCode,
 } as const satisfies Record<string, LucideIcon>;
 
 export type NavIconKey = keyof typeof NAV_ICONS;

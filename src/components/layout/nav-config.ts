@@ -66,6 +66,11 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/materials', labelDe: 'Material', icon: 'package', module: 'materials', permission: 'materials.view' },
       { href: '/vehicles', labelDe: 'Fahrzeuge', icon: 'car', module: 'vehicles', permission: 'vehicles.view' },
       { href: '/documents', labelDe: 'Dokumente', icon: 'file-text', module: 'documents', permission: 'documents.view' },
+      // Sprint 134: bis hierher hatte das QR-Modul keinen Menuepunkt — es war
+      // nur ueber Knoepfe auf fremden Listen erreichbar. Kein eigenes
+      // Leserecht: wer QR-Codes drucken darf, entscheidet die Uebersicht
+      // selbst, Karte fuer Karte, anhand des Leserechts am jeweiligen Ziel.
+      { href: '/qr', labelDe: 'QR-Codes', icon: 'qr-code', module: 'qr_codes', permission: null },
     ],
   },
   {

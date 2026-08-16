@@ -10,6 +10,7 @@ import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
+import { ModuleGate } from '@/components/ui/module-link';
 import {
   STATUS_LABEL,
   STATUS_TONE,
@@ -141,7 +142,26 @@ export default async function VehiclesPage({
           fristenNote ? ` · ${fristenNote}` : ''
         }`}
         action={
-          canCreate ? <LinkButton href="/vehicles/new">Neues Fahrzeug</LinkButton> : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            {/*
+              Sprint 134: Der Sammelbogen kann seit Sprint 201 auch Fahrzeuge
+              (SUPPORTED_TYPES in qr/print/page.tsx), aber der Knopf dazu stand
+              nur auf Objekten, Schluesseln und Zaehlern. Eine fertige
+              Faehigkeit ohne Einstieg ist keine Faehigkeit.
+            */}
+            {items.length > 0 && (
+              <ModuleGate href="/qr/print">
+                <Link
+                  href={`/qr/print?type=vehicle&ids=${items.slice(0, 60).map((v) => v.id).join(',')}`}
+                  target="_blank"
+                  className="inline-flex h-9 items-center rounded-md border border-[var(--color-border)] px-3 text-sm font-medium hover:bg-[var(--color-muted)]"
+                >
+                  QR-Sammel-Druck ({Math.min(items.length, 60)})
+                </Link>
+              </ModuleGate>
+            )}
+            {canCreate && <LinkButton href="/vehicles/new">Neues Fahrzeug</LinkButton>}
+          </div>
         }
       />
 

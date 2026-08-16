@@ -138,7 +138,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { key: 'billing', labelDe: 'Abrechnung', domain: 'finance', core: false, menuPath: '/billing', description: 'Kosten, Rechnungen, PDF-Erstellung.' },
   { key: 'reporting', labelDe: 'Reporting', domain: 'finance', core: false, menuPath: '/reports', description: 'Analysen und Statistiken, Export PDF/Excel/CSV.' },
   { key: 'automations', labelDe: 'Automatisierungen', domain: 'platform', core: false, menuPath: '/settings/automations', description: 'Regel-Engine für Erinnerungen und Trigger.' },
-  { key: 'qr_codes', labelDe: 'QR-Codes', domain: 'platform', core: false, description: 'QR-Codes für Objekte, Anlagen, Schlüssel.' },
+  { key: 'qr_codes', labelDe: 'QR-Codes', domain: 'platform', core: false, menuPath: '/qr', description: 'QR-Codes für Objekte, Anlagen, Schlüssel.' },
 ] as const;
 
 export const MODULES_BY_KEY: Record<ModuleKey, ModuleDefinition> = Object.fromEntries(
