@@ -89,6 +89,15 @@ export default function GlobalErrorBoundary({
             >
               Neu laden
             </button>
+            {/*
+              Sprint 132 · Hier steht bewusst ein <a> und kein <Link>.
+              global-error.tsx ersetzt das Root-Layout, wenn genau dieses
+              kaputt ist — der Router-Kontext, auf dem next/link aufsetzt,
+              ist in diesem Moment nicht verlaesslich. Eine harte Navigation
+              ist der Sinn der Sache: sie laedt die Anwendung neu, statt zu
+              versuchen, aus dem defekten Zustand heraus weiterzuklicken.
+            */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
               style={{

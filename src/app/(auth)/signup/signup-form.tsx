@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { signupAction, type SignupState } from './actions';
@@ -38,7 +38,7 @@ export function SignupForm() {
 
   const [state, formAction, pending] = useActionState(signupAction, INITIAL);
   const [companyName, setCompanyName] = useState('');
-  const [slug, setSlug] = useState('');
+  const [slugInput, setSlugInput] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
   const [planCode, setPlanCode] = useState<PlanCode>(
     PLANS.some((p) => p.code === initialPlan) ? initialPlan : 'starter',
@@ -49,11 +49,13 @@ export function SignupForm() {
 
   // Solange der User das Slug-Feld nicht selbst editiert hat, wird es aus dem
   // Firmennamen generiert. Sobald er es anfässt, respektieren wir seine Eingabe.
-  useEffect(() => {
-    if (!slugTouched) {
-      setSlug(slugify(companyName));
-    }
-  }, [companyName, slugTouched]);
+  //
+  // Sprint 132 · Vorher zog ein useEffect den Slug per setState nach. Das ist
+  // abgeleiteter Zustand, kein Abgleich mit einem externen System: der Wert
+  // laesst sich beim Rendern ausrechnen. Der Effekt kostete pro Tastendruck
+  // ein zweites Render, und dazwischen zeigte das Feld kurz den vorigen Slug.
+  // Der Linter hat darauf gezeigt (react-hooks/set-state-in-effect).
+  const slug = slugTouched ? slugInput : slugify(companyName);
 
   if (state.success) {
     return (
@@ -156,7 +158,7 @@ export function SignupForm() {
           pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
           value={slug}
           onChange={(event) => {
-            setSlug(event.target.value.toLowerCase());
+            setSlugInput(event.target.value.toLowerCase());
             setSlugTouched(true);
           }}
           className={INPUT_CLS}

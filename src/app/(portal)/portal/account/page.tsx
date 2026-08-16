@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
@@ -363,12 +364,12 @@ export default async function PortalAccountPage({
           </p>
           <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
             Am schnellsten geht das ueber eine{' '}
-            <a
+            <Link
               href="/portal/defects/new"
               className="text-[var(--color-primary)] hover:underline"
             >
               neue Meldung
-            </a>{' '}
+            </Link>{' '}
             im Portal.
           </p>
         </div>

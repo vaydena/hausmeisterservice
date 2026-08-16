@@ -28,6 +28,12 @@ export function PortalReplyForm({
       formRef.current?.reset();
       // Der Zaehler haengt am React-State, form.reset() leert nur das DOM —
       // ohne das hier bliebe nach dem Senden die alte Laenge stehen.
+      //
+      // Sprint 132 · Der Zaehler spiegelt ein uncontrolled <textarea>. Nach
+      // form.reset() ist das DOM leer, der State nicht — die Regel kann diese
+      // Richtung nicht sehen, weil das "externe System" hier das Formular
+      // selbst ist.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBodyLength(0);
     }
   }, [pending, state.error]);

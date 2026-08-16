@@ -5,7 +5,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
-import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardBody } from '@/components/ui/card';
 import {
   daysAgoIso,
   formatEuro,

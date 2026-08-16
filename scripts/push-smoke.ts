@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import webpush from 'web-push';
 
 // Standalone smoke test — validiert VAPID-Setup und den Umgang mit

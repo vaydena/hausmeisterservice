@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { csvResponse, formatMinutes, parsePeriodRange, toCsv } from '@/lib/reports/utils';
+import { csvResponse, parsePeriodRange, toCsv } from '@/lib/reports/utils';
 import { formatDateTime } from '@/lib/utils/format';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 

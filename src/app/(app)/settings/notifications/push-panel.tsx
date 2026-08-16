@@ -53,6 +53,12 @@ export function PushSubscriptionsPanel() {
   }, []);
 
   useEffect(() => {
+    // Sprint 132 · Zustand beim Mounten einlesen. `refresh` fragt die
+    // Browser-Push-API ab (Permission, vorhandene Subscription) — beides
+    // existiert nur im Client und kann nicht aus Props kommen. Genau der
+    // Fall, den die Regel als Ausnahme nennt: Abgleich mit einem externen
+    // System, nicht abgeleiteter Zustand.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 

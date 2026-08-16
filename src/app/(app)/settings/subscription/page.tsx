@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { getTenantBillingContext } from '@/lib/platform/billing';
 import { getBankDetails, paymentReferenceForInvoice } from '@/lib/platform/bank-transfer';
-import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 import { formatDate, formatEUR } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';

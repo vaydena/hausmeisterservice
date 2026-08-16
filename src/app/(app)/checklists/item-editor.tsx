@@ -21,7 +21,28 @@ export function AddItemForm({
   return (
     <form
       action={formAction}
-      key={state.error ?? state.fieldErrors ? Math.random() : 'stable'}
+      /*
+       * Sprint 132 · Vorher stand hier
+       *   key={state.error ?? state.fieldErrors ? Math.random() : 'stable'}
+       * — und das war in beide Richtungen falsch.
+       *
+       * Gemeint war: nach erfolgreichem Hinzufuegen die (uncontrolled)
+       * Felder leeren, was in React nur ueber einen neuen `key` geht.
+       * Geprueft wurde aber auf FEHLER. Nach einem Treffer blieb der Key
+       * 'stable', die alten Werte standen also weiter im Formular.
+       *
+       * Schlimmer war der andere Zweig: bei einem Validierungsfehler lieferte
+       * `Math.random()` bei JEDEM Render einen neuen Key. Die Auswahl "Art"
+       * setzt State (`setKind`) und loest genau so ein Render aus — wer also
+       * nach einer Fehlermeldung die Art umstellte, verlor auf der Stelle
+       * alles Getippte. Und zwar in dem Moment, in dem er den Fehler
+       * korrigieren wollte.
+       *
+       * Jetzt haengt der Key an einem Zeitstempel, den die Action nur im
+       * Erfolgsfall setzt: ein Remount pro Treffer, keiner bei Fehlern.
+       * Gefunden hat das der Linter, den es bis Sprint 132 nicht gab.
+       */
+      key={state.addedAt ?? 'neu'}
       className="flex flex-col gap-3 rounded-lg border border-dashed border-[var(--color-border)] p-4"
     >
       <input type="hidden" name="template_id" value={templateId} />

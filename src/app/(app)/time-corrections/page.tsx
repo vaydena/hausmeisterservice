@@ -10,7 +10,6 @@ import { Card, CardBody } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
-  CORRECTION_STATUSES,
   CORRECTION_STATUS_LABEL,
   CORRECTION_STATUS_TONE,
   correctionDiff,

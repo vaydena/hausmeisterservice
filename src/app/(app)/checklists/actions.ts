@@ -15,6 +15,20 @@ export type TemplateFormState = {
 export type ItemFormState = {
   error?: string;
   fieldErrors?: Record<string, string>;
+  /**
+   * Sprint 132 · Zeitstempel des letzten ERFOLGREICHEN Hinzufuegens.
+   *
+   * Die Eingabefelder im Formular sind uncontrolled — nach einem Treffer
+   * leert sie nur ein Remount, und ein Remount erzwingt in React nur ein
+   * neuer `key`. Vorher stand dort `Math.random()`, und zwar am falschen
+   * Zweig: geleert wurde bei FEHLER, nicht bei Erfolg. Details im Kommentar
+   * an der Fundstelle in item-editor.tsx.
+   *
+   * Ein Zaehler taete es auch; der Zeitstempel ist beim Debuggen nuetzlicher
+   * und kollidiert genauso wenig, weil zwei Submits nicht in dieselbe
+   * Millisekunde fallen.
+   */
+  addedAt?: number;
 };
 
 function fieldErrorsFromZod(err: import('zod').ZodError): Record<string, string> {
@@ -168,7 +182,7 @@ export async function addItemAction(
   if (error) return { error: friendlyDbMessage(error.message) };
 
   revalidatePath(`/checklists/${templateId}`);
-  return {};
+  return { addedAt: Date.now() };
 }
 
 export async function updateItemAction(formData: FormData): Promise<void> {

@@ -58,6 +58,10 @@ export function PortalPushPanel() {
   }, []);
 
   useEffect(() => {
+    // Sprint 132 · Wie im Staff-Pendant (settings/notifications/push-panel):
+    // Permission und vorhandene Subscription stehen nur im Browser und
+    // muessen beim Mounten gelesen werden.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
