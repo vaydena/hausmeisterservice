@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   FEATURE_KEYS,
@@ -30,7 +30,7 @@ import { NAV_GROUPS, MOBILE_NAV_ITEMS } from '@/components/layout/nav-config';
  */
 
 const ALL_ON: Record<FeatureKey, boolean> = {
-  gps: true,
+  tours: true,
   portal: true,
   vehicles: true,
   automations: true,
@@ -59,14 +59,14 @@ describe('featureForPath', () => {
     expect(featureForPath('/tourshop')).toBeNull();
   });
 
-  it('deckt Touren mit ab — der Tarif sagt "GPS-Tracking + Touren" zu', () => {
-    expect(featureForPath('/tours')).toBe('gps');
-    expect(featureForPath('/tours/t1')).toBe('gps');
-    // Sprint 139: '/map' stand hier bis heute mit dabei. Die Route wurde nie
-    // gebaut — das Feature-Gate sperrte also eine Seite, die es nicht gibt,
-    // und dieser Test hat das Versprechen mit abgesichert statt es
-    // aufzudecken. Was vom Tarifversprechen "GPS-Tracking & Touren" heute
-    // wirklich existiert, ist /tours.
+  it('deckt die Tourenplanung ab', () => {
+    expect(featureForPath('/tours')).toBe('tours');
+    expect(featureForPath('/tours/t1')).toBe('tours');
+    // Sprint 139/140: '/map' stand hier einmal mit dabei, unter einem Feature
+    // namens `gps`. Die Route wurde nie gebaut — das Gate sperrte eine Seite,
+    // die es nicht gibt, und dieser Test hat das Versprechen abgesichert
+    // statt es aufzudecken. Die Zeile bleibt als Regressionsschutz stehen:
+    // sie prueft jetzt das Gegenteil dessen, was sie einmal behauptet hat.
     expect(featureForPath('/map')).toBeNull();
   });
 
@@ -113,9 +113,8 @@ describe('lockedModules', () => {
     expect(lockedModules(ALL_ON).size).toBe(0);
   });
 
-  it('sperrt Touren zusammen mit GPS', () => {
-    const locked = lockedModules(only('gps'));
-    expect(locked.has('gps')).toBe(true);
+  it('sperrt die Touren, aber nicht den Fuhrpark', () => {
+    const locked = lockedModules(only('tours'));
     expect(locked.has('tours')).toBe(true);
     expect(locked.has('vehicles')).toBe(false);
   });
@@ -129,7 +128,7 @@ describe('lockedModules', () => {
   it('laesst die Kernmodule und den Rest der Fachmodule unberuehrt', () => {
     // Starter: alles aus. Was dann noch uebrig bleibt, ist der Umfang, den
     // der guenstigste Tarif verspricht — Auftraege, Objekte, Zeiterfassung.
-    const locked = lockedModules(only('gps', 'portal', 'vehicles', 'automations', 'api'));
+    const locked = lockedModules(only('tours', 'portal', 'vehicles', 'automations', 'api'));
     for (const key of [
       'work_orders',
       'properties',
@@ -168,7 +167,20 @@ describe('parseFeatureKey', () => {
   });
 
   it('weist alles andere ab — der Wert kommt aus der URL', () => {
-    for (const bad of ['', 'GPS', 'toString', 'constructor', '__proto__', 'gps ', null, undefined]) {
+    for (const bad of [
+      '',
+      'TOURS',
+      'toString',
+      'constructor',
+      '__proto__',
+      'tours ',
+      // Sprint 140: der alte Name. Aus einer alten E-Mail oder einem
+      // Lesezeichen kann ?feature=gps noch kommen — die Sperrseite darf
+      // daraus kein Label bauen.
+      'gps',
+      null,
+      undefined,
+    ]) {
       expect(parseFeatureKey(bad)).toBeNull();
     }
   });
@@ -269,38 +281,72 @@ describe('Preisseite fuehrt keine zweite Feature-Liste', () => {
   });
 });
 
-describe('Deckung mit dem Tarif-Seed', () => {
+describe('Deckung mit den Tarif-Migrationen', () => {
   /**
    * Die Feature-Keys sind kein internes Vokabular: sie stehen so im
    * jsonb der Plaene. Ein Tippfehler auf einer der beiden Seiten faellt
    * sonst erst auf, wenn ein Kunde die Funktion vermisst — oder wenn er
    * sie behaelt, obwohl sein Tarif sie nicht enthaelt.
+   *
+   * SPRINT 140 — GELESEN WIRD DER GANZE STAPEL, NICHT EINE DATEI. Bis
+   * hierher zeigte dieser Block auf `20260812081357_seed_...sql`, also auf
+   * den Zustand vom 12.08.2026. Beim ersten Mal, dass eine Feature-Zuordnung
+   * durch eine NEUE Migration geaendert wurde, war er falsch: die
+   * Umschluesselung `gps` -> `tours` steht nicht im Seed, sondern in der
+   * Migration, die ihn korrigiert. Ein Test, der auf eine einzelne
+   * Migrationsdatei zeigt, misst einen historischen Zustand und nennt ihn
+   * "aktuell" — angewendete Migrationen aendert man nicht, also haette nur
+   * der Test nachgeben koennen.
    */
-  const seed = readFileSync(
-    join(
-      process.cwd(),
-      'supabase',
-      'migrations',
-      '20260812081357_seed_platform_subscription_plans.sql',
-    ),
-    'utf8',
-  );
+  const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
+  const sql = readdirSync(migrationsDir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .map((f) => readFileSync(join(migrationsDir, f), 'utf8'))
+    .join('\n');
+
+  it('sanity: die Migrationen wurden wirklich gelesen', () => {
+    expect(sql.length).toBeGreaterThan(1000);
+    expect(sql).toContain('subscription_plans');
+  });
 
   for (const feature of FEATURE_KEYS) {
-    it(`Feature "${feature}" kommt im Plan-Seed vor`, () => {
-      expect(seed.includes(`"${feature}"`)).toBe(true);
+    it(`Feature "${feature}" kommt in den Tarif-Migrationen vor`, () => {
+      expect(
+        sql.includes(`"${feature}"`),
+        `Kein einziger Migrationsschritt erwaehnt "${feature}". Die Plaene in platform.subscription_plans schalten das Feature dann nie ein — getEnabledFeatures() liest fuer jeden zahlenden Kunden false, und der Kunde vermisst etwas, das auf /preise steht.`,
+      ).toBe(true);
     });
   }
 
-  it('der Seed nennt kein Feature, das der Code nicht kennt', () => {
-    const inSeed = new Set(
-      [...seed.matchAll(/"([a-z_]+)":(?:true|false)/g)].map((m) => m[1] as string),
-    );
-    for (const key of inSeed) {
-      expect(
-        (FEATURE_KEYS as readonly string[]).includes(key),
-        `Der Plan-Seed schaltet "${key}", aber FeatureKey kennt den Wert nicht. getEnabledFeatures() ignoriert ihn stillschweigend — der Tarif verspricht dann etwas, das nirgends durchgesetzt wird.`,
-      ).toBe(true);
-    }
+  /**
+   * Historische Keys, die im Stapel stehenbleiben, weil angewendete
+   * Migrationen nicht umgeschrieben werden. Jeder Eintrag braucht die
+   * Migration, die ihn abgeloest hat — sonst ist er eine Amnestie fuer den
+   * naechsten Tippfehler mit demselben Namen.
+   */
+  const RETIRED_FEATURE_KEYS: Record<string, string> = {
+    gps: 'Sprint 140, ersetzt durch "tours" in 20260816120000_feature_key_gps_to_tours.sql. Der Schluessel hiess nach einer Funktion, die nie gebaut wurde.',
+  };
+
+  it('die Migrationen schalten kein Feature, das der Code nicht kennt', () => {
+    const known = new Set<string>(FEATURE_KEYS);
+    const inSql = new Set([...sql.matchAll(/"([a-z_]+)":(?:true|false)/g)].map((m) => m[1] as string));
+    const unknown = [...inSql].filter((k) => !known.has(k) && !(k in RETIRED_FEATURE_KEYS));
+    expect(
+      unknown,
+      `Diese Migrationen schalten Feature-Flags, die FeatureKey nicht kennt: ${unknown.join(', ')}. getEnabledFeatures() ignoriert sie stillschweigend — der Tarif verspricht dann etwas, das nirgends durchgesetzt wird.`,
+    ).toEqual([]);
+  });
+
+  it('jeder ausgemusterte Key ist wirklich ausgemustert', () => {
+    // Eine Amnestie fuer einen Key, den es wieder gibt, wuerde ihn dauerhaft
+    // von der Pruefung darueber ausnehmen.
+    const known = new Set<string>(FEATURE_KEYS);
+    const resurrected = Object.keys(RETIRED_FEATURE_KEYS).filter((k) => known.has(k));
+    expect(
+      resurrected,
+      `Diese Keys stehen als ausgemustert in RETIRED_FEATURE_KEYS, sind aber wieder in FEATURE_KEYS: ${resurrected.join(', ')}.`,
+    ).toEqual([]);
   });
 });

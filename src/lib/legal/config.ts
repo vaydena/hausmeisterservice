@@ -83,7 +83,12 @@ export const legalConfig = {
    * Zeitpunkt der letzten Aktualisierung — wird auf den Seiten
    * angezeigt und muss bei inhaltlichen Änderungen aktualisiert werden.
    */
-  lastUpdated: '10.08.2026',
+  // Sprint 140: hochgezogen, weil /datenschutz und /avv inhaltlich geaendert
+  // wurden — die Zusagen zu GPS-Standortdaten (Einwilligung, Kategorie,
+  // 90-Tage-Frist) sind entfallen, sie beschrieben eine Verarbeitung, die es
+  // nie gab. Ein unveraendertes Datum ueber geaendertem Text ist die Sorte
+  // Fehler, die man einer Datenschutzerklaerung am wenigsten nachsieht.
+  lastUpdated: '16.08.2026',
   /**
    * Produktname für die AGB — wird in Vertragsgegenstand-Klauseln
    * verwendet.

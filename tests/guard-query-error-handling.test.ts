@@ -236,7 +236,7 @@ describe('getEnabledFeatures', () => {
       makeClient([{ data: { subscription_status: 'trial', subscription_plan_id: null }, error: null }]),
     );
     await expect(getEnabledFeatures('t1')).resolves.toEqual({
-      gps: true,
+      tours: true,
       portal: true,
       vehicles: true,
       automations: true,

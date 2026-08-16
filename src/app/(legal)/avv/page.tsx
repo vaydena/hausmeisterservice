@@ -168,9 +168,15 @@ export default function AvvPage() {
           (Audit-Log) auf sensiblen Objekten, mit Aufbewahrung von 2 Jahren.
         </li>
         <li>
+          {/*
+            Sprint 140: der zweite Halbsatz sagte eine GPS-Verarbeitung zu,
+            die nicht existiert. Was bleibt, ist das EXIF-Stripping — das
+            laeuft nachweislich (src/lib/images/strip-metadata.ts) und ist
+            ueber /api/health/deep messbar.
+          */}
           <strong>Datenminimierung</strong>: EXIF-Standort-Metadaten werden vor dem
-          Foto-Upload automatisch entfernt; GPS-Standort nur bei aktiver Einwilligung mit
-          90-Tage-Löschfrist.
+          Foto-Upload automatisch entfernt; eine Standortverfolgung von Mitarbeitenden
+          findet nicht statt.
         </li>
         <li>
           <strong>Backup und Wiederherstellung</strong>: tägliche Backups über den

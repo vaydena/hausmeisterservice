@@ -66,10 +66,17 @@ export default function DatenschutzPage() {
           <strong>Berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO)</strong> — technisch
           notwendige Verarbeitung (Session-Cookies, Fehler-Logs, Sicherheit gegen Missbrauch).
         </li>
+        {/*
+          Sprint 140: "optionale Standortdaten (GPS bei Zeiterfassung)" ist
+          hier raus. Eine Datenschutzerklaerung, die eine Verarbeitung
+          beschreibt, die gar nicht stattfindet, ist kein harmloser
+          Ueberschuss — sie holt eine Einwilligung fuer etwas ein, das es
+          nicht gibt, und macht damit die Angaben daneben unglaubwuerdig.
+        */}
         <li>
-          <strong>Einwilligung (Art. 6 Abs. 1 lit. a DSGVO)</strong> — für optionale
-          Standortdaten (GPS bei Zeiterfassung), Push-Benachrichtigungen und E-Mail-Kommunikation
-          über die reine Vertragsabwicklung hinaus. Die Einwilligung kann jederzeit widerrufen werden.
+          <strong>Einwilligung (Art. 6 Abs. 1 lit. a DSGVO)</strong> — für
+          Push-Benachrichtigungen und E-Mail-Kommunikation über die reine
+          Vertragsabwicklung hinaus. Die Einwilligung kann jederzeit widerrufen werden.
         </li>
         <li>
           <strong>Rechtliche Verpflichtung (Art. 6 Abs. 1 lit. c DSGVO)</strong> — steuer-
@@ -88,8 +95,8 @@ export default function DatenschutzPage() {
           Mängelmeldungen, hochgeladene Dokumente und Fotos.
         </li>
         <li>
-          <strong>Zeit- und Ortsdaten</strong> — Zeiterfassungs-Einträge; GPS-Koordinaten
-          ausschließlich bei aktiver Einwilligung, mit einer Speicherdauer von maximal 90 Tagen.
+          <strong>Zeitdaten</strong> — Zeiterfassungs-Einträge (Beginn, Ende, Pausen,
+          Korrekturanträge). Eine Standortverfolgung von Mitarbeitenden findet nicht statt.
         </li>
         <li>
           <strong>Kommunikationsdaten</strong> — interne Nachrichten, versendete E-Mails,
@@ -201,7 +208,6 @@ export default function DatenschutzPage() {
           (§257 HGB).
         </li>
         <li>Audit-Log-Einträge: 2 Jahre.</li>
-        <li>GPS-Standortdaten (opt-in): 90 Tage.</li>
         <li>Push-Abonnement-Endpunkte: bis zum Widerruf oder Abmeldung.</li>
         <li>Sonstige Betriebsdaten: für die Dauer der Vertragsbeziehung + 30 Tage Karenzzeit.</li>
       </ul>

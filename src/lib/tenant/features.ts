@@ -72,7 +72,13 @@ export const getEnabledFeatures = cache(
 
     const raw = plan.features as Record<string, unknown>;
     return {
-      gps:         raw.gps === true,
+      // Sprint 140: `tours` hiess bis hierher `gps`. Kein Rueckfall-Lesen des
+      // alten Schluessels — die Migration hat alle drei Plan-Zeilen
+      // umgeschluesselt, und zum Zeitpunkt des Wechsels stand kein einziger
+      // Mandant auf einem Plan (3 von 3 im Trial, 0 mit subscription_plan_id).
+      // Ein `?? raw.gps` waere also Ballast, der nur die alte Zusage
+      // konserviert.
+      tours:       raw.tours === true,
       portal:      raw.portal === true,
       vehicles:    raw.vehicles === true,
       automations: raw.automations === true,

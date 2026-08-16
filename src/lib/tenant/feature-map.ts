@@ -16,14 +16,29 @@
  * Preisseite (src/app/preise/page.tsx) und dem Seed der Plaene
  * (supabase/migrations/20260812081357_seed_platform_subscription_plans.sql)
  * abgeglichen.
+ *
+ * SPRINT 140 — AUS `gps` WURDE `tours`. Der Schluessel hiess `gps` und
+ * bedeutete Tourenplanung. Gebaut war davon nur die Tourenplanung: keine
+ * Koordinatenspalte an `time_entries`, kein Import von `maplibre-gl`, keine
+ * Seite. Verkauft wurde trotzdem "GPS-Tracking & Touren" — Business ab
+ * 149 EUR/Monat, mit einem Absatz in /datenschutz ueber 90 Tage
+ * Speicherdauer fuer Daten, die nie entstanden sind.
+ *
+ * Der Schluessel steht auch in der Datenbank (platform.subscription_plans
+ * .features als jsonb). Umbenannt wurde deshalb an beiden Enden; die
+ * Migration liegt in supabase/migrations/20260816_feature_key_gps_to_tours.
+ *
+ * Die Umbenennung ist der Punkt: ein Schluessel, der etwas anderes heisst
+ * als er tut, laedt den naechsten Sprint dazu ein, `features.gps === true`
+ * zu lesen und daraus zu schliessen, GPS sei zugesagt.
  */
 import type { ModuleKey } from '@/lib/modules/registry';
 import { normalizeRoutePath, pathHasPrefix } from '@/lib/routing/path-prefix';
 
-export type FeatureKey = 'gps' | 'portal' | 'vehicles' | 'automations' | 'api';
+export type FeatureKey = 'tours' | 'portal' | 'vehicles' | 'automations' | 'api';
 
 export const FEATURE_KEYS: readonly FeatureKey[] = [
-  'gps',
+  'tours',
   'portal',
   'vehicles',
   'automations',
@@ -32,7 +47,7 @@ export const FEATURE_KEYS: readonly FeatureKey[] = [
 
 /** Anzeigename — landet auf der Sperrseite vor dem Nutzer. */
 export const FEATURE_LABEL: Record<FeatureKey, string> = {
-  gps: 'GPS-Tracking & Touren',
+  tours: 'Tourenplanung',
   portal: 'Bewohner-/Eigentümerportal',
   vehicles: 'Fuhrpark',
   automations: 'Automatisierungs-Regeln',
@@ -44,16 +59,15 @@ export const FEATURE_LABEL: Record<FeatureKey, string> = {
  * unter Einstellungen->Mandant weiterhin sehen, aber nicht mehr scharf
  * schalten — sonst stuende dort "Aktiv" ueber einer Route, die den Nutzer
  * wegleitet.
- *
- * `tours` haengt an `gps`, weil der Tarif-Seed genau das zusagt:
- * "gps — GPS-Tracking + Touren". Auf /preise steht derselbe Satz.
  */
 export const FEATURE_MODULES: Record<FeatureKey, readonly ModuleKey[]> = {
-  gps: ['gps', 'tours'],
+  tours: ['tours'],
   portal: ['resident_portal', 'owner_portal'],
   vehicles: ['vehicles'],
   automations: ['automations'],
   // Eine oeffentliche API gibt es noch nicht — kein Modul, keine Route.
+  // Der Verkauf verspricht sie trotzdem: Enterprise fuehrt "API-Zugang" fuer
+  // 349 EUR/Monat. Siehe die Ausnahme in tests/feature-substance.test.ts.
   api: [],
 };
 
@@ -65,10 +79,7 @@ export const FEATURE_MODULES: Record<FeatureKey, readonly ModuleKey[]> = {
  * Gate im Portal-Layout, nicht ueber diese Tabelle.
  */
 export const FEATURE_PATHS: Record<FeatureKey, readonly string[]> = {
-  // Sprint 139: '/map' ist raus — die Route wurde nie gebaut, das Gate
-  // sperrte also eine Seite, die es nicht gibt. /tours bleibt: die
-  // Tourenplanung ist gebaut und im Tarif enthalten.
-  gps: ['/tours'],
+  tours: ['/tours'],
   portal: [],
   vehicles: ['/vehicles'],
   automations: ['/settings/automations'],

@@ -24,12 +24,12 @@ import { requireFeature } from '@/lib/tenant/features';
  * (sie steht im ausgelieferten HTML), koennte sonst weiter Touren anlegen,
  * obwohl sein Tarif sie nicht enthaelt.
  *
- * `tours` haengt am Feature `gps` — so ist es im Tarif-Seed und auf /preise
- * zugesagt ("GPS-Tracking + Touren").
+ * Sprint 140: das Feature hiess bis hierher `gps` und deckte trotzdem genau
+ * dieses Modul ab — die GPS-Haelfte des Versprechens war nie gebaut.
  */
 async function requireTourAccess() {
   const ctx = await requireTenantContext();
-  await requireFeature(ctx.tenantId, 'gps');
+  await requireFeature(ctx.tenantId, 'tours');
   return ctx;
 }
 

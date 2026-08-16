@@ -18,8 +18,11 @@ const FEATURES: Array<{ title: string; body: string }> = [
     body: 'Alle betreuten Objekte, Wohnungen und offenen Tickets an einem Ort — von der Meldung bis zum Abschluss mit Foto und Unterschrift.',
   },
   {
-    title: 'Zeiterfassung mit GPS',
-    body: 'Mitarbeiter stempeln mobil ein und aus, optional mit Standort. Manuelle Korrekturen mit Freigabe-Workflow und CSV-Export für die Lohnbuchhaltung.',
+    // Sprint 140: hier stand "Zeiterfassung mit GPS" und "optional mit
+    // Standort". Beides war unbelegt — `time_entries` hat in keiner Migration
+    // eine Koordinatenspalte. Was hier steht, muss die App koennen.
+    title: 'Mobile Zeiterfassung',
+    body: 'Mitarbeiter stempeln unterwegs ein und aus. Manuelle Korrekturen mit Freigabe-Workflow und CSV-Export für die Lohnbuchhaltung.',
   },
   {
     title: 'Bewohner- & Eigentümer-Portal',

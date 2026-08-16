@@ -32,7 +32,6 @@ export type ModuleKey =
   | 'scheduling'
   | 'shifts'
   | 'tours'
-  | 'gps'
   | 'keys'
   | 'meters'
   | 'materials'
@@ -128,11 +127,14 @@ export const MODULES: readonly ModuleDefinition[] = [
   { key: 'scheduling', labelDe: 'Mitarbeiterplanung', domain: 'field', core: false, menuPath: '/schedule', description: 'Kalenderbasierte Einsatzplanung.' },
   { key: 'shifts', labelDe: 'Schichten', domain: 'field', core: false, description: 'Schichtmodelle.', unbuilt: true },
   { key: 'tours', labelDe: 'Touren', domain: 'field', core: false, menuPath: '/tours', description: 'Multi-Stopp-Tourenplanung mit Optimierung.' },
-  // Sprint 139: `menuPath: '/map'` ist raus. /map wurde nie gebaut, und gps
-  // war das einzige unbuilt-Modul, das noch einen Pfad versprach — Sprint 133
-  // hat die anderen drei entlassen und dieses uebersehen. Wer das Modul
-  // einschaltete, bekam den Sidebar-Eintrag "Karte" ins 404.
-  { key: 'gps', labelDe: 'GPS & Karte', domain: 'field', core: false, description: 'Opt-in-GPS mit 90-Tage-Retention.', unbuilt: true },
+  // Sprint 140: `gps` ist ganz raus. Sprint 139 hat ihm den toten menuPath
+  // '/map' genommen, damit war es ein Schalter ohne Wirkung — und ein
+  // Schalter ohne Wirkung laedt jeden spaeteren Sprint dazu ein, ihn wieder
+  // zu verdrahten. Von Mitarbeiter-GPS existierte nie eine Zeile Code:
+  // keine Koordinatenspalte an time_entries, kein Import von maplibre-gl.
+  // In Deutschland ist Standortverfolgung von Beschaeftigten zudem
+  // mitbestimmungspflichtig — das Versprechen war beim ersten Kunden
+  // einzuloesen, ohne dass etwas davon gebaut war.
   { key: 'keys', labelDe: 'Schlüssel', domain: 'resources', core: false, menuPath: '/keys', description: 'Schlüsselverwaltung mit Ausgabe-/Rückgabelogik.' },
   { key: 'meters', labelDe: 'Zähler', domain: 'resources', core: false, menuPath: '/meters', description: 'Zählerstände und Verbrauchshistorie.' },
   { key: 'materials', labelDe: 'Material & Lager', domain: 'resources', core: false, menuPath: '/materials', description: 'Materialstamm, Bestände, Entnahmen.' },

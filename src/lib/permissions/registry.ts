@@ -152,9 +152,10 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
   p('tours', 'create', 'Tour erstellen', 'Neue Tour planen.'),
   p('tours', 'edit', 'Tour bearbeiten', 'Stopps, Reihenfolge ändern.'),
 
-  // GPS
-  p('gps', 'view', 'Eigene Position sehen', 'Eigenen GPS-Track sehen.', false),
-  p('gps', 'view_others', 'Mitarbeiter-Positionen sehen', 'GPS anderer Mitarbeiter einsehen (Disponent).'),
+  // Sprint 140: `gps.view` und `gps.view_others` sind raus. Sie standen in
+  // 27 von 45 Rollen der Produktiv-Datenbank und haben nie etwas
+  // freigeschaltet — es gab keine Position zu sehen. Ein Recht, das nichts
+  // gewaehrt, laesst eine Rollenmatrix vollstaendiger aussehen als sie ist.
 
   // Keys
   p('keys', 'view', 'Schlüssel ansehen', 'Schlüsselstamm und Vorgänge einsehen.'),
@@ -265,7 +266,6 @@ const FIELD_STAFF_BASE: PermissionKey[] = [
   'messaging.view',
   'messaging.create',
   'announcements.view',
-  'gps.view',
 ];
 
 export const SYSTEM_ROLE_TEMPLATES: readonly SystemRoleTemplate[] = [
@@ -354,7 +354,6 @@ export const SYSTEM_ROLE_TEMPLATES: readonly SystemRoleTemplate[] = [
       'tours.view',
       'tours.create',
       'tours.edit',
-      'gps.view_others',
       'time_tracking.view_others',
       'messaging.view',
       'messaging.create',

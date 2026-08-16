@@ -11,7 +11,7 @@ type PlanInterval = 'monthly' | 'yearly';
 
 const PLANS: Array<{ code: PlanCode; name: string; monthly: number; yearly: number; hint: string }> = [
   { code: 'starter',    name: 'Starter',    monthly: 49,  yearly: 490,  hint: 'bis 5 Mitarbeiter · 20 Objekte' },
-  { code: 'business',   name: 'Business',   monthly: 149, yearly: 1490, hint: 'bis 25 MA · GPS · Portale · Fuhrpark' },
+  { code: 'business',   name: 'Business',   monthly: 149, yearly: 1490, hint: 'bis 25 MA · Touren · Portale · Fuhrpark' },
   { code: 'enterprise', name: 'Enterprise', monthly: 349, yearly: 3490, hint: 'unlimitiert · Automatisierungen · API' },
 ];
 

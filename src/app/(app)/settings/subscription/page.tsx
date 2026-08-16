@@ -7,6 +7,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';
 import { Button } from '@/components/ui/button';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { FEATURE_KEYS, FEATURE_LABEL } from '@/lib/tenant/feature-map';
 import { selectPlanAction, requestBankTransferInvoiceAction } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -118,17 +119,22 @@ export default async function SubscriptionPage() {
                 <ul className="mt-3 space-y-1 text-xs">
                   <li>• bis {plan.max_employees ?? '∞'} Mitarbeiter</li>
                   <li>• bis {plan.max_properties ?? '∞'} Objekte</li>
+                  {/*
+                    Sprint 140: bis hierher standen die fuenf Feature-Namen
+                    hier ein zweites Mal, von Hand. Sprint 115 hat das
+                    Vokabular fuer /preise und die Sperrseite an eine Stelle
+                    gezogen und diese Liste uebersehen — der Kunde las auf der
+                    Preisseite "GPS-Tracking & Touren" und hier "GPS-Tracking",
+                    also zwei Zusagen fuer denselben Schalter. Jetzt dieselbe
+                    Quelle wie ueberall sonst.
+                  */}
                   {plan.features && typeof plan.features === 'object' && (
                     <>
-                      {(plan.features as Record<string, boolean>).gps && <li>• GPS-Tracking</li>}
-                      {(plan.features as Record<string, boolean>).portal && (
-                        <li>• Bewohner-/Eigentümerportal</li>
-                      )}
-                      {(plan.features as Record<string, boolean>).vehicles && <li>• Fuhrpark</li>}
-                      {(plan.features as Record<string, boolean>).automations && (
-                        <li>• Automatisierungen</li>
-                      )}
-                      {(plan.features as Record<string, boolean>).api && <li>• API-Zugang</li>}
+                      {FEATURE_KEYS.filter(
+                        (key) => (plan.features as Record<string, boolean>)[key],
+                      ).map((key) => (
+                        <li key={key}>• {FEATURE_LABEL[key]}</li>
+                      ))}
                     </>
                   )}
                 </ul>

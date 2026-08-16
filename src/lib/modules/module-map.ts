@@ -36,7 +36,7 @@ import { normalizeRoutePath, pathHasPrefix } from '@/lib/routing/path-prefix';
  *
  * Module ohne eigene Staff-Route fehlen bewusst:
  *   resident_portal — eigene Route-Group, siehe MODULES_OUTSIDE_APP_ROUTE_GROUP
- *   work_reports / photos / shifts / owner_portal / gps — noch nicht gebaut,
+ *   work_reports / photos / shifts / owner_portal — noch nicht gebaut,
  *     siehe `unbuilt` in registry.ts
  *
  * Sprint 133 · Die zweite Zeile stand hier vorher als blosse Behauptung
