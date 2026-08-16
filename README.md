@@ -178,20 +178,30 @@ Aktuell abgedeckt:
   Verhindert das schlimmste Multi-Tenant-Leak: „neue Tabelle vergessen zu
   schützen, jeder Mandant liest alles". Neue Tabelle? In derselben Migration
   direkt `enable row level security` + Policies mitliefern.
-- `tests/nav-module-coverage.test.ts` — dreifacher Konsistenz-Check zwischen
+- `tests/nav-module-coverage.test.ts` — Konsistenz-Check zwischen
   `components/layout/nav-config.ts` und `lib/modules/registry.ts`:
   jeder `NavItem.module` (nicht null) muss ein deklarierter `ModuleKey` sein
   (Runtime-Guard zusätzlich zur TS-Typprüfung, fängt `as`-Casts);
   jeder statische `NavItem.href` muss auf eine `page.tsx` unter
-  `src/app/(app)/` zeigen (Allowlist `KNOWN_MISSING_PAGES` für bewusst
-  ungebaute Routen wie `/map` und `/documents` — Einträge in der Allowlist
-  werden automatisch als stale markiert, sobald die `page.tsx` existiert);
-  jedes Modul mit `menuPath` muss von mindestens einem NavItem via
-  `module: <key>` referenziert werden (verhindert „menuPath ist tote
-  Registry-Konfiguration"). Verhindert stumme Sidebar-Ausfälle (Item
-  verschwindet weil `enabledModules.has(module)` false wird) und tote
-  Sidebar-Links (User klickt → 404). Neue Sidebar-Route? Nav-Eintrag +
-  `menuPath` im passenden Modul + echte `page.tsx`.
+  `src/app/(app)/` zeigen — entschuldigt ist nur, wessen Modul in der
+  Registry `unbuilt: true` trägt; jedes Modul mit `menuPath` muss von
+  mindestens einem NavItem via `module: <key>` referenziert werden
+  (verhindert „menuPath ist tote Registry-Konfiguration"); und der
+  Vollausschlag: `filterNavGroups` mit **allen** Modulen an und **allen**
+  Permissions darf keinen Link auf eine fehlende `page.tsx` übriglassen.
+  Verhindert stumme Sidebar-Ausfälle (Item verschwindet weil
+  `enabledModules.has(module)` false wird) und tote Sidebar-Links (User
+  klickt → 404). Neue Sidebar-Route? Nav-Eintrag + `menuPath` im passenden
+  Modul + echte `page.tsx`.
+  **`unbuilt: true` ist die einzige Quelle für „Seite noch nicht gebaut"**
+  (Sprint 131, vorher zwei Listen: `KNOWN_MISSING_PAGES` hier und
+  `NOT_ENABLED_ON_SIGNUP` in der Registry). Vier Stellen lesen das Flag:
+  Navigation (`nav-config.ts`), Signup-Vorauswahl
+  (`SIGNUP_DEFAULT_MODULE_KEYS`), die Schalterliste unter
+  Einstellungen → Mandant und `toggleModuleAction`. Der Test hält die
+  Markierung auch in der Gegenrichtung ehrlich: existiert die `page.tsx`,
+  schlägt er fehl, bis das Flag entfernt ist — sonst bleibt ein fertiges
+  Modul unsichtbar, ohne dass irgendetwas kaputt aussieht.
 - `tests/storage-bucket-policy-coverage.test.ts` — jeder in einer Migration
   per `insert into storage.buckets` deklarierte Bucket muss `public=false`
   sein und mindestens eine SELECT- und INSERT-Policy auf `storage.objects`

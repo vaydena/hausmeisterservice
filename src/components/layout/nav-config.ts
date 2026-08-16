@@ -1,4 +1,4 @@
-import type { ModuleKey } from '@/lib/modules/registry';
+import { isUnbuiltModule, type ModuleKey } from '@/lib/modules/registry';
 import type { PermissionKey } from '@/lib/permissions/registry';
 import type { NavIconKey } from './nav-icons';
 
@@ -138,6 +138,15 @@ function isVisible(
   enabledModules: Set<ModuleKey>,
   permissions: Set<PermissionKey>,
 ): boolean {
+  // Sprint 131: zuerst die Frage, ob es die Seite ueberhaupt gibt. Sie steht
+  // bewusst VOR den beiden anderen, denn sie haengt nicht am Mandanten: ein
+  // Link auf eine Seite, die im Repo fehlt, ist fuer jeden ein 404 — auch
+  // fuer den, der das Modul eingeschaltet hat und alle Rechte besitzt.
+  //
+  // Genau dieser Fall stand am 16.08.2026 live: ein Mandant aus der Zeit vor
+  // dem Signup-Riegel hatte `gps` an und damit "Karte" in der Seitenleiste.
+  // Die Pruefung hier heilt solche Altbestaende ohne Eingriff in die Daten.
+  if (item.module && isUnbuiltModule(item.module)) return false;
   if (item.module && !enabledModules.has(item.module)) return false;
   if (item.permission && !permissions.has(item.permission)) return false;
   return true;

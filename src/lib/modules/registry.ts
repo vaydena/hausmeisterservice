@@ -62,6 +62,30 @@ export interface ModuleDefinition {
   core: boolean;
   menuPath?: string;
   description: string;
+  /**
+   * Die Seite zu `menuPath` ist noch nicht gebaut.
+   *
+   * SPRINT 131 — WARUM DAS HIER STEHT UND NICHT IN EINER TESTDATEI. Bis
+   * hierher lebte diese Information in `KNOWN_MISSING_PAGES` in
+   * tests/nav-module-coverage.test.ts. Ein Test kann aber nur verhindern,
+   * was er prueft, und geprueft wurde genau eine der drei Stellen, an denen
+   * ein Modul eingeschaltet werden kann: die Signup-Vorauswahl.
+   *
+   * Der erste echte Testkunde hat gezeigt, was das kostet. Sein Mandant
+   * entstand zwei Stunden vor dem Sprint-123-Riegel und hat `gps` an —
+   * "Karte" steht in seiner Seitenleiste und fuehrt ins 404, fuer den
+   * Inhaber ebenso wie fuer jeden Hausmeister, Gaertner und Fahrer (8 von
+   * 15 Rollen haben `gps.view`). Das Tarif-Gate haelt es nicht auf: im
+   * Trial gibt `getEnabledFeatures` alles frei. Und die Modul-Schalter
+   * unter Einstellungen -> Mandant boten das Modul jedem Kunden weiterhin
+   * zum Selbst-Einschalten an.
+   *
+   * Deshalb ist es jetzt eine Eigenschaft des Moduls, die alle vier
+   * Stellen lesen: Navigation, Signup-Vorauswahl, Schalter-Oberflaeche,
+   * Schalter-Aktion. Der Test leitet seine Liste von hier ab, statt eine
+   * eigene zu fuehren — zwei Listen laufen auseinander, eine nicht.
+   */
+  unbuilt?: true;
 }
 
 export const MODULES: readonly ModuleDefinition[] = [
@@ -89,7 +113,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { key: 'scheduling', labelDe: 'Mitarbeiterplanung', domain: 'field', core: false, menuPath: '/schedule', description: 'Kalenderbasierte Einsatzplanung.' },
   { key: 'shifts', labelDe: 'Schichten', domain: 'field', core: false, description: 'Schichtmodelle.' },
   { key: 'tours', labelDe: 'Touren', domain: 'field', core: false, menuPath: '/tours', description: 'Multi-Stopp-Tourenplanung mit Optimierung.' },
-  { key: 'gps', labelDe: 'GPS & Karte', domain: 'field', core: false, menuPath: '/map', description: 'Opt-in-GPS mit 90-Tage-Retention.' },
+  { key: 'gps', labelDe: 'GPS & Karte', domain: 'field', core: false, menuPath: '/map', description: 'Opt-in-GPS mit 90-Tage-Retention.', unbuilt: true },
   { key: 'keys', labelDe: 'Schlüssel', domain: 'resources', core: false, menuPath: '/keys', description: 'Schlüsselverwaltung mit Ausgabe-/Rückgabelogik.' },
   { key: 'meters', labelDe: 'Zähler', domain: 'resources', core: false, menuPath: '/meters', description: 'Zählerstände und Verbrauchshistorie.' },
   { key: 'materials', labelDe: 'Material & Lager', domain: 'resources', core: false, menuPath: '/materials', description: 'Materialstamm, Bestände, Entnahmen.' },
@@ -113,8 +137,24 @@ export function isCoreModule(key: ModuleKey): boolean {
 }
 
 /**
+ * Module, deren Seite noch nicht existiert.
+ *
+ * Sprint 131: abgeleitet statt gepflegt. Vorher stand diese Information an
+ * zwei Stellen von Hand — als `gps` in `NOT_ENABLED_ON_SIGNUP` und als
+ * `/map` in `KNOWN_MISSING_PAGES` in der Testdatei. Zwei Listen stimmen nur
+ * so lange ueberein, wie jemand daran denkt.
+ */
+export const UNBUILT_MODULE_KEYS: readonly ModuleKey[] = MODULES.filter((m) => m.unbuilt).map(
+  (m) => m.key,
+);
+
+export function isUnbuiltModule(key: ModuleKey): boolean {
+  return MODULES_BY_KEY[key]?.unbuilt === true;
+}
+
+/**
  * Sprint 123 · Module, die ein NEUER Mandant beim Signup eingeschaltet
- * bekommt. Nur die Ausnahmen stehen hier — alles andere ist an.
+ * bekommt: alles Nicht-Kern, was gebaut ist.
  *
  * Warum das ueberhaupt noetig ist: `getEnabledModules` startet bei
  * `CORE_MODULE_KEYS` und ergaenzt ausschliesslich `tenant_modules`-Zeilen
@@ -130,17 +170,10 @@ export function isCoreModule(key: ModuleKey): boolean {
  * das Produkt sehen, das er bewertet. Abschalten kann er jederzeit selbst,
  * einschalten kann er nur, was er kennt.
  *
- * Wer ein Modul hier ausnimmt, sagt damit: "das ist noch nicht so weit,
- * dass ein Kunde es sehen soll". Der Guard in
- * tests/nav-module-coverage.test.ts haelt das ehrlich — ein Modul, dessen
- * Seite laut KNOWN_MISSING_PAGES gar nicht existiert, darf nicht in der
- * Standardauswahl stehen.
+ * Kern-Module stehen bewusst NICHT drin — sie sind ohnehin immer an, und
+ * eine zusaetzliche `tenant_modules`-Zeile darauf saehe wie ein wirksamer
+ * Ausschalter aus, der nichts bewirkt.
  */
-const NOT_ENABLED_ON_SIGNUP: readonly ModuleKey[] = [
-  // Kein `/map` im Repo — der Menuepunkt fuehrt ins 404 (KNOWN_MISSING_PAGES).
-  'gps',
-];
-
 export const SIGNUP_DEFAULT_MODULE_KEYS: readonly ModuleKey[] = MODULES.filter(
-  (m) => !m.core && !NOT_ENABLED_ON_SIGNUP.includes(m.key),
+  (m) => !m.core && !m.unbuilt,
 ).map((m) => m.key);

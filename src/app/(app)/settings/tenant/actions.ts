@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { isCoreModule, MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
+import {
+  isCoreModule,
+  isUnbuiltModule,
+  MODULES_BY_KEY,
+  type ModuleKey,
+} from '@/lib/modules/registry';
 import { hasFeature } from '@/lib/tenant/features';
 import { featureForModule } from '@/lib/tenant/feature-map';
 import { tenantBillingUpdateSchema } from '@/lib/schemas/tenant';
@@ -22,6 +27,14 @@ export async function toggleModuleAction(formData: FormData): Promise<void> {
   if (isCoreModule(key)) throw new Error('Kern-Module lassen sich nicht deaktivieren.');
 
   const enabled = rawEnabled === 'true';
+
+  // Sprint 131: dieselbe Begruendung wie beim Tarif-Gate eine Ebene tiefer —
+  // die Seite blendet den Schalter aus, der Action-Endpoint bleibt trotzdem
+  // aufrufbar. Ausschalten muss erlaubt bleiben: Altbestaende wie der
+  // Mandant vom 16.08.2026 haben das Modul an und sollen es loswerden.
+  if (enabled && isUnbuiltModule(key)) {
+    throw new Error(`${MODULES_BY_KEY[key].labelDe} ist noch nicht verfügbar.`);
+  }
 
   const ctx = await requireTenantContext();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);

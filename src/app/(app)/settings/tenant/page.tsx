@@ -67,9 +67,12 @@ export default async function TenantSettingsPage() {
   const address = parseTenantAddress(t?.address);
   const invoiceData = parseTenantInvoiceData(t?.invoice_data);
 
+  // Sprint 131: Module ohne gebaute Seite werden hier gar nicht erst
+  // angeboten. Ein Schalter, der einen 404-Link in die eigene Seitenleiste
+  // legt, ist kein Angebot — er ist eine Falle.
   const grouped = DOMAIN_ORDER.map((domain) => ({
     domain,
-    modules: MODULES.filter((m) => m.domain === domain),
+    modules: MODULES.filter((m) => m.domain === domain && !m.unbuilt),
   })).filter((g) => g.modules.length > 0);
 
   return (
