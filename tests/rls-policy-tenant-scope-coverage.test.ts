@@ -117,6 +117,20 @@ const INTENTIONALLY_UNSCOPED_POLICIES = new Set<string>([
   // Absicht "kein Client-Zugriff" im Schema lesbar ist statt implizit.
   '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_rate_limits_deny_all_client::public.auth_rate_limits',
   '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_mfa_recovery_codes_deny_all_client::public.auth_mfa_recovery_codes',
+  // Sprint 122 · Rollenvorlagen. Dieselbe Bauart wie public.permissions
+  // eine Zeile weiter oben: globale Referenzdaten ohne tenant_id. Die
+  // Tabellen enthalten die 15 Startrollen und deren Rechte, aus denen die
+  // Signup-Provisionierung die Rollen eines NEUEN Mandanten kopiert. Es
+  // gibt nichts, wonach man hier scopen koennte — die Vorlagen sind fuer
+  // alle Mandanten identisch, und nach dem Kopieren gehoert die Rolle dem
+  // Mandanten (public.roles, dort greift die Tenant-Isolation).
+  // Geschrieben wird ausschliesslich per service_role
+  // (supabase/seed/role-templates.ts); die _no_write-Policies sperren
+  // jeden Client-Schreibzugriff mit (false).
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_templates_select::public.role_templates',
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_templates_no_write::public.role_templates',
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_template_permissions_select::public.role_template_permissions',
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_template_permissions_no_write::public.role_template_permissions',
 ]);
 
 function keyOf(p: Policy): string {

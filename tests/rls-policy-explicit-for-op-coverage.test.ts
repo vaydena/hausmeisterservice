@@ -123,6 +123,15 @@ const INTENTIONALLY_FOR_ALL_POLICIES = new Set<string>([
   // verschwindet.
   '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_rate_limits_deny_all_client::public.auth_rate_limits',
   '20260815110000_auth_service_only_tables_explicit_deny_all.sql::auth_mfa_recovery_codes_deny_all_client::public.auth_mfa_recovery_codes',
+  // Sprint 122 · Schreibsperre auf den Rollenvorlagen. Dieselbe Begruendung
+  // wie bei den beiden Eintraegen darueber: INSERT, UPDATE und DELETE
+  // teilen sich die identische Bedingung (false) — geschrieben wird
+  // ausschliesslich per service_role aus supabase/seed/role-templates.ts.
+  // Ein Split in drei per-op-Policies waere dreimal dasselbe `false`.
+  // Bewusst NICHT deny-all: der Lesezugriff laeuft ueber eine eigene
+  // _select-Policy, weil die Rollenverwaltung die Vorlagen anzeigen darf.
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_templates_no_write::public.role_templates',
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_template_permissions_no_write::public.role_template_permissions',
 ]);
 
 describe('RLS policy explicit FOR-op coverage', () => {

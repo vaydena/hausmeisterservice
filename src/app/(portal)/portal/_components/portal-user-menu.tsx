@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRef, useState, useEffect } from 'react';
 import { LogOut, User, Settings } from 'lucide-react';
+import { formatUserRoleLabel } from '@/lib/permissions/user-role-label';
 
 export function PortalUserMenu({
   displayName,
@@ -56,6 +57,16 @@ export function PortalUserMenu({
             {email && (
               <p className="truncate text-xs text-[var(--color-muted-foreground)]">{email}</p>
             )}
+            {/*
+              Sprint 122: Nutzerklasse ausdruecklich benannt. "Bewohner" stand
+              hier bisher nur als Ersatz fuer einen fehlenden Namen — wer einen
+              Namen hinterlegt hatte, sah nirgends, in welchem Bereich er sich
+              befindet. Statisch und nicht aus einer Rolle abgeleitet: der
+              Portalzugang haengt an residents.user_id, nicht an user_roles.
+            */}
+            <p className="mt-1 text-xs font-medium text-[var(--color-primary)]">
+              {formatUserRoleLabel({ userClass: 'resident' })}
+            </p>
           </div>
           <Link
             href="/portal/account"

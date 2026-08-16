@@ -6,9 +6,11 @@ import { NotificationBell } from './notification-bell';
 export function Header({
   displayName,
   email,
+  roleLabel,
 }: {
   displayName: string | null;
   email: string | null;
+  roleLabel: string;
 }) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background)] px-4 md:px-6">
@@ -38,7 +40,7 @@ export function Header({
         >
           <NotificationBell />
         </Suspense>
-        <UserMenu displayName={displayName} email={email} />
+        <UserMenu displayName={displayName} email={email} roleLabel={roleLabel} />
       </div>
     </header>
   );

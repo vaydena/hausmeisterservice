@@ -154,6 +154,16 @@ function policyKey(p: ParsedPolicy): string {
  */
 const INTENTIONALLY_OPEN_POLICIES = new Set<string>([
   '20260801000000_init.sql::permissions_select::public.permissions',
+  // Sprint 122 · Rollenvorlagen — derselbe Fall wie permissions_select:
+  // ein projektweiter Katalog ohne tenant_id. Beide Tabellen enthalten die
+  // 15 Startrollen und deren Rechte; jeder Angemeldete darf sie lesen,
+  // damit die Rollenverwaltung anzeigen kann, welche Vorlagen es gibt.
+  // Ein Leck ist ausgeschlossen: in den Zeilen stehen ausschliesslich
+  // Rollen-Keys, deutsche Bezeichnungen und Permission-Keys — keine
+  // Mandanten-, Personen- oder Betriebsdaten. Geschrieben wird nur per
+  // service_role; die zugehoerigen _no_write-Policies sind (false).
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_templates_select::public.role_templates',
+  '20260816120000_role_templates_and_signup_provisioning.sql::role_template_permissions_select::public.role_template_permissions',
 ]);
 
 const TRIVIAL_POLICIES = ALL_POLICIES.filter(

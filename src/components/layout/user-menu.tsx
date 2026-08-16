@@ -6,9 +6,12 @@ import { LogOut, User } from 'lucide-react';
 export function UserMenu({
   displayName,
   email,
+  roleLabel,
 }: {
   displayName: string | null;
   email: string | null;
+  /** Sprint 122: z. B. "Inhaber · Administrator". Siehe formatUserRoleLabel. */
+  roleLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -52,6 +55,7 @@ export function UserMenu({
             {email && (
               <div className="truncate text-xs text-[var(--color-muted-foreground)]">{email}</div>
             )}
+            <div className="mt-1 text-xs font-medium text-[var(--color-primary)]">{roleLabel}</div>
           </div>
           <button
             type="button"

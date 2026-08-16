@@ -7,6 +7,8 @@ import { getResidentContext } from '@/lib/portal/current';
 import { getAvailableModules } from '@/lib/modules/enabled';
 import { moduleForPath } from '@/lib/modules/module-map';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { getUserRoleNames } from '@/lib/permissions/user-roles';
+import { formatUserRoleLabel } from '@/lib/permissions/user-role-label';
 import { evaluateSubscriptionAccess, isPathAllowedWhenBlocked } from '@/lib/tenant/subscription-guard';
 import { hasFeature } from '@/lib/tenant/features';
 import { featureForPath } from '@/lib/tenant/feature-map';
@@ -45,9 +47,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect(`/tarif-erforderlich?feature=${requiredFeature}`);
   }
 
-  const [enabledModules, permissions] = await Promise.all([
+  const [enabledModules, permissions, roleNames] = await Promise.all([
     getAvailableModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
+    getUserRoleNames(ctx.userId, ctx.tenantId),
   ]);
 
   // Sprint 117: Modul-Gate auf Routen-Ebene. Die Registry sagt seit dem
@@ -76,7 +79,15 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-dvh">
       <Sidebar groups={navGroups} appName={clientEnv.NEXT_PUBLIC_APP_NAME} />
       <div className="flex flex-1 flex-col">
-        <Header displayName={ctx.displayName} email={ctx.email} />
+        <Header
+          displayName={ctx.displayName}
+          email={ctx.email}
+          roleLabel={formatUserRoleLabel({
+            userClass: 'staff',
+            isOwner: ctx.isOwner,
+            roleNames,
+          })}
+        />
         <main className="flex-1 overflow-x-hidden bg-[var(--color-muted)] p-4 pb-20 md:p-6 md:pb-6">
           {children}
         </main>

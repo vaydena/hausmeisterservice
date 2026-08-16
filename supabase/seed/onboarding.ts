@@ -154,7 +154,11 @@ async function ensureSystemRoles(tenantId: string): Promise<Record<string, strin
           key: tpl.key,
           name: tpl.nameDe,
           description: tpl.description,
-          is_system: true,
+          // Sprint 122: gleiche Regel wie in der Signup-Provisionierung —
+          // `is_system` sperrt das Loeschen, und das darf nur fuer
+          // `superadmin` gelten. Vorher stand hier `true` fuer alle 15, was
+          // dem Demo-Mandanten 14 unloeschbare Rollen verpasst hat.
+          is_system: !tpl.editable,
         })
         .select('id')
         .single();
