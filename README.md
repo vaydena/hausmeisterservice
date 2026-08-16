@@ -1242,7 +1242,7 @@ verloren (Meldung an Sentry) — am 16.08.2026 in der Produktiv-DB nachgewiesen:
 `platform` muss für PostgREST sichtbar sein, sonst antwortet **jede** Abfrage
 mit `PGRST106 Invalid schema` und `/platform` ist für den Betreiber komplett
 eine Fehlerseite. Steht als Migration im Repo
-(`20260816170000_expose_platform_schema_to_postgrest.sql`) statt als Klick unter
+(`20260816172342_expose_platform_schema_to_postgrest.sql`) statt als Klick unter
 „Exposed schemas“ im Supabase-Dashboard — ein Klick hinterlässt keine Spur.
 
 Zwei Caches, beide müssen angestoßen werden:
