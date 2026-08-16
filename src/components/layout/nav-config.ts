@@ -57,7 +57,6 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/time-corrections', labelDe: 'Korrekturanträge', icon: 'clipboard-list', module: 'time_tracking', permission: 'time_tracking.view' },
       { href: '/schedule', labelDe: 'Planung', icon: 'calendar-range', module: 'scheduling', permission: 'scheduling.view' },
       { href: '/tours', labelDe: 'Touren', icon: 'route', module: 'tours', permission: 'tours.view' },
-      { href: '/map', labelDe: 'Karte', icon: 'map', module: 'gps', permission: 'gps.view' },
     ],
   },
   {

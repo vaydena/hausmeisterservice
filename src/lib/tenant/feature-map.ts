@@ -65,7 +65,10 @@ export const FEATURE_MODULES: Record<FeatureKey, readonly ModuleKey[]> = {
  * Gate im Portal-Layout, nicht ueber diese Tabelle.
  */
 export const FEATURE_PATHS: Record<FeatureKey, readonly string[]> = {
-  gps: ['/map', '/tours'],
+  // Sprint 139: '/map' ist raus — die Route wurde nie gebaut, das Gate
+  // sperrte also eine Seite, die es nicht gibt. /tours bleibt: die
+  // Tourenplanung ist gebaut und im Tarif enthalten.
+  gps: ['/tours'],
   portal: [],
   vehicles: ['/vehicles'],
   automations: ['/settings/automations'],

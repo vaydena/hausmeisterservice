@@ -62,7 +62,6 @@ export const MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
   time_tracking: ['/time-tracking', '/time-corrections'],
   scheduling: ['/schedule'],
   tours: ['/tours'],
-  gps: ['/map'],
   keys: ['/keys'],
   meters: ['/meters'],
   materials: ['/materials'],

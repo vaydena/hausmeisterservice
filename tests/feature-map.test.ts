@@ -62,7 +62,12 @@ describe('featureForPath', () => {
   it('deckt Touren mit ab — der Tarif sagt "GPS-Tracking + Touren" zu', () => {
     expect(featureForPath('/tours')).toBe('gps');
     expect(featureForPath('/tours/t1')).toBe('gps');
-    expect(featureForPath('/map')).toBe('gps');
+    // Sprint 139: '/map' stand hier bis heute mit dabei. Die Route wurde nie
+    // gebaut — das Feature-Gate sperrte also eine Seite, die es nicht gibt,
+    // und dieser Test hat das Versprechen mit abgesichert statt es
+    // aufzudecken. Was vom Tarifversprechen "GPS-Tracking & Touren" heute
+    // wirklich existiert, ist /tours.
+    expect(featureForPath('/map')).toBeNull();
   });
 
   it('trifft die Automatisierungen, aber nicht die uebrigen Einstellungen', () => {
