@@ -29,9 +29,15 @@ export async function toggleModuleAction(formData: FormData): Promise<void> {
   const enabled = rawEnabled === 'true';
 
   // Sprint 131: dieselbe Begruendung wie beim Tarif-Gate eine Ebene tiefer —
-  // die Seite blendet den Schalter aus, der Action-Endpoint bleibt trotzdem
-  // aufrufbar. Ausschalten muss erlaubt bleiben: Altbestaende wie der
-  // Mandant vom 16.08.2026 haben das Modul an und sollen es loswerden.
+  // die Seite bietet ungebaute Module gar nicht erst an, der Action-Endpoint
+  // bleibt trotzdem aufrufbar.
+  //
+  // Nur das EINschalten wird abgewiesen. Ein Ausschalten zu verbieten haette
+  // keinen Adressaten: der Mandant "Firma ABC" hat seit dem 16.08.2026 eine
+  // aktive gps-Zeile aus der Zeit vor dem Signup-Riegel, und die ist seit
+  // dieser Aenderung wirkungslos — die Navigation zeigt das Modul nicht mehr,
+  // eine Seite dahinter gab es nie. Die Zeile darf stehenbleiben; sie wieder
+  // scharf zu schalten darf nicht gehen.
   if (enabled && isUnbuiltModule(key)) {
     throw new Error(`${MODULES_BY_KEY[key].labelDe} ist noch nicht verfügbar.`);
   }
