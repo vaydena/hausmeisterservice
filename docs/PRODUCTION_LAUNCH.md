@@ -232,9 +232,12 @@ Antwort im Fehlerfall lesen:
 | --- | --- | --- |
 | `ok: true` | Bildverarbeitung arbeitet. | Nichts. |
 | `stage: "load"`, `sharpPresent: false` | Nicht einmal `sharp` selbst liegt im `node_modules` des Servers. | Der Deploy hat die Abhängigkeiten nicht (vollständig) installiert. Install-Schritt prüfen. |
-| `stage: "load"`, `sharpPresent: true`, `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
-| `stage: "load"`, beide `true` | Paket liegt da, lässt sich aber nicht laden — meist fehlende Systembibliotheken. | `code` mitschicken; Hostinger-Support mit dem Paketnamen anfragen. |
+| `stage: "load"`, `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
+| `stage: "load"`, `libvips.present: false` | Wrapper da, die eigentliche Bildbibliothek fehlt. | `libvips.expected` nachinstallieren. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
+| `stage: "load"`, alles `true` | Alle Pakete liegen da, das Laden scheitert trotzdem — meist fehlende Systembibliotheken oder eine unpassende glibc-Version. | Hostinger-Support mit `binary.expected` und `code` anfragen. |
 | `stage: "encode"` | Modul lädt, das Kodieren scheitert — Format-Backend fehlt. | Wie oben, mit dem Hinweis, dass libvips unvollständig gebaut ist. |
+
+`libvips: null` heißt **nicht** „fehlt", sondern „gibt es auf dieser Plattform nicht einzeln" — unter Windows steckt libvips im Plattform-Paket.
 
 `code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Genau dafür gibt es den `binary`-Block.
 

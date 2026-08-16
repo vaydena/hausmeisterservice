@@ -80,6 +80,21 @@ export type SharpBinaryReport = {
   sharpPresent: boolean;
   /** Liegt das native Paket dort, wo sharp danach sucht? */
   present: boolean;
+  /**
+   * libvips, die eigentliche Bildbibliothek.
+   *
+   * `null` heisst NICHT "fehlt", sondern "gibt es auf dieser Plattform nicht
+   * einzeln" — unter Windows steckt libvips im Plattform-Paket, unter Linux
+   * und macOS ist es ein eigenes. Ein `false` waere dort eine Falschmeldung,
+   * und Falschmeldungen sind der Grund, warum dieser Block schon einmal
+   * umgebaut werden musste.
+   *
+   * Warum das ueberhaupt eigens geprueft wird: `@img/sharp-linux-x64` fuehrt
+   * `@img/sharp-libvips-linux-x64` als OPTIONALE Abhaengigkeit — eine
+   * optionale Abhaengigkeit einer optionalen Abhaengigkeit. Genau so etwas
+   * laesst ein Installationslauf aus, ohne mit einem Fehler abzubrechen.
+   */
+  libvips: { expected: string; present: boolean } | null;
 };
 
 /**
@@ -100,7 +115,16 @@ export function sanitizeCode(err: unknown): string {
 }
 
 /** Paketnamen sind kleingeschrieben und bindestrichgetrennt — sonst nichts. */
-const PACKAGE_SHAPE = /^@img\/sharp-[a-z0-9]+-[a-z0-9]+$/;
+const PACKAGE_SHAPE = /^@img\/sharp-(libvips-)?[a-z0-9]+-[a-z0-9]+$/;
+
+/**
+ * Plattformen, auf denen libvips als EIGENES Paket ausgeliefert wird.
+ *
+ * Unter Windows steckt es im Plattform-Paket selbst — dort gibt es kein
+ * `@img/sharp-libvips-win32-*`, und danach zu suchen hiesse, dauerhaft
+ * "fehlt" zu melden, wo nichts fehlt.
+ */
+const PLATFORMS_WITH_SEPARATE_LIBVIPS = new Set(['linux', 'darwin']);
 
 /**
  * glibc oder musl?
@@ -132,6 +156,18 @@ export function expectedSharpBinary(
   const os = platform === 'linux' && libc === 'musl' ? 'linuxmusl' : platform;
   const name = `@img/sharp-${os}-${arch}`;
   return PACKAGE_SHAPE.test(name) ? name : 'UNKNOWN';
+}
+
+/** `null`, wo libvips nicht als eigenes Paket existiert (Windows). */
+export function expectedLibvipsPackage(
+  platform: string = process.platform,
+  arch: string = process.arch,
+  libc: 'glibc' | 'musl' = platform === 'linux' ? detectLinuxLibc() : 'glibc',
+): string | null {
+  if (!PLATFORMS_WITH_SEPARATE_LIBVIPS.has(platform)) return null;
+  const os = platform === 'linux' && libc === 'musl' ? 'linuxmusl' : platform;
+  const name = `@img/sharp-libvips-${os}-${arch}`;
+  return PACKAGE_SHAPE.test(name) ? name : null;
 }
 
 /**
@@ -178,11 +214,20 @@ function resolvesFrom(req: NodeRequire, packageName: string): boolean {
 /** Exportiert, damit ein Test auf DIESER Maschine nachweist, dass die Messung stimmt. */
 export function reportSharpBinary(): SharpBinaryReport {
   const expected = expectedSharpBinary();
+  const libvipsName = expectedLibvipsPackage();
   const req = requireFromSharp();
+
   return {
     expected,
     sharpPresent: req !== null,
-    present: req !== null && resolvesFrom(req, expected),
+    // Genau der Pfad, den sharp selbst laedt: '<paket>/sharp.node'. Das
+    // beweist mehr als der blosse Paketname — es beweist, dass die Datei
+    // darin auch da ist.
+    present: req !== null && resolvesFrom(req, `${expected}/sharp.node`),
+    libvips:
+      libvipsName === null
+        ? null
+        : { expected: libvipsName, present: req !== null && resolvesFrom(req, libvipsName) },
   };
 }
 

@@ -5,6 +5,7 @@ import {
   probeImagePipeline,
   sanitizeCode,
   expectedSharpBinary,
+  expectedLibvipsPackage,
   reportSharpBinary,
 } from '@/lib/images/probe';
 
@@ -66,6 +67,27 @@ describe('expectedSharpBinary', () => {
   });
 });
 
+describe('expectedLibvipsPackage', () => {
+  it('nennt das eigene libvips-Paket auf Linux und macOS', () => {
+    // Dieses Paket haengt als OPTIONALE Abhaengigkeit am Plattform-Paket —
+    // eine optionale Abhaengigkeit einer optionalen Abhaengigkeit. Genau so
+    // etwas laesst ein Installationslauf aus, ohne abzubrechen.
+    expect(expectedLibvipsPackage('linux', 'x64', 'glibc')).toBe('@img/sharp-libvips-linux-x64');
+    expect(expectedLibvipsPackage('linux', 'x64', 'musl')).toBe(
+      '@img/sharp-libvips-linuxmusl-x64',
+    );
+    expect(expectedLibvipsPackage('darwin', 'arm64')).toBe('@img/sharp-libvips-darwin-arm64');
+  });
+
+  it('meldet fuer Windows null statt eines erfundenen Paketnamens', () => {
+    // Unter Windows steckt libvips im Plattform-Paket. Ein Name waere hier
+    // eine Erfindung und die Antwort dauerhaft "fehlt" — obwohl nichts
+    // fehlt. Genau diese Art Falschmeldung hat den Block schon einmal
+    // unbrauchbar gemacht.
+    expect(expectedLibvipsPackage('win32', 'x64')).toBeNull();
+  });
+});
+
 describe('reportSharpBinary misst wirklich etwas', () => {
   // DIESER TEST IST DIE LEHRE AUS DEM ERSTEN VERSUCH. Der hat vom
   // App-Verzeichnis aus aufgeloest und deshalb `present: false` gemeldet —
@@ -74,11 +96,24 @@ describe('reportSharpBinary misst wirklich etwas', () => {
   // beweisen, dass sharp auf dieser Maschine arbeitet, MUSS die Messung
   // hier positiv ausfallen.
   it('findet auf dieser Maschine sowohl sharp als auch sein Binary', () => {
-    expect(reportSharpBinary()).toEqual({
-      expected: expectedSharpBinary(),
-      sharpPresent: true,
-      present: true,
-    });
+    const report = reportSharpBinary();
+
+    expect(report.expected).toBe(expectedSharpBinary());
+    expect(report.sharpPresent).toBe(true);
+    expect(report.present).toBe(true);
+  });
+
+  it('meldet libvips genau dann, wenn es die Plattform einzeln ausliefert', () => {
+    const report = reportSharpBinary();
+    const name = expectedLibvipsPackage();
+
+    if (name === null) {
+      expect(report.libvips).toBeNull();
+    } else {
+      // Wo es das Paket gibt, muss es hier auch liegen — sonst liefe sharp
+      // auf dieser Maschine nicht, und die uebrigen Tests waeren rot.
+      expect(report.libvips).toEqual({ expected: name, present: true });
+    }
   });
 });
 
