@@ -32,6 +32,14 @@ import { join } from 'node:path';
  *
  * Ein blosses `ok: false` haette den Unterschied verschluckt und den
  * Betreiber wieder ins Raten geschickt.
+ *
+ * SPRINT 127 — WARUM HIER JETZT AUCH `variant` STEHT. Seit diesem Sprint
+ * liegt `@img/sharp-wasm32` mit im Paket. sharp probiert von sich aus zuerst
+ * das native Binary und faellt dann auf WASM zurueck; der Fallback war immer
+ * schon in sharps Loader, ihm fehlte nur das Paket. Damit laufen die Uploads
+ * auch dort, wo das native Binary nicht taugt — und genau das ist die neue
+ * Gefahr: ein gruenes `ok: true`, unter dem der eigentliche Defekt
+ * weiterlebt. Deshalb sagt die Probe jetzt nicht nur OB, sondern WORUEBER.
  */
 
 export type ImagePipelineProbe = {
@@ -42,8 +50,21 @@ export type ImagePipelineProbe = {
   /** Node-Fehlercode, z. B. ERR_DLOPEN_FAILED. `null`, wenn nichts brach. */
   code: string | null;
   /**
-   * Nur bei `stage: 'load'` gesetzt — und nur dann, weil nur dann jemand
-   * etwas damit anfangen kann.
+   * Auf welchem Weg sharp arbeitet. `null`, wenn es gar nicht laedt.
+   *
+   * WARUM DAS SEIN MUSS. Seit Sprint 127 liegt `@img/sharp-wasm32` mit im
+   * Paket; sharp greift von sich aus darauf zurueck, wenn das native Binary
+   * nicht taugt. Das ist gewollt — aber ohne diese Auskunft waere es ein
+   * stiller Wechsel: `ok: true`, Uploads laufen, und niemand erfaehrt je,
+   * dass der Server den langsameren Weg nimmt und das eigentliche Problem
+   * noch da ist. Ein Fallback, der sich nicht meldet, ist eine zugedeckte
+   * Fehlfunktion.
+   */
+  variant: 'native' | 'wasm' | null;
+  /**
+   * Gesetzt, sobald der native Weg NICHT benutzt wird — also bei
+   * `stage: 'load'` und bei `variant: 'wasm'`. Auf dem gruenen nativen Pfad
+   * waere er nur Rauschen.
    */
   binary?: SharpBinaryReport;
 };
@@ -80,6 +101,33 @@ export type SharpBinaryReport = {
   sharpPresent: boolean;
   /** Liegt das native Paket dort, wo sharp danach sucht? */
   present: boolean;
+  /**
+   * Laedt es auch wirklich — oder liegt es nur da?
+   *
+   * `present` beantwortet eine Datei-Frage, `loads` eine Betriebssystem-Frage.
+   * Der Unterschied ist der ganze Rest des Problems: die Live-Messung meldete
+   * ueber Wochen alles als vorhanden, und das Laden scheiterte trotzdem.
+   * Genau dort, zwischen "liegt da" und "laesst sich laden", sitzen die
+   * Ursachen, die kein Nachinstallieren behebt — ein `noexec`-Mount auf dem
+   * node_modules-Verzeichnis, ein Speicherlimit, eine fehlende
+   * Systembibliothek.
+   */
+  loads: boolean;
+  /**
+   * Erfuellt die CPU die Mikroarchitektur x86-64-v2?
+   *
+   * DAS IST DER VERDAECHTIGE, DEN DIE PROBE BISHER UEBERSEHEN HAT. sharp
+   * verwirft ein einwandfrei geladenes Linux-x64-Binary wieder, wenn die CPU
+   * kein x86-64-v2 kann, und haengt dem Fehler `code: 'Unsupported CPU'` an —
+   * mit Leerzeichen und Kleinbuchstaben. Der Sanitizer macht daraus korrekt
+   * `UNKNOWN`, und uebrig blieb das Bild, das wir live hatten: jedes Paket
+   * vorhanden, jede Version modern, Laden scheitert, Begruendung 'UNKNOWN'.
+   *
+   * `null` heisst "stellt sich hier nicht" — die Pruefung gilt nur fuer
+   * Linux auf x64. Ein `false` waere anderswo eine Falschmeldung, und
+   * Falschmeldungen haben diesen Bericht schon einmal wertlos gemacht.
+   */
+  x64v2: boolean | null;
   /**
    * libvips, die eigentliche Bildbibliothek.
    *
@@ -264,11 +312,78 @@ function resolvesFrom(req: NodeRequire, packageName: string): boolean {
   }
 }
 
+/**
+ * Nur Linux auf x64 stellt die x86-64-v2-Frage.
+ *
+ * sharp prueft sie genau fuer 'linux-x64' und 'linuxmusl-x64' — beide haben
+ * `process.platform === 'linux'` und `process.arch === 'x64'`, die libc
+ * spielt hier keine Rolle.
+ */
+export function needsX64V2(
+  platform: string = process.platform,
+  arch: string = process.arch,
+): boolean {
+  return platform === 'linux' && arch === 'x64';
+}
+
+type NativeBinaryProbe = { loads: boolean; x64v2: boolean | null };
+
+/**
+ * Einmal pro Prozess.
+ *
+ * Anders als `resolvesFrom` wird hier wirklich geladen — das ist die Frage,
+ * auf die es ankommt, aber es ist auch die teure. Und sie kann sich zwischen
+ * zwei Aufrufen nicht aendern: ein Binary, das beim Start nicht lud, laedt
+ * auch beim zwoelften Monitor-Aufruf nicht. Ohne diesen Speicher wuerde ein
+ * unauthentifizierter Endpunkt bei jedem Aufruf einen fehlschlagenden
+ * dlopen ausloesen.
+ */
+let nativeBinaryProbe: NativeBinaryProbe | undefined;
+
+function probeNativeBinary(): NativeBinaryProbe {
+  if (nativeBinaryProbe !== undefined) return nativeBinaryProbe;
+
+  const expected = expectedSharpBinary();
+  const req = requireFromSharp();
+  nativeBinaryProbe = { loads: false, x64v2: null };
+
+  if (req !== null && expected !== 'UNKNOWN') {
+    try {
+      // Derselbe Aufruf, den sharp selbst macht. Dass er hier ein zweites Mal
+      // passiert, kostet nichts: geglueckt liegt das Modul im Cache,
+      // gescheitert ist es schon beim Import des Prozesses gescheitert.
+      const binding = req(`${expected}/sharp.node`) as { _isUsingX64V2?: () => unknown };
+      nativeBinaryProbe = {
+        loads: true,
+        x64v2: needsX64V2() ? binding._isUsingX64V2?.() === true : null,
+      };
+    } catch {
+      nativeBinaryProbe = { loads: false, x64v2: null };
+    }
+  }
+
+  return nativeBinaryProbe;
+}
+
+/**
+ * Welchen der beiden Wege sharp genommen hat.
+ *
+ * Nachgebaut, nicht erraten: sharp nimmt das native Binary, wenn es laedt UND
+ * die CPU-Pruefung besteht — sonst faellt es auf WASM zurueck. Beides ist hier
+ * gemessen, nicht angenommen.
+ */
+export function detectSharpVariant(): 'native' | 'wasm' {
+  const native = probeNativeBinary();
+  // `x64v2: null` heisst "Frage stellt sich nicht", also erfuellt.
+  return native.loads && (native.x64v2 ?? true) ? 'native' : 'wasm';
+}
+
 /** Exportiert, damit ein Test auf DIESER Maschine nachweist, dass die Messung stimmt. */
 export function reportSharpBinary(): SharpBinaryReport {
   const expected = expectedSharpBinary();
   const libvipsName = expectedLibvipsPackage();
   const req = requireFromSharp();
+  const native = probeNativeBinary();
 
   return {
     expected,
@@ -277,6 +392,8 @@ export function reportSharpBinary(): SharpBinaryReport {
     // beweist mehr als der blosse Paketname — es beweist, dass die Datei
     // darin auch da ist.
     present: req !== null && resolvesFrom(req, `${expected}/sharp.node`),
+    loads: native.loads,
+    x64v2: native.x64v2,
     libvips:
       libvipsName === null
         ? null
@@ -313,6 +430,24 @@ function logLoadFailure(err: unknown): void {
   console.error('[image-pipeline] sharp laesst sich nicht laden:', err);
 }
 
+let wasmFallbackLogged = false;
+
+/**
+ * Der Fallback darf arbeiten, aber nicht schweigen.
+ *
+ * Ein Server, der auf WASM ausweicht, funktioniert — und verdeckt damit, dass
+ * sein natives Binary kaputt ist. Wer nur auf `ok: true` schaut, wuerde das nie
+ * erfahren. Deshalb eine Zeile pro Prozessstart: laut genug, um beim Suchen
+ * gefunden zu werden, leise genug, um kein Log zu fluten.
+ */
+function logWasmFallback(): void {
+  if (wasmFallbackLogged) return;
+  wasmFallbackLogged = true;
+  console.warn(
+    '[image-pipeline] sharp arbeitet ueber die WASM-Variante; das native Binary wurde nicht genommen.',
+  );
+}
+
 /**
  * Kodiert ein 8x8-Pixel-Bild aus dem Nichts.
  *
@@ -326,8 +461,20 @@ export async function probeImagePipeline(): Promise<ImagePipelineProbe> {
     ({ default: sharp } = await import('sharp'));
   } catch (err) {
     logLoadFailure(err);
-    return { ok: false, stage: 'load', code: sanitizeCode(err), binary: reportSharpBinary() };
+    return {
+      ok: false,
+      stage: 'load',
+      code: sanitizeCode(err),
+      variant: null,
+      binary: reportSharpBinary(),
+    };
   }
+
+  const variant = detectSharpVariant();
+  if (variant === 'wasm') logWasmFallback();
+  // Auf dem nativen Pfad ist der Bericht Rauschen; sobald er NICHT genommen
+  // wurde, ist er die Begruendung.
+  const binary = variant === 'wasm' ? { binary: reportSharpBinary() } : {};
 
   try {
     await sharp({
@@ -336,8 +483,8 @@ export async function probeImagePipeline(): Promise<ImagePipelineProbe> {
       .jpeg()
       .toBuffer();
   } catch (err) {
-    return { ok: false, stage: 'encode', code: sanitizeCode(err) };
+    return { ok: false, stage: 'encode', code: sanitizeCode(err), variant, ...binary };
   }
 
-  return { ok: true, stage: null, code: null };
+  return { ok: true, stage: null, code: null, variant, ...binary };
 }

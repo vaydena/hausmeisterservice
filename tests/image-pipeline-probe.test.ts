@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
   probeImagePipeline,
@@ -9,6 +10,8 @@ import {
   reportSharpBinary,
   reportLibc,
   reportRuntime,
+  needsX64V2,
+  detectSharpVariant,
 } from '@/lib/images/probe';
 
 describe('sanitizeCode', () => {
@@ -142,6 +145,31 @@ describe('reportSharpBinary misst wirklich etwas', () => {
     expect(report.present).toBe(true);
   });
 
+  it('unterscheidet "liegt da" von "laedt auch"', () => {
+    // `present` ist eine Datei-Frage, `loads` eine des Betriebssystems.
+    // Genau dazwischen sass der Live-Ausfall: alles vorhanden, Laden
+    // scheitert trotzdem. Hier muessen beide wahr sein — sharp arbeitet auf
+    // dieser Maschine ja.
+    const report = reportSharpBinary();
+
+    expect(report.loads).toBe(true);
+  });
+
+  it('stellt die x86-64-v2-Frage nur dort, wo sie sich stellt', () => {
+    // Ein `false` auf einer Plattform ohne diese Pruefung waere dieselbe Art
+    // Falschmeldung, die den libvips-Block schon einmal unbrauchbar gemacht
+    // hat. Deshalb tri-state, nie bloss Boolean.
+    const report = reportSharpBinary();
+
+    if (needsX64V2()) {
+      // Wo sharp prueft, muss die Antwort hier positiv sein — sonst haette
+      // sharp das Binary verworfen und liefe gar nicht nativ.
+      expect(report.x64v2).toBe(true);
+    } else {
+      expect(report.x64v2).toBeNull();
+    }
+  });
+
   it('meldet libvips genau dann, wenn es die Plattform einzeln ausliefert', () => {
     const report = reportSharpBinary();
     const name = expectedLibvipsPackage();
@@ -156,6 +184,75 @@ describe('reportSharpBinary misst wirklich etwas', () => {
   });
 });
 
+describe('needsX64V2', () => {
+  it('stellt die Frage nur fuer Linux auf x64', () => {
+    // sharp prueft die Mikroarchitektur genau fuer 'linux-x64' und
+    // 'linuxmusl-x64' — beide melden platform 'linux' und arch 'x64'.
+    expect(needsX64V2('linux', 'x64')).toBe(true);
+    expect(needsX64V2('linux', 'arm64')).toBe(false);
+    expect(needsX64V2('win32', 'x64')).toBe(false);
+    expect(needsX64V2('darwin', 'x64')).toBe(false);
+  });
+});
+
+describe('detectSharpVariant', () => {
+  // Auf dieser Maschine laeuft sharp nachweislich nativ — die uebrigen Tests
+  // waeren sonst rot. Ein Variant-Melder, der hier 'wasm' sagt, misst nicht
+  // den Server, sondern sich selbst.
+  it('erkennt auf dieser Maschine den nativen Weg', () => {
+    expect(detectSharpVariant()).toBe('native');
+  });
+
+  it('deckt sich mit dem, was der Binary-Bericht sagt', () => {
+    const report = reportSharpBinary();
+    const usable = report.loads && (report.x64v2 ?? true);
+
+    expect(detectSharpVariant()).toBe(usable ? 'native' : 'wasm');
+  });
+});
+
+describe('Der WASM-Rueckfall liegt wirklich im Paket', () => {
+  // OHNE DIESEN TEST WAERE SPRINT 127 EINE BEHAUPTUNG. sharp fuehrt
+  // @img/sharp-wasm32 NICHT als eigene optionale Abhaengigkeit, sondern nur
+  // ueber @img/sharp-freebsd-wasm32 und @img/sharp-webcontainers-wasm32 —
+  // und die sind plattformgefiltert, installieren auf linux-x64 also nie.
+  // Der Rueckfall existiert im Loader seit jeher; ihm fehlte allein das
+  // Paket. Faellt der Eintrag hier je wieder raus, ist der Server still
+  // wieder da, wo er im August 2026 war.
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+    dependencies: Record<string, string>;
+  };
+
+  it('steht als direkte Abhaengigkeit in der package.json', () => {
+    expect(pkg.dependencies['@img/sharp-wasm32']).toBeDefined();
+  });
+
+  it('ist exakt auf die installierte sharp-Version festgenagelt', () => {
+    // Die @img-Pakete gehoeren zur sharp-Version wie ein Schluessel zum
+    // Schloss; sharp selbst pinnt sie deshalb ohne Bereich. Ein `^` hier
+    // waere ein leiser Versionsdrift, der erst auffaellt, wenn der Fallback
+    // gebraucht wird — also im schlechtesten Moment.
+    const installed = JSON.parse(
+      readFileSync(
+        join(process.cwd(), 'node_modules', 'sharp', 'package.json'),
+        'utf8',
+      ),
+    ) as { version: string };
+
+    expect(pkg.dependencies['@img/sharp-wasm32']).toBe(installed.version);
+  });
+
+  it('laesst sich von sharp aus aufloesen, nicht nur vom App-Verzeichnis', () => {
+    // Dieselbe Falle wie in Sprint 126: pnpm legt die @img-Pakete nicht ins
+    // oberste node_modules. Entscheidend ist allein, ob SHARP das Paket
+    // sieht — von dort wird es geladen.
+    const fromApp = createRequire(join(process.cwd(), 'index.js'));
+    const fromSharp = createRequire(fromApp.resolve('sharp'));
+
+    expect(() => fromSharp.resolve('@img/sharp-wasm32/sharp.node')).not.toThrow();
+  });
+});
+
 describe('probeImagePipeline', () => {
   // Dieser Test misst absichtlich die AUSFUEHRENDE Maschine, nicht eine
   // Attrappe. Genau das ist der Punkt: Sprint 124 ist daran gescheitert,
@@ -163,7 +260,17 @@ describe('probeImagePipeline', () => {
   // Male gruen gemeldet. So schlaegt CI an, bevor deployt wird.
   it('meldet eine arbeitsfaehige Bildverarbeitung', async () => {
     const result = await probeImagePipeline();
-    expect(result).toEqual({ ok: true, stage: null, code: null });
+    expect(result).toEqual({ ok: true, stage: null, code: null, variant: 'native' });
+  });
+
+  it('haengt auf dem nativen Weg keinen Binary-Bericht an', () => {
+    // Der Block erklaert, warum das native Binary NICHT genommen wurde. Wo
+    // es genommen wurde, erklaert er nichts und waere nur Rauschen in einer
+    // Antwort, die absichtlich schmal ist.
+    return probeImagePipeline().then((result) => {
+      expect(result.variant).toBe('native');
+      expect(result.binary).toBeUndefined();
+    });
   });
 });
 

@@ -19,13 +19,20 @@ export const dynamic = 'force-dynamic';
 //
 // Antwort ist bewusst schmal und ohne Freitext: `stage`, `code` und der
 // Paketname in `binary` sind Konstanten, keine Fehlermeldungen. Der
-// `binary`-Block kommt nur bei `stage: 'load'` mit, weil er nur dann etwas
-// erklaert — Begruendung in src/lib/images/probe.ts.
+// `binary`-Block kommt nur mit, wenn der native Weg NICHT benutzt wird —
+// Begruendung in src/lib/images/probe.ts.
 //
 // Der HTTP-Status trennt "Runtime laeuft" von "Runtime kann arbeiten":
 // 200 wenn alle Proben gruen sind, 503 sonst. Ein Monitor kann damit ohne
 // JSON-Parsing alarmieren, und /api/health bleibt weiterhin gruen — die
 // Seite laeuft ja, sie kann nur eine Sache nicht.
+//
+// Sprint 127: `variant: 'wasm'` gilt bewusst als GRUEN und antwortet 200.
+// Die Faehigkeit ist da, Uploads laufen — dafuer liegt der Fallback im
+// Paket. Es waere falsch, dafuer jemanden nachts zu wecken. Verschwiegen
+// wird es trotzdem nicht: `variant` steht in der Antwort, `binary` erklaert
+// warum der native Weg ausfiel, und beim Start geht einmal eine Zeile ins
+// Serverlog. Gruen heisst hier "es arbeitet", nicht "alles ist gut".
 export async function GET() {
   const image = await probeImagePipeline();
   const healthy = image.ok;

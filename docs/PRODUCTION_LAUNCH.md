@@ -228,20 +228,29 @@ Warum es diesen zweiten Endpunkt gibt: Der Bild-Upload kann ausfallen, ohne dass
 
 Antwort im Fehlerfall lesen:
 
+Zuerst auf `variant` schauen — das Feld sagt, auf welchem Weg sharp arbeitet:
+
 | Befund | Bedeutung | Was zu tun ist |
 | --- | --- | --- |
-| `ok: true` | Bildverarbeitung arbeitet. | Nichts. |
+| `ok: true`, `variant: "native"` | Bildverarbeitung arbeitet auf dem schnellen Weg. | Nichts. |
+| `ok: true`, `variant: "wasm"` | Uploads laufen, aber über den WASM-Rückfall: das native Binary war nicht brauchbar. Rund 2,4× langsamer (gemessen: 12-MP-Foto 148 ms statt 61 ms) — für Uploads unkritisch. | **Kein Notfall, aber auch nicht erledigt.** Der `binary`-Block sagt jetzt, woran das native lag; die Zeilen unten gelten unverändert. Ohne diesen Eintrag hätte niemand je erfahren, dass der Server den Umweg nimmt. |
 | `stage: "load"`, `sharpPresent: false` | Nicht einmal `sharp` selbst liegt im `node_modules` des Servers. | Der Deploy hat die Abhängigkeiten nicht (vollständig) installiert. Install-Schritt prüfen. |
-| `stage: "load"`, `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
-| `stage: "load"`, `libvips.present: false` | Wrapper da, die eigentliche Bildbibliothek fehlt. | `libvips.expected` nachinstallieren. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
-| `stage: "load"`, alles `true`, `runtime.node` < v20.9.0 | Node auf dem Server ist zu alt für das native Paket. | **Selbst behebbar:** im Hostinger-Panel eine neuere Node-Version wählen (das Projekt verlangt ohnehin `>=22`), dann neu deployen. Kein Support nötig. |
-| `stage: "load"`, alles `true`, Node ≥ v20.9.0 | Alle Pakete liegen da, Node passt, das Laden scheitert trotzdem — die Binary lässt sich nicht ins Programm laden (fehlende Systembibliothek, `noexec`-gemountetes Verzeichnis, Speicherlimit). | **Serverlog öffnen.** Dort steht einmal pro Serverstart `[image-pipeline] sharp laesst sich nicht laden:` mit sharps eigener Fehlermeldung im Klartext — das ist der Text für die Support-Anfrage. `binary.libc.version` und `runtime.node` mitschicken. |
+| `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
+| `libvips.present: false` | Wrapper da, die eigentliche Bildbibliothek fehlt. | `libvips.expected` nachinstallieren. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
+| alles `true`, `runtime.node` < v20.9.0 | Node auf dem Server ist zu alt für das native Paket. | **Selbst behebbar:** im Hostinger-Panel eine neuere Node-Version wählen (das Projekt verlangt ohnehin `>=22`), dann neu deployen. Kein Support nötig. |
+| `present: true`, **`x64v2: false`** | Die CPU des Servers beherrscht die Mikroarchitektur **x86-64-v2** nicht. sharp verwirft sein eigenes, einwandfrei geladenes Linux-Binary deshalb wieder. | **Nicht behebbar und nicht nötig:** genau dafür liegt der WASM-Rückfall bei. Wer den nativen Weg zurück will, braucht einen Server mit neuerer CPU — ein Tarifwechsel, kein Bugfix. |
+| `present: true`, **`loads: false`** | Das Paket liegt da und lässt sich trotzdem nicht ins Programm laden — fehlende Systembibliothek, `noexec`-gemountetes Verzeichnis, Speicherlimit. | **Serverlog öffnen.** Dort steht einmal pro Serverstart `[image-pipeline] sharp laesst sich nicht laden:` mit sharps eigener Fehlermeldung im Klartext — das ist der Text für die Support-Anfrage. `binary.libc.version` und `runtime.node` mitschicken. |
 | `stage: "encode"` | Modul lädt, das Kodieren scheitert — Format-Backend fehlt. | Wie oben, mit dem Hinweis, dass libvips unvollständig gebaut ist. |
 
-`libvips: null` heißt **nicht** „fehlt", sondern „gibt es auf dieser Plattform nicht einzeln" — unter Windows steckt libvips im Plattform-Paket.
+Zwei Felder, die leicht zu verwechseln sind:
+
+- **`present` vs. `loads`** — `present` ist eine Datei-Frage („liegt es da?"), `loads` eine des Betriebssystems („lässt es sich laden?"). Der Live-Ausfall im August 2026 saß genau dazwischen: alles vorhanden, Laden scheiterte trotzdem.
+- **`libvips: null` und `x64v2: null`** heißen **nicht** „fehlt", sondern „die Frage stellt sich hier nicht" — libvips steckt unter Windows im Plattform-Paket, und die x86-64-v2-Prüfung gilt nur für Linux auf x64.
 
 Warum die eigentliche Fehlermeldung nur im Log steht und nicht in der Antwort: sie enthält Serverpfade, und der Endpunkt ist unauthentifiziert. Das Log ist es nicht. Sie wird bewusst nur **einmal pro Serverstart** geschrieben — die Ursache ändert sich zwischen zwei Aufrufen nicht, und ein Monitor im Minutentakt würde sonst alles andere im Log zudecken.
 
-`code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Genau dafür gibt es den `binary`-Block.
+`code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Der CPU-Fall sieht genauso aus — sharp setzt dort `code: "Unsupported CPU"`, mit Leerzeichen, und der Sanitizer verwirft alles, was nicht wie eine Konstante aussieht. Genau dafür gibt es den `binary`-Block.
+
+**Der WASM-Rückfall** (`@img/sharp-wasm32`) steckt seit Sprint 127 als direkte Abhängigkeit im Paket. sharp probiert von sich aus erst das native Binary und greift dann darauf zurück; der Rückfall war immer schon im Loader, ihm fehlte nur das Paket — auf Linux-x64 wird es sonst nie mitinstalliert, weil sharp es lediglich über zwei plattformgefilterte Pakete führt. Der Eintrag ist exakt auf die sharp-Version festgenagelt, und ein Test in `tests/image-pipeline-probe.test.ts` schlägt an, wenn beide auseinanderlaufen.
 
 **Solange `/api/health/deep` rot ist:** Fotos und Dokumenten-Uploads werden abgelehnt, nicht etwa ungefiltert gespeichert. Das ist Absicht — das Neu-Kodieren ist der einzige Grund, warum aus einem Wohnungsfoto keine GPS-Koordinate der Wohnung wird. Meldungen ohne Foto funktionieren normal weiter.
