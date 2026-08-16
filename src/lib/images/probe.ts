@@ -105,6 +105,19 @@ export type SharpBinaryReport = {
    * Pfad und keine Fehlermeldung; sie faellt unter dieselbe Linie wie `code`.
    */
   libc: { flavour: 'glibc' | 'musl'; version: string | null };
+  /**
+   * Die Node-Version, unter der der Server wirklich laeuft.
+   *
+   * Kommt dazu, weil glibc 2.34 gemeldet wurde — modern genug, also auch
+   * nicht die Ursache. `@img/sharp-linux-x64` verlangt `node >=20.9.0`, und
+   * die nativen Binaries brauchen N-API 9. Laeuft draussen ein aelteres
+   * Node, erklaert das den Ausfall vollstaendig — und anders als alles
+   * andere waere es eine Einstellung, die der Betreiber im Hoster-Panel
+   * selbst umstellen kann, ohne Support.
+   *
+   * Eine Versionsnummer ist kein Pfad. Dieselbe Schranke wie bei `code`.
+   */
+  runtime: { node: string | null; napiAbi: string | null };
 };
 
 /**
@@ -159,6 +172,16 @@ function detectLinuxLibc(): 'glibc' | 'musl' {
     | { header?: { glibcVersionRuntime?: unknown } }
     | undefined;
   return typeof report?.header?.glibcVersionRuntime === 'string' ? 'glibc' : 'musl';
+}
+
+/** Exportiert, weil hier eine Schranke gegen Freitext sitzt — die gehoert getestet. */
+export function reportRuntime(): { node: string | null; napiAbi: string | null } {
+  const node = process.version;
+  const abi = process.versions.modules;
+  return {
+    node: /^v\d+\.\d+\.\d+$/.test(node) ? node : null,
+    napiAbi: typeof abi === 'string' && /^\d{1,4}$/.test(abi) ? abi : null,
+  };
 }
 
 /** Exportiert, weil hier eine Schranke gegen Freitext sitzt — die gehoert getestet. */
@@ -259,6 +282,7 @@ export function reportSharpBinary(): SharpBinaryReport {
         ? null
         : { expected: libvipsName, present: req !== null && resolvesFrom(req, libvipsName) },
     libc: reportLibc(),
+    runtime: reportRuntime(),
   };
 }
 

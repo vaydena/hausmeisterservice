@@ -8,6 +8,7 @@ import {
   expectedLibvipsPackage,
   reportSharpBinary,
   reportLibc,
+  reportRuntime,
 } from '@/lib/images/probe';
 
 describe('sanitizeCode', () => {
@@ -102,6 +103,27 @@ describe('reportLibc', () => {
     if (version !== null) {
       expect(version).toMatch(/^\d+(\.\d+){0,2}$/);
     }
+  });
+});
+
+describe('reportRuntime', () => {
+  it('liefert Node-Version und N-API-ABI in pruefbarer Form', () => {
+    // `@img/sharp-linux-x64` verlangt node >=20.9.0. Laeuft draussen etwas
+    // Aelteres, erklaert das den Ausfall — und der Betreiber kann es im
+    // Hoster-Panel selbst umstellen, ohne Support.
+    const { node, napiAbi } = reportRuntime();
+
+    expect(node).toMatch(/^v\d+\.\d+\.\d+$/);
+    expect(napiAbi).toMatch(/^\d{1,4}$/);
+  });
+
+  it('gibt nichts aus, was kein Versionsformat hat', () => {
+    // Dieselbe Schranke wie bei `code`: was nicht wie eine Version aussieht,
+    // verlaesst den Server nicht.
+    const { node, napiAbi } = reportRuntime();
+
+    expect(node === null || !/[^v\d.]/.test(node)).toBe(true);
+    expect(napiAbi === null || !/\D/.test(napiAbi)).toBe(true);
   });
 });
 
