@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { moduleGate } from '@/lib/modules/api-guard';
 import {
   buildDeepLink,
   generateQrSvg,
@@ -7,11 +8,20 @@ import {
 } from '@/lib/qr/generate';
 
 export const runtime = 'nodejs';
+// Sprint 118: Das Modul-Gate liest den Mandanten aus der Session — die Route
+// darf nicht statisch vorgerendert werden.
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ type: string; id: string }> },
 ) {
+  // Vor der Parameterpruefung: fuer einen Mandanten ohne QR-Modul gibt es
+  // diesen Endpunkt nicht, und dann auch keinen Unterschied zwischen einem
+  // gueltigen und einem unsinnigen Entity-Typ.
+  const blocked = await moduleGate('qr_codes');
+  if (blocked) return blocked;
+
   const { type, id } = await params;
   if (!isValidQrType(type)) {
     return new NextResponse('Unbekannter Entity-Typ.', { status: 400 });

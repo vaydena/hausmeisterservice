@@ -89,6 +89,15 @@ Beide leiten das Zielmodul über `moduleForPath(href)` ab; ein `module`-Prop gä
 
 `ModuleLink` ist `server-only`. In Client-Komponenten gehört die Prüfung in die Server-Elternkomponente.
 
+**Route-Handler (Sprint 118).** Die drei Gates oben hängen im `(app)`-Layout und greifen damit nur bei Seiten. Handler unter `src/app/api` haben kein Layout und liefen daran vorbei: `/api/qr/property/<id>` lieferte den SVG auch mit abgeschaltetem QR-Modul, `/api/invoices/<id>/pdf` die Rechnung ohne Abrechnungsmodul — beide URLs stehen in Browserverläufen und in ausgegangenen E-Mails. `moduleGate()` aus `src/lib/modules/api-guard.ts` schließt das:
+
+```ts
+const blocked = await moduleGate('billing');
+if (blocked) return blocked;
+```
+
+Rückgabewert statt `throw`/`notFound()`, damit sichtbar im Handler steht, was er zurückgibt — wie Next eine geworfene `notFound()` in einem Route-Handler übersetzt, wäre bei jedem Framework-Update neu zu beantworten. Die Zuordnung Route→Modul steht in `API_MODULE_PATHS` (eigene Tabelle, weil sich die Präfixe nicht decken: Abrechnung liegt in der UI unter `/billing`, ihre Handler unter `/api/invoices` und `/api/offers`). `tests/api-module-gate.test.ts` prüft, dass jeder Handler entweder gesperrt ist oder mit Begründung in `UNGATED_API_ROUTES` steht, dass das Gate **vor** der ersten anderen `await`-Anweisung kommt, und dass sich Modul-Gate und `PUBLIC_API_PREFIXES` im Proxy nicht überschneiden.
+
 ### 3.f Dashboards
 
 Rollenspezifisch: Admin (KPIs, §56), Mitarbeiter (§55), Bewohner (§54), Eigentümer (§25). Erst Skeletons mit echten Daten-Slots, keine Fake-Zahlen.

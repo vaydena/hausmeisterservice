@@ -69,24 +69,38 @@ export const MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
 };
 
 /**
- * Welches abschaltbare Modul deckt diesen Pfad ab — oder keines?
+ * Sprint 118: Dasselbe fuer die Route-Handler unter `src/app/api`.
  *
- * Laengster Treffer gewinnt. Heute ueberlappt sich nichts, aber die Regel
- * muss stehen, bevor der erste Unterpfad dazukommt: ein spaeteres
- * `/settings/automations/logs` als eigenes Modul darf nicht davon abhaengen,
- * in welcher Reihenfolge die Eintraege zufaellig in der Tabelle stehen.
+ * Das Gate aus Sprint 117 haengt im `(app)`-Layout und greift damit nur bei
+ * Seiten. Die API-Routen liefen daran vorbei: `/api/qr/property/<id>` gab den
+ * SVG auch dann heraus, wenn der Mandant QR-Codes abgeschaltet hatte, und
+ * `/api/invoices/<id>/pdf` die Rechnung ohne Abrechnungsmodul. Wer die
+ * Rechnungs-URL einmal im Browserverlauf oder in einer Mail hat, kommt also
+ * weiter an das Dokument — die abgeschaltete Oberflaeche davor ist dann nur
+ * noch Dekoration.
+ *
+ * Eine eigene Tabelle statt `/api` + MODULE_PATHS, weil sich die Praefixe
+ * nicht decken: das Abrechnungsmodul liegt in der UI unter `/billing`, seine
+ * Handler aber unter `/api/invoices` und `/api/offers`. Eine Ableitung haette
+ * genau diese beiden verfehlt — und zwar lautlos.
  */
-export function moduleForPath(pathname: string): ModuleKey | null {
+export const API_MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
+  qr_codes: ['/api/qr'],
+  billing: ['/api/invoices', '/api/offers'],
+};
+
+/** Laengster Praefix gewinnt; siehe `moduleForPath`. */
+function longestPrefixMatch(
+  table: Partial<Record<ModuleKey, readonly string[]>>,
+  pathname: string,
+): ModuleKey | null {
   const path = normalizeRoutePath(pathname);
   if (!path) return null;
 
   let match: ModuleKey | null = null;
   let matchedLength = -1;
 
-  for (const [key, prefixes] of Object.entries(MODULE_PATHS) as [
-    ModuleKey,
-    readonly string[],
-  ][]) {
+  for (const [key, prefixes] of Object.entries(table) as [ModuleKey, readonly string[]][]) {
     for (const prefix of prefixes) {
       if (!pathHasPrefix(path, prefix)) continue;
       if (prefix.length > matchedLength) {
@@ -97,6 +111,28 @@ export function moduleForPath(pathname: string): ModuleKey | null {
   }
 
   return match;
+}
+
+/**
+ * Welches abschaltbare Modul deckt diesen Pfad ab — oder keines?
+ *
+ * Laengster Treffer gewinnt. Heute ueberlappt sich nichts, aber die Regel
+ * muss stehen, bevor der erste Unterpfad dazukommt: ein spaeteres
+ * `/settings/automations/logs` als eigenes Modul darf nicht davon abhaengen,
+ * in welcher Reihenfolge die Eintraege zufaellig in der Tabelle stehen.
+ */
+export function moduleForPath(pathname: string): ModuleKey | null {
+  return longestPrefixMatch(MODULE_PATHS, pathname);
+}
+
+/** Wie `moduleForPath`, aber fuer die Route-Handler unter `/api`. */
+export function moduleForApiPath(pathname: string): ModuleKey | null {
+  return longestPrefixMatch(API_MODULE_PATHS, pathname);
+}
+
+/** Alle API-Praefixe, die dieses Modul abdeckt. */
+export function apiPathsForModule(moduleKey: ModuleKey): readonly string[] {
+  return API_MODULE_PATHS[moduleKey] ?? [];
 }
 
 /** Alle Routen-Praefixe, die dieses Modul abdeckt. */
@@ -110,7 +146,10 @@ export function pathsForModule(moduleKey: ModuleKey): readonly string[] {
  * Test die Regel nicht nachbaut, sondern dieselbe Antwort liest.
  */
 export function coreModulesWithPaths(): ModuleKey[] {
-  return (Object.keys(MODULE_PATHS) as ModuleKey[]).filter(
-    (key) => MODULES_BY_KEY[key]?.core === true,
-  );
+  return [
+    ...new Set([
+      ...(Object.keys(MODULE_PATHS) as ModuleKey[]),
+      ...(Object.keys(API_MODULE_PATHS) as ModuleKey[]),
+    ]),
+  ].filter((key) => MODULES_BY_KEY[key]?.core === true);
 }
