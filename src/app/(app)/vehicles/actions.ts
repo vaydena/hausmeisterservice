@@ -12,6 +12,17 @@ import {
   vehicleStatusUpdateSchema,
   type EventKind,
 } from '@/lib/schemas/vehicles';
+import { requireFeature } from '@/lib/tenant/features';
+
+/**
+ * Sprint 114: Auth UND Tarif-Gate in einem Aufruf — Server Actions laufen
+ * nicht durch das Layout, der Routen-Gate greift hier also nicht.
+ */
+async function requireVehicleAccess() {
+  const ctx = await requireTenantContext();
+  await requireFeature(ctx.tenantId, 'vehicles');
+  return ctx;
+}
 
 export type VehicleFormState = {
   error?: string;
@@ -56,7 +67,7 @@ export async function createVehicleAction(
   _prev: VehicleFormState,
   formData: FormData,
 ): Promise<VehicleFormState> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireVehicleAccess();
   const parsed = parseForm(vehicleInputSchema, formData);
   if (!parsed.success) {
     return {
@@ -88,7 +99,7 @@ export async function updateVehicleAction(
   _prev: VehicleFormState,
   formData: FormData,
 ): Promise<VehicleFormState> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireVehicleAccess();
   const parsed = parseForm(vehicleInputSchema, formData);
   if (!parsed.success) {
     return {
@@ -111,7 +122,7 @@ export async function updateVehicleAction(
 }
 
 export async function setVehicleStatusAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireVehicleAccess();
   const parsed = vehicleStatusUpdateSchema.safeParse({
     vehicle_id: formData.get('vehicle_id') ?? '',
     status: formData.get('status') ?? '',
@@ -133,7 +144,7 @@ export async function setVehicleStatusAction(formData: FormData): Promise<void> 
 }
 
 export async function softDeleteVehicleAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireVehicleAccess();
   const vehicleId = String(formData.get('vehicle_id') ?? '');
   if (!vehicleId) throw new Error('Fahrzeug fehlt.');
 
@@ -155,7 +166,7 @@ export async function softDeleteVehicleAction(formData: FormData): Promise<void>
  *   - wenn `next_due_at` gesetzt und kind ∈ NEXT_DUE_FIELD → passende Frist aktualisieren
  */
 export async function recordVehicleEventAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireVehicleAccess();
   const parsed = eventInputSchema.safeParse({
     vehicle_id: formData.get('vehicle_id') ?? '',
     kind: formData.get('kind') ?? '',

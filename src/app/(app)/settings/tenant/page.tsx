@@ -3,6 +3,8 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { getEnabledModules } from '@/lib/modules/enabled';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { getEnabledFeatures } from '@/lib/tenant/features';
+import { FEATURE_LABEL, featureForModule, lockedModules } from '@/lib/tenant/feature-map';
 import { MODULES, type ModuleDomain } from '@/lib/modules/registry';
 import { formatDate } from '@/lib/utils/format';
 import { parseTenantAddress, parseTenantInvoiceData } from '@/lib/schemas/tenant';
@@ -44,18 +46,23 @@ export default async function TenantSettingsPage() {
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
 
-  const [tenant, enabled, permissions, demoCount] = await Promise.all([
+  const [tenant, enabled, permissions, demoCount, features] = await Promise.all([
     supabase
       .from('tenants')
       .select('name, slug, timezone, currency, locale, status, created_at, address, invoice_data')
       .eq('id', ctx.tenantId)
       .maybeSingle(),
+    // Bewusst der rohe Schalterzustand, nicht getAvailableModules(): ein
+    // tarifgesperrtes Modul soll hier sichtbar bleiben und als solches
+    // beschriftet werden, statt kommentarlos aus der Liste zu fallen.
     getEnabledModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
     countDemoDataForTenant(ctx.tenantId),
+    getEnabledFeatures(ctx.tenantId),
   ]);
 
   const canManage = permissions.has('core.tenants.manage');
+  const locked = lockedModules(features);
   const t = tenant.data;
   const address = parseTenantAddress(t?.address);
   const invoiceData = parseTenantInvoiceData(t?.invoice_data);
@@ -124,6 +131,11 @@ export default async function TenantSettingsPage() {
               <ul className="divide-y divide-[var(--color-border)] rounded-lg border border-[var(--color-border)]">
                 {group.modules.map((mod) => {
                   const isEnabled = enabled.has(mod.key);
+                  // Sprint 114: Ein tarifgesperrtes Modul laesst sich zwar
+                  // weiterhin anhaken — der Schalter wuerde aber nichts
+                  // bewirken, weil Navigation und Route es ohnehin sperren.
+                  // Statt eines Schalters, der luegt, steht hier der Grund.
+                  const lockedFeature = locked.has(mod.key) ? featureForModule(mod.key) : null;
                   return (
                     <li
                       key={mod.key}
@@ -141,10 +153,20 @@ export default async function TenantSettingsPage() {
                         <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
                           {mod.description}
                         </p>
+                        {lockedFeature && (
+                          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+                            Benötigt <strong>{FEATURE_LABEL[lockedFeature]}</strong> — im aktuellen
+                            Tarif nicht enthalten.
+                          </p>
+                        )}
                       </div>
                       {mod.core ? (
                         <span className="whitespace-nowrap rounded-full bg-[var(--color-muted)] px-2.5 py-1 text-xs font-medium text-[var(--color-muted-foreground)]">
                           Immer aktiv
+                        </span>
+                      ) : lockedFeature ? (
+                        <span className="whitespace-nowrap rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium text-[var(--color-muted-foreground)]">
+                          Nicht im Tarif
                         </span>
                       ) : canManage ? (
                         <form action={toggleModuleAction}>

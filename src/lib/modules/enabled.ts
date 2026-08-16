@@ -3,6 +3,8 @@ import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 import { CORE_MODULE_KEYS, type ModuleKey } from '@/lib/modules/registry';
+import { getEnabledFeatures } from '@/lib/tenant/features';
+import { lockedModules } from '@/lib/tenant/feature-map';
 
 /**
  * Effektive Modul-Aktivierung für den aktuellen Tenant.
@@ -31,3 +33,25 @@ export async function isModuleEnabled(tenantId: string, moduleKey: ModuleKey): P
   const enabled = await getEnabledModules(tenantId);
   return enabled.has(moduleKey);
 }
+
+/**
+ * Sprint 114: Module, die der Mandant aktiviert hat UND die sein Tarif
+ * abdeckt. Das ist die Menge, aus der Navigation und Dashboard gebaut werden.
+ *
+ * Bewusst getrennt von `getEnabledModules`: die Einstellungen->Mandant-Seite
+ * braucht weiterhin den rohen Schalterzustand, um ein tarifgesperrtes Modul
+ * ueberhaupt als "im Tarif nicht enthalten" ausweisen zu koennen. Wuerde sie
+ * dieselbe reduzierte Menge lesen, saehe der Inhaber dort nur einen Schalter,
+ * den er umlegen kann und der nichts bewirkt.
+ */
+export const getAvailableModules = cache(async (tenantId: string): Promise<Set<ModuleKey>> => {
+  const [enabled, features] = await Promise.all([
+    getEnabledModules(tenantId),
+    getEnabledFeatures(tenantId),
+  ]);
+
+  const locked = lockedModules(features);
+  const available = new Set<ModuleKey>();
+  for (const key of enabled) if (!locked.has(key)) available.add(key);
+  return available;
+});

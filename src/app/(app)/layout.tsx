@@ -4,9 +4,11 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getTenantContext } from '@/lib/tenant/current';
 import { getResidentContext } from '@/lib/portal/current';
-import { getEnabledModules } from '@/lib/modules/enabled';
+import { getAvailableModules } from '@/lib/modules/enabled';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { evaluateSubscriptionAccess, isPathAllowedWhenBlocked } from '@/lib/tenant/subscription-guard';
+import { hasFeature } from '@/lib/tenant/features';
+import { featureForPath } from '@/lib/tenant/feature-map';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { MobileNav } from '@/components/layout/mobile-nav';
@@ -33,8 +35,17 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/zahlung-erforderlich');
   }
 
+  // Sprint 114: Plan-Feature-Gate auf Routen-Ebene. Muss hier sitzen und
+  // nicht nur in der Navigation — ein ausgeblendeter Menuepunkt sperrt
+  // nichts, die URL bleibt tippbar und Deep-Links aus alten E-Mails und
+  // Lesezeichen zeigen weiter auf die Route.
+  const requiredFeature = featureForPath(pathname);
+  if (requiredFeature && !(await hasFeature(ctx.tenantId, requiredFeature))) {
+    redirect(`/tarif-erforderlich?feature=${requiredFeature}`);
+  }
+
   const [enabledModules, permissions] = await Promise.all([
-    getEnabledModules(ctx.tenantId),
+    getAvailableModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
   ]);
 

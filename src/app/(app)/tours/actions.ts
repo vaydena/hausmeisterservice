@@ -14,6 +14,24 @@ import {
   tourStatusUpdateSchema,
 } from '@/lib/schemas/tours';
 import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
+import { requireFeature } from '@/lib/tenant/features';
+
+/**
+ * Sprint 114: Auth UND Tarif-Gate in einem Aufruf.
+ *
+ * Server Actions laufen nicht durch das Layout — der Routen-Gate aus
+ * src/app/(app)/layout.tsx greift hier also nicht. Wer die Action-URL kennt
+ * (sie steht im ausgelieferten HTML), koennte sonst weiter Touren anlegen,
+ * obwohl sein Tarif sie nicht enthaelt.
+ *
+ * `tours` haengt am Feature `gps` — so ist es im Tarif-Seed und auf /preise
+ * zugesagt ("GPS-Tracking + Touren").
+ */
+async function requireTourAccess() {
+  const ctx = await requireTenantContext();
+  await requireFeature(ctx.tenantId, 'gps');
+  return ctx;
+}
 
 export type TourFormState = {
   error?: string;
@@ -47,7 +65,7 @@ export async function createTourAction(
   _prev: TourFormState,
   formData: FormData,
 ): Promise<TourFormState> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const parsed = parseForm(tourInputSchema, formData);
   if (!parsed.success) {
     return {
@@ -79,7 +97,7 @@ export async function updateTourAction(
   _prev: TourFormState,
   formData: FormData,
 ): Promise<TourFormState> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const parsed = parseForm(tourInputSchema, formData);
   if (!parsed.success) {
     return {
@@ -105,7 +123,7 @@ export async function updateTourAction(
  * Status-Setzer: markiert `started_at` / `completed_at` passend zum Übergang.
  */
 export async function setTourStatusAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const parsed = tourStatusUpdateSchema.safeParse({
     tour_id: formData.get('tour_id') ?? '',
     status: formData.get('status') ?? '',
@@ -136,7 +154,7 @@ export async function setTourStatusAction(formData: FormData): Promise<void> {
 }
 
 export async function softDeleteTourAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const tourId = String(formData.get('tour_id') ?? '');
   if (!tourId) throw new Error('Tour fehlt.');
 
@@ -155,7 +173,7 @@ export async function softDeleteTourAction(formData: FormData): Promise<void> {
  * Neuen Stopp anhängen — sequence = max(existing) + 1.
  */
 export async function addStopAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const parsed = parseForm(stopInputSchema, formData);
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -191,7 +209,7 @@ export async function addStopAction(formData: FormData): Promise<void> {
 }
 
 export async function updateStopAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const parsed = parseForm(stopUpdateSchema, formData);
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? 'Ungültige Eingabe.');
@@ -216,7 +234,7 @@ export async function updateStopAction(formData: FormData): Promise<void> {
 }
 
 export async function removeStopAction(formData: FormData): Promise<void> {
-  await requireTenantContext();
+  await requireTourAccess();
   const stopId = String(formData.get('stop_id') ?? '');
   const tourId = String(formData.get('tour_id') ?? '');
   if (!stopId || !tourId) throw new Error('Stopp/Tour fehlt.');
@@ -236,7 +254,7 @@ export async function removeStopAction(formData: FormData): Promise<void> {
  *   skipped   → keine Zeit
  */
 export async function setStopStatusAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const parsed = stopStatusUpdateSchema.safeParse({
     stop_id: formData.get('stop_id') ?? '',
     status: formData.get('status') ?? '',
@@ -286,7 +304,7 @@ export async function setStopStatusAction(formData: FormData): Promise<void> {
  * Constraint nicht zu verletzen, danach die finalen 1..N.
  */
 export async function reorderStopsAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireTourAccess();
   const raw = formData.get('stop_ids');
   if (typeof raw !== 'string') throw new Error('Reihenfolge fehlt.');
   let list: string[];

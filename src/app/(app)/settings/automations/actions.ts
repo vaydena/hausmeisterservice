@@ -19,6 +19,19 @@ import {
 } from '@/lib/email/provider';
 import { parseTenantInvoiceData } from '@/lib/schemas/tenant';
 import { clientEnv } from '@/lib/env';
+import { requireFeature } from '@/lib/tenant/features';
+
+/**
+ * Sprint 114: Auth UND Tarif-Gate in einem Aufruf — Server Actions laufen
+ * nicht durch das Layout, der Routen-Gate greift hier also nicht. Bei den
+ * Automatisierungen waere das besonders folgenreich: der Test-Versand
+ * verschickt echte E-Mails ueber das Kontingent des Betreibers.
+ */
+async function requireAutomationAccess() {
+  const ctx = await requireTenantContext();
+  await requireFeature(ctx.tenantId, 'automations');
+  return ctx;
+}
 
 export type AutomationFormState = {
   ok: boolean;
@@ -78,7 +91,7 @@ export async function createAutomationRuleAction(
   _prev: AutomationFormState,
   formData: FormData,
 ): Promise<AutomationFormState> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireAutomationAccess();
   const parsed = automationRuleCreateSchema.safeParse(parseFormData(formData));
   if (!parsed.success) {
     return {
@@ -112,7 +125,7 @@ export async function createAutomationRuleAction(
 }
 
 export async function toggleAutomationRuleAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireAutomationAccess();
   const id = String(formData.get('id') ?? '');
   const nextEnabled = formData.get('enabled') === 'true';
   if (!id) throw new Error('Ungültige ID.');
@@ -128,7 +141,7 @@ export async function toggleAutomationRuleAction(formData: FormData): Promise<vo
 }
 
 export async function deleteAutomationRuleAction(formData: FormData): Promise<void> {
-  await requireTenantContext();
+  await requireAutomationAccess();
   const id = String(formData.get('id') ?? '');
   if (!id) throw new Error('Ungültige ID.');
   const supabase = await createSupabaseServerClient();
@@ -144,7 +157,7 @@ export async function deleteAutomationRuleAction(formData: FormData): Promise<vo
  * (z. B. `done` → `new` → `done`) oder bei Tests der send_email-Aktion.
  */
 export async function resetAutomationRuleDispatchesAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireAutomationAccess();
   const id = String(formData.get('id') ?? '');
   if (!id) throw new Error('Ungültige ID.');
 
@@ -182,7 +195,7 @@ export async function resetAutomationRuleDispatchesAction(formData: FormData): P
  * bleibt (kein automation_runs-Eintrag).
  */
 export async function sendTestEmailFromRuleAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireAutomationAccess();
   const id = String(formData.get('id') ?? '');
   if (!id) throw new Error('Ungültige ID.');
 
@@ -305,7 +318,7 @@ export async function sendTestEmailFromRuleAction(formData: FormData): Promise<v
  * Dispatches verhindern Doppel-Versand.
  */
 export async function testRunAutomationRuleAction(formData: FormData): Promise<void> {
-  const ctx = await requireTenantContext();
+  const ctx = await requireAutomationAccess();
   const id = String(formData.get('id') ?? '');
   if (!id) throw new Error('Ungültige ID.');
 

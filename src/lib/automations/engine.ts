@@ -14,6 +14,7 @@ import {
 } from '@/lib/email/provider';
 import { clientEnv } from '@/lib/env';
 import { parseTenantInvoiceData } from '@/lib/schemas/tenant';
+import { hasFeature } from '@/lib/tenant/features';
 import {
   describeAbortedRun,
   describeDispatchLogFailure,
@@ -916,6 +917,14 @@ export async function runAllEnabledRules(
 
   const out: { ruleId: string; result: RunResult }[] = [];
   for (const rule of rules) {
+    // Sprint 114: Der Cron laeuft tenant-uebergreifend und komplett ohne
+    // Layout — hier ist die einzige Stelle, an der das Tarif-Gate fuer
+    // Automatisierungen greifen kann. Ohne sie liefen die Regeln eines
+    // Mandanten weiter, dessen Tarif sie nicht enthaelt: er hat sie in der
+    // Testphase angelegt, danach Starter gebucht, und der Server verschickt
+    // seither still weiter E-Mails ueber das Kontingent des Betreibers.
+    if (!(await hasFeature(rule.tenant_id, 'automations'))) continue;
+
     // runRule faengt seine Phasen selbst ab. Kommt trotzdem etwas
     // Unerwartetes durch, darf es nicht die Regeln aller uebrigen Mandanten
     // mitreissen — ein defekter Trigger bei einem Kunden ist kein Grund, die

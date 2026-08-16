@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { requireTenantContext } from '@/lib/tenant/current';
-import { getEnabledModules } from '@/lib/modules/enabled';
+import { getAvailableModules } from '@/lib/modules/enabled';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
@@ -29,7 +29,9 @@ export default async function DashboardPage() {
   const supabase = await createSupabaseServerClient();
 
   const [enabledModules, permissions, tenantRes, rolesRes] = await Promise.all([
-    getEnabledModules(ctx.tenantId),
+    // Sprint 114: bewusst die tarifbereinigte Menge — die Kachel zaehlt,
+    // was der Mandant benutzen kann, nicht was er angehakt hat.
+    getAvailableModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
     supabase
       .from('tenants')

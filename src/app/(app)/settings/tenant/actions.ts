@@ -5,6 +5,8 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { isCoreModule, MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
+import { hasFeature } from '@/lib/tenant/features';
+import { featureForModule } from '@/lib/tenant/feature-map';
 import { tenantBillingUpdateSchema } from '@/lib/schemas/tenant';
 import {
   loadDemoDataForTenant,
@@ -25,6 +27,15 @@ export async function toggleModuleAction(formData: FormData): Promise<void> {
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('core.tenants.manage')) {
     throw new Error('Fehlende Berechtigung, um Module zu ändern.');
+  }
+
+  // Sprint 114: Die Seite blendet den Schalter fuer tarifgesperrte Module
+  // aus — die Action bleibt trotzdem ueber den Action-Endpoint aufrufbar.
+  // Ein Modul einschalten zu koennen, das anschliessend niemand oeffnen
+  // kann, waere ein gespeicherter Widerspruch.
+  const feature = featureForModule(key);
+  if (enabled && feature && !(await hasFeature(ctx.tenantId, feature))) {
+    throw new Error(`${MODULES_BY_KEY[key].labelDe} ist im aktuellen Tarif nicht enthalten.`);
   }
 
   const supabase = await createSupabaseServerClient();
