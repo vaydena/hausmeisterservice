@@ -153,6 +153,25 @@ const INTENTIONALLY_PUBLIC_ROUTES = new Set<string>([
   //   Response enthaelt nichts, was nicht ohnehin aus dem HTTP-Statuscode
   //   ablesbar waere.
   'src/app/api/health/route.ts',
+  // src/app/api/health/deep/route.ts:
+  //   Sprint 125. Tiefe Betriebsprobe: prueft, ob die Bildverarbeitung
+  //   (sharp) auf DIESER Instanz arbeitsfaehig ist, und antwortet mit 503,
+  //   wenn nicht. Gleiche Rationale wie der flache Health-Endpoint direkt
+  //   darueber — Monitore fuehren keine Credentials, ein Auth-Gate wuerde
+  //   den Zweck aufheben.
+  //   Zum Body: er enthaelt ausser der Build-Info nur `ok` (boolean),
+  //   `stage` ('load'|'encode'|null) und `code` — letzterer wird in
+  //   src/lib/images/probe.ts gegen /^[A-Z][A-Z0-9_]{0,63}$/ geprueft und
+  //   sonst zu 'UNKNOWN' verworfen. Damit kann kein Serverpfad und keine
+  //   Fehlermeldung hinausgelangen; ein Test in
+  //   tests/image-pipeline-probe.test.ts haelt das fest.
+  //   Nebeneffekte: keine. Die Probe kodiert ein 8x8-Bild im Speicher,
+  //   fasst weder Datenbank noch Storage an.
+  //   Was ein Fremder erfaehrt: dass Foto-Uploads gerade nicht gehen. Das
+  //   ist geringer Wert fuer ihn und hoher Wert fuer den Betreiber — der
+  //   Ausfall in Sprint 124 blieb genau deshalb unbemerkt, weil ihn
+  //   niemand von aussen sehen konnte.
+  'src/app/api/health/deep/route.ts',
   // src/app/api/platform/invoices/[id]/pdf/route.tsx:
   //   Plattform-Rechnungs-PDF. Erlaubt zwei Zugriffsklassen (Plattform-Admin
   //   oder Owner der Ziel-Agentur), was requirePlatformAdmin() allein zu eng

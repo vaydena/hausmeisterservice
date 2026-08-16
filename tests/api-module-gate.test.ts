@@ -38,6 +38,10 @@ const UNGATED_API_ROUTES: Record<string, string> = {
   '/api/health':
     'Betriebsueberwachung. Muss auch antworten, wenn Session, Mandant oder Datenbank fehlen — ' +
     'genau dann wird sie gebraucht.',
+  '/api/health/deep':
+    'Dieselbe Betriebsueberwachung eine Ebene tiefer: prueft, ob die Bildverarbeitung auf ' +
+    'dieser Instanz laeuft. Die Faehigkeit gehoert dem Server, nicht einem Mandanten — sie ' +
+    'faellt fuer alle zugleich aus oder fuer keinen.',
   '/api/privacy/export':
     'DSGVO Art. 15. Das Auskunftsrecht haengt nicht daran, welche Module gebucht sind; ' +
     'gerade der Mandant, der ein Modul abschaltet, hat dort weiter Daten liegen.',
