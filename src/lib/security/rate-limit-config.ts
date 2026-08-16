@@ -60,6 +60,35 @@
  * das Rate-Limit befreit. Fuer Signup/Reset-Password/Password-Change/
  * MFA-Verify/MFA-Recovery/Email-Change KEIN Reset auf Erfolg — sonst
  * waere die E-Mail-Enumeration- bzw. die Session-Hijack-Schutzwirkung weg.
+ *
+ * ---------------------------------------------------------------------------
+ * Sprint 124: Die letzten beiden Eintraege sind KEINE Auth-Endpunkte.
+ *
+ * Sie stehen trotzdem hier, weil der Mechanismus derselbe ist (dieselbe
+ * Tabelle `auth_rate_limits`, dieselbe SECURITY-DEFINER-Function, dasselbe
+ * Sliding-Window). Ein zweiter Zaehler-Mechanismus fuer denselben Zweck
+ * waere eine zweite Stelle, an der man Sperrzeiten falsch einstellen kann.
+ * Der Name der Konstanten ist damit ungenau geworden; ein Rename beruehrt
+ * jeden Aufrufer und ist die Aenderung nicht wert.
+ *
+ *   - public-report-ip: 5 Meldungen pro Stunde und IP. Der oeffentliche
+ *     Melde-Link (/melden/<token>) ist der einzige Schreibpfad im Produkt,
+ *     den jemand ohne Konto erreicht. Ohne Deckel ist er ein
+ *     Massen-Einkipp-Endpunkt: fremde Meldungen landen in der Disposition
+ *     eines echten Betriebs und binden echte Arbeitszeit. 5/Stunde ist fuer
+ *     einen Menschen vor einem kaputten Aufzug reichlich; wer mehr braucht,
+ *     hat entweder ein Grossschadensereignis (dann ruft er an) oder ist
+ *     kein Melder.
+ *   - public-report-link: 20 Meldungen pro Stunde und Aufkleber. Der
+ *     IP-Zaehler allein reicht nicht — verteilte Absender umgehen ihn. Der
+ *     Token-Zaehler begrenzt den Schaden pro Aufkleber unabhaengig davon,
+ *     von wo die Anfragen kommen, und ist damit die Groesse, die der
+ *     Betrieb im Ernstfall selbst abschalten kann (`active = false`).
+ *     Bewusst hoeher als der IP-Deckel: ein grosses Wohnhaus mit einem
+ *     Heizungsausfall darf mehrere Melder haben.
+ *
+ * Beide OHNE Reset auf Erfolg: eine erfolgreiche Meldung ist kein Beweis
+ * von Berechtigung, sondern genau der Vorgang, der gedeckelt werden soll.
  */
 export const AUTH_RATE_LIMITS = {
   login: { limit: 5, windowSec: 900, blockSec: 900 },
@@ -70,6 +99,8 @@ export const AUTH_RATE_LIMITS = {
   'mfa-verify': { limit: 5, windowSec: 900, blockSec: 900 },
   'mfa-recovery': { limit: 5, windowSec: 900, blockSec: 900 },
   'email-change': { limit: 3, windowSec: 3600, blockSec: 3600 },
+  'public-report-ip': { limit: 5, windowSec: 3600, blockSec: 3600 },
+  'public-report-link': { limit: 20, windowSec: 3600, blockSec: 3600 },
 } as const;
 
 export type AuthEndpoint = keyof typeof AUTH_RATE_LIMITS;

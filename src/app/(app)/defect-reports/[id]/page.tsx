@@ -47,7 +47,7 @@ export default async function DefectReportDetailPage({
   const reportRes = await supabase
     .from('defect_reports')
     .select(
-      'id, code, title, description, category, priority, status, property_id, building_id, unit_id, location_details, reporter_kind, reporter_name, reporter_contact, reporter_user_id, converted_work_order_id, reviewed_by, reviewed_at, rejection_reason, created_at, updated_at',
+      'id, code, title, description, category, priority, status, property_id, building_id, unit_id, location_details, reporter_kind, reporter_name, reporter_contact, reporter_user_id, report_link_id, converted_work_order_id, reviewed_by, reviewed_at, rejection_reason, created_at, updated_at',
     )
     .eq('id', id)
     .maybeSingle();
@@ -55,7 +55,7 @@ export default async function DefectReportDetailPage({
 
   if (!report) notFound();
 
-  const [propertyRes, buildingRes, unitRes, workOrderRes] = await Promise.all([
+  const [propertyRes, buildingRes, unitRes, workOrderRes, reportLinkRes] = await Promise.all([
     supabase.from('properties').select('id, code, name').eq('id', report.property_id).maybeSingle(),
     report.building_id
       ? supabase.from('buildings').select('id, name').eq('id', report.building_id).maybeSingle()
@@ -70,10 +70,18 @@ export default async function DefectReportDetailPage({
           .eq('id', report.converted_work_order_id)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    report.report_link_id
+      ? supabase
+          .from('property_report_links')
+          .select('id, label, active')
+          .eq('id', report.report_link_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
   const property = unwrapMaybeRow(propertyRes, 'Maengelmeldungen: properties');
   const building = unwrapMaybeRow(buildingRes, 'Maengelmeldungen: buildings');
   const unit = unwrapMaybeRow(unitRes, 'Maengelmeldungen: units');
+  const reportLink = unwrapMaybeRow(reportLinkRes, 'Maengelmeldungen: Melde-Link');
 
   const docsRes = await supabase
     .from('documents')
@@ -263,6 +271,26 @@ export default async function DefectReportDetailPage({
                   <div className="flex justify-between gap-4">
                     <dt className="text-[var(--color-muted-foreground)]">Benutzer</dt>
                     <dd>{displayById.get(report.reporter_user_id) ?? '(unbekannt)'}</dd>
+                  </div>
+                )}
+                {/*
+                  Sprint 124: Herkunft. Ohne diese Zeile ist eine ueber den
+                  QR-Aushang eingegangene Meldung nicht von einer intern
+                  erfassten zu unterscheiden — und damit auch nicht die
+                  Frage zu beantworten, ob die Rolle "Eigentuemer" belegt
+                  ist oder nur behauptet. Sie ist behauptet: der Melder war
+                  nicht angemeldet.
+                */}
+                {report.report_link_id && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-[var(--color-muted-foreground)]">Eingang</dt>
+                    <dd className="text-right">
+                      Melde-Link{reportLink?.label ? ` „${reportLink.label}"` : ''}
+                      <br />
+                      <span className="text-xs text-[var(--color-muted-foreground)]">
+                        Angaben unbestätigt (ohne Anmeldung)
+                      </span>
+                    </dd>
                   </div>
                 )}
               </dl>

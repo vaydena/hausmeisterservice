@@ -235,6 +235,30 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   nicht in der Server-Actions-Datei, und wird von diesem Coverage-Test
   //   nicht erfasst.
   'src/app/(portal)/portal/account/actions.ts',
+  // src/app/melden/[token]/actions.ts:
+  //   Sprint 124. Oeffentliche Maengelmeldung ueber einen QR-Aufkleber.
+  //   Der Aufrufer hat per Definition keine Session, also auch keine
+  //   Tenant-Zugehoerigkeit — der anon+cookie-Client hat auf
+  //   defect_reports, documents und dem attachments-Bucket exakt null
+  //   Rechte, und eine anon-INSERT-Policy waere die schlechtere Loesung:
+  //   sie waere fuer JEDEN anonymen Aufrufer offen, nicht nur fuer den
+  //   mit einem gueltigen Token, und muesste die Token-Pruefung in SQL
+  //   nachbauen.
+  //
+  //   Die Berechtigungspruefung ist hier kein Permission-Check (es gibt
+  //   keinen Benutzer), sondern der Token: resolveReportLink laeuft VOR
+  //   jedem Service-Client-Schreibzugriff und liefert tenant_id,
+  //   property_id und building_id. Diese drei sind die einzigen Quellen
+  //   fuer den Insert — aus der Formular-Payload kommt nichts, was den
+  //   Mandanten oder das Objekt bestimmen koennte. Vorgelagert stehen
+  //   Formatpruefung und zwei Rate-Limits (siehe die ausfuehrliche
+  //   Begruendung in server-action-auth-coverage.test.ts).
+  //
+  //   Geschrieben wird ausschliesslich: eine defect_reports-Zeile mit
+  //   `status = 'new'` (Vorstufe, kein Auftrag) und optional ein
+  //   documents-Eintrag plus Storage-Blob unter dem Tenant-Prefix.
+  //   Gelesen wird nichts ausser der eigenen frisch angelegten Zeile.
+  'src/app/melden/[token]/actions.ts',
 ]);
 
 describe('Server-Action service-client coverage', () => {

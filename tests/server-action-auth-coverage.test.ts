@@ -133,6 +133,36 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   //   nichts ausrichten, weil userId von getUser() kommt (nicht aus
   //   der Formular-Payload).
   'src/app/(auth)/login/mfa/recovery/actions.ts',
+  // src/app/melden/[token]/actions.ts:
+  //   Sprint 124. Oeffentliche Maengelmeldung hinter einem QR-Aufkleber.
+  //   Ein Auth-Gate waere hier kein Chicken-and-egg-Problem, sondern das
+  //   Ende der Funktion: der Zweck ist genau, dass Eigentuemer, Vermieter
+  //   und Hausverwaltungen OHNE Konto melden koennen. Wer ein Konto hat,
+  //   nimmt das Portal.
+  //
+  //   Was stattdessen greift, in dieser Reihenfolge:
+  //   (a) Formatpruefung des Tokens, bevor er die Datenbank sieht.
+  //   (b) Rate-Limit VOR der Token-Aufloesung, doppelt: per IP
+  //       (public-report-ip, 5/Stunde) und per Token (public-report-link,
+  //       20/Stunde). Der IP-Deckel bremst den einzelnen Absender, der
+  //       Token-Deckel den einzelnen Aufkleber — verteilte Absender
+  //       umgehen sonst den ersten.
+  //   (c) resolveReportLink: Zeile muss existieren UND `active` sein UND
+  //       zu einem aktiven Mandanten gehoeren UND dessen Modul
+  //       `defect_reports` muss eingeschaltet sein. Widerruf per
+  //       `active = false` ist der Notausschalter fuer einen
+  //       abfotografierten Aufkleber.
+  //   (d) tenant_id, property_id und building_id kommen AUSSCHLIESSLICH
+  //       aus der aufgeloesten Link-Zeile, nie aus der Formular-Payload.
+  //       Ein Angreifer kann damit keine Meldung in ein fremdes Objekt
+  //       schreiben, selbst wenn er einen gueltigen Token hat.
+  //   (e) Der Anhang ist auf Bilder begrenzt und wird durch sharp neu
+  //       kodiert — was sich nicht dekodieren laesst, wird nicht
+  //       gespeichert.
+  //   Der Nachreich-Pfad (attachPublicReportPhotoAction) prueft zusaetzlich
+  //   `report_link_id = <aufgeloester Link>`, damit eine geratene fremde
+  //   Meldungs-ID kein Upload-Ziel ist.
+  'src/app/melden/[token]/actions.ts',
 ]);
 
 describe('Server Action auth coverage', () => {

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { AUTH_RATE_LIMITS, formatRateLimitError } from '@/lib/security/rate-limit-config';
 
 describe('AUTH_RATE_LIMITS config', () => {
-  it('covers exactly the eight expected auth endpoints', () => {
+  it('covers exactly the expected endpoints', () => {
     expect(Object.keys(AUTH_RATE_LIMITS).sort()).toEqual([
       'email-change',
       'login',
@@ -10,6 +10,8 @@ describe('AUTH_RATE_LIMITS config', () => {
       'mfa-verify',
       'password-change',
       'portal-login',
+      'public-report-ip',
+      'public-report-link',
       'reset-password',
       'signup',
     ]);
@@ -53,6 +55,30 @@ describe('AUTH_RATE_LIMITS config', () => {
 
   it('email-change matches signup policy (3 per hour) — same enumeration/mail-bombing surface as signup, applied per-account', () => {
     expect(AUTH_RATE_LIMITS['email-change']).toEqual(AUTH_RATE_LIMITS.signup);
+  });
+
+  /**
+   * Sprint 124: Die beiden Melde-Deckel sind keine Auth-Endpunkte, teilen
+   * sich aber Tabelle und Mechanismus (siehe Kommentar in
+   * rate-limit-config.ts). Sie sind die einzige Bremse vor dem einzigen
+   * Schreibpfad, den jemand ohne Konto erreicht — deshalb stehen ihre
+   * Werte hier fest und nicht nur im Kommentar.
+   */
+  it('public-report-ip erlaubt 5 Meldungen pro Stunde und sperrt eine Stunde', () => {
+    expect(AUTH_RATE_LIMITS['public-report-ip']).toEqual({
+      limit: 5,
+      windowSec: 3600,
+      blockSec: 3600,
+    });
+  });
+
+  it('public-report-link ist grosszuegiger als der IP-Deckel — ein grosses Haus darf mehrere Melder haben', () => {
+    expect(AUTH_RATE_LIMITS['public-report-link'].limit).toBeGreaterThan(
+      AUTH_RATE_LIMITS['public-report-ip'].limit,
+    );
+    expect(AUTH_RATE_LIMITS['public-report-link'].windowSec).toBe(
+      AUTH_RATE_LIMITS['public-report-ip'].windowSec,
+    );
   });
 
   it('all configs use positive integers', () => {

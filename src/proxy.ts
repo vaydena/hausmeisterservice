@@ -6,6 +6,15 @@ const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
 // Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
 // dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
 const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb', '/avv'];
+// Sprint 124 · Öffentliche Meldestrecke hinter einem QR-Aufkleber.
+//
+// Bewusst NICHT in STAFF_PUBLIC_ROUTES: die Liste unten wirft angemeldete
+// Besucher auf /dashboard. Genau das darf hier nicht passieren — wer den
+// eigenen Aufkleber testet oder als Mitarbeiter zufällig eingeloggt ist,
+// landete sonst im Dashboard statt im Formular und hielte den Code für
+// kaputt. Wie die Legal-Routen also: für alle erreichbar, in beide
+// Richtungen ohne Redirect.
+const PUBLIC_REPORT_ROUTES = ['/melden'];
 // Supabase-Auth-Callbacks (E-Mail-Verify, Magic-Link, Reset). Der Handler
 // führt selbst exchangeCodeForSession aus — kein Session-Redirect davor.
 const AUTH_CALLBACK_ROUTES = ['/auth/callback', '/reset-password/confirm'];
@@ -51,6 +60,12 @@ function isLegalRoute(pathname: string): boolean {
   );
 }
 
+function isPublicReport(pathname: string): boolean {
+  return PUBLIC_REPORT_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
+
 function isAuthCallback(pathname: string): boolean {
   return AUTH_CALLBACK_ROUTES.some((route) => pathname === route);
 }
@@ -81,6 +96,13 @@ export async function proxy(request: NextRequest) {
   // (Interessenten müssen Impressum/Datenschutz vor Anmeldung lesen können)
   // als auch mit Session (kein Auth-Redirect ins Dashboard).
   if (isLegalRoute(pathname)) {
+    const { response } = await updateSession(request);
+    return response;
+  }
+
+  // Meldestrecke: siehe PUBLIC_REPORT_ROUTES. Kein Auth-Redirect in beide
+  // Richtungen — die Seite gehört dem Melder, nicht der Session.
+  if (isPublicReport(pathname)) {
     const { response } = await updateSession(request);
     return response;
   }

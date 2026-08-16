@@ -842,6 +842,7 @@ export type Database = {
           priority: string
           property_id: string
           rejection_reason: string | null
+          report_link_id: string | null
           reporter_contact: string | null
           reporter_kind: string
           reporter_name: string | null
@@ -868,6 +869,7 @@ export type Database = {
           priority?: string
           property_id: string
           rejection_reason?: string | null
+          report_link_id?: string | null
           reporter_contact?: string | null
           reporter_kind?: string
           reporter_name?: string | null
@@ -894,6 +896,7 @@ export type Database = {
           priority?: string
           property_id?: string
           rejection_reason?: string | null
+          report_link_id?: string | null
           reporter_contact?: string | null
           reporter_kind?: string
           reporter_name?: string | null
@@ -927,6 +930,13 @@ export type Database = {
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "defect_reports_report_link_id_fkey"
+            columns: ["report_link_id"]
+            isOneToOne: false
+            referencedRelation: "property_report_links"
             referencedColumns: ["id"]
           },
           {
@@ -2284,6 +2294,76 @@ export type Database = {
           },
         ]
       }
+      property_report_links: {
+        Row: {
+          active: boolean
+          building_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string | null
+          property_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          tenant_id: string
+          token: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          building_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          property_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tenant_id: string
+          token: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          building_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string | null
+          property_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tenant_id?: string
+          token?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_report_links_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "buildings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_report_links_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_report_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth: string
@@ -2461,6 +2541,69 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      role_template_permissions: {
+        Row: {
+          permission_key: string
+          template_key: string
+        }
+        Insert: {
+          permission_key: string
+          template_key: string
+        }
+        Update: {
+          permission_key?: string
+          template_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_template_permissions_permission_key_fkey"
+            columns: ["permission_key"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "role_template_permissions_template_key_fkey"
+            columns: ["template_key"]
+            isOneToOne: false
+            referencedRelation: "role_templates"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      role_templates: {
+        Row: {
+          all_permissions: boolean
+          created_at: string
+          description: string
+          editable: boolean
+          key: string
+          name_de: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          all_permissions?: boolean
+          created_at?: string
+          description: string
+          editable?: boolean
+          key: string
+          name_de: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          all_permissions?: boolean
+          created_at?: string
+          description?: string
+          editable?: boolean
+          key?: string
+          name_de?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       roles: {
         Row: {

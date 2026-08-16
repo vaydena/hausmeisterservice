@@ -78,6 +78,16 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
                 QR-Code
               </LinkButton>
             </ModuleGate>
+            {/*
+              Sprint 124: gehoert zum Objekt, nicht zum QR-Modul — der
+              Melde-Link ist eine Eigenschaft dieser Liegenschaft (wer darf
+              daran melden?) und bleibt deshalb erreichbar, auch wenn der
+              Mandant die internen QR-Codes fuer Schluessel und Zaehler
+              abgeschaltet hat.
+            */}
+            <LinkButton variant="outline" href={`/properties/${property.id}/melde-links`}>
+              Melde-Links
+            </LinkButton>
             {canEdit && (
               <LinkButton variant="outline" href={`/properties/${property.id}/edit`}>
                 Bearbeiten
