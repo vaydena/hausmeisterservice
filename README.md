@@ -98,6 +98,8 @@ if (blocked) return blocked;
 
 Rückgabewert statt `throw`/`notFound()`, damit sichtbar im Handler steht, was er zurückgibt — wie Next eine geworfene `notFound()` in einem Route-Handler übersetzt, wäre bei jedem Framework-Update neu zu beantworten. Die Zuordnung Route→Modul steht in `API_MODULE_PATHS` (eigene Tabelle, weil sich die Präfixe nicht decken: Abrechnung liegt in der UI unter `/billing`, ihre Handler unter `/api/invoices` und `/api/offers`). `tests/api-module-gate.test.ts` prüft, dass jeder Handler entweder gesperrt ist oder mit Begründung in `UNGATED_API_ROUTES` steht, dass das Gate **vor** der ersten anderen `await`-Anweisung kommt, und dass sich Modul-Gate und `PUBLIC_API_PREFIXES` im Proxy nicht überschneiden.
 
+`moduleGate()` ruft `getTenantContext()` und antwortet ohne Mandanten mit 404 — es ist damit zugleich ein Auth-Gate und steht seit Sprint 120 in den `AUTH_MARKERS` von `tests/route-handler-auth-coverage.test.ts`. Dabei ist aufgefallen, dass `/api/qr/[type]/[id]` dort noch als „bewusst öffentlich" geführt wurde: die Begründung beschrieb den Scanner, der ein *gedrucktes* QR-Bild dekodiert — dieser Endpunkt *erzeugt* das Bild und wird nur von der Druckansicht im `(app)`-Bereich aufgerufen. Der Eintrag ist entfallen.
+
 ### 3.f Dashboards
 
 Rollenspezifisch: Admin (KPIs, §56), Mitarbeiter (§55), Bewohner (§54), Eigentümer (§25). Erst Skeletons mit echten Daten-Slots, keine Fake-Zahlen.
@@ -1084,6 +1086,39 @@ am Objekt anbringen. Ein Scan öffnet auf dem Handy direkt die Detail-Seite
 Die Deep-URL enthält `?src=qr` — nützlich für spätere Auswertungen, wo Nutzer
 aus dem Feld auf die App zugreifen. Kein neuer DB-Layer nötig, keine
 Migrationen — QR wird pro Request aus der Entity-ID generiert.
+
+## Dokumente
+
+Hochgeladen wird immer *am Vorgang* — am Auftrag, an der Meldung, am Prüfpunkt
+einer Checkliste, am Objekt oder an einer Einheit (`documents.entity_type`).
+Das bleibt so: ein Foto ohne den Schaden, zu dem es gehört, ist eine Datei ohne
+Aussage. Es gibt deshalb bewusst keine Detailseite pro Dokument.
+
+**`/documents` (Sprint 120)** ist die Querschnittsansicht darüber. Der
+Menüpunkt stand seit Sprint 14 in der Sidebar, die Seite dazu nie — wer das
+Modul aktiviert hatte und klickte, bekam 404. Sie beantwortet die Frage, die
+sich am Vorgang nicht stellen lässt: „wo ist nochmal das Foto vom Schaden im
+Treppenhaus", wenn man den Vorgang selbst nicht mehr weiß.
+
+- Filter: Volltext über Dateiname und Beschriftung, Art (Foto/Datei),
+  Zugehörigkeit (Auftrag/Meldung/Prüfpunkt/Objekt/Einheit). 50 pro Seite.
+- Jede Zeile verlinkt über `documentEntityHref()` zurück auf ihren Vorgang —
+  durch `ModuleLink`, weil jedes dieser Ziele in einem *fremden* Modul liegt.
+  Einheiten führen auf ihr Objekt (keine eigene Route), Prüfpunkte auf ihren
+  Durchlauf (dessen ID gebündelt für die sichtbare Seite aufgelöst wird).
+- **Keine Vorschaubilder.** `DocumentList` auf den Detailseiten erzeugt pro
+  Datei eine signierte Storage-URL, weil dort eine Handvoll Anhänge stehen.
+  Hier wären das 50 Storage-Aufrufe je Seitenaufbau, für Links, von denen
+  meist keiner angeklickt wird.
+
+**Download**: `GET /api/documents/{id}/download` → 307 auf eine signierte URL
+(TTL 60 s, sie landet in der Adresszeile und damit im Verlauf). Der Umweg über
+die **ID** statt über den `storage_path` ist der Punkt: `documents` hat eine
+SELECT-Policy, die `documents.view` im Property-Scope prüft. Wer einen Pfad
+direkt signieren ließe, hätte nur noch die Storage-RLS — und die kennt die
+Mandantengrenze, nicht die Objektberechtigung. Bucket-Name steht als
+`DOC_BUCKET` in `src/lib/schemas/documents.ts`, damit Upload und Download nicht
+mit zwei Literalen auseinanderlaufen.
 
 ## Self-Signup neuer Mandanten
 

@@ -30,8 +30,7 @@ function urlToPageFile(href: string): string {
  * allowlist rots into camouflage for real regressions.
  */
 const KNOWN_MISSING_PAGES = new Set<string>([
-  '/map',        // module: 'gps' — GPS-Karte und Live-Tracking noch nicht gebaut
-  '/documents',  // module: 'documents' — zentrale Dokumenten-Liste noch nicht gebaut (Uploader ist bereits an Work Order + Defect Report angeflanscht)
+  '/map', // module: 'gps' — GPS-Karte und Live-Tracking noch nicht gebaut
 ]);
 
 describe('Nav-config <-> module-registry consistency', () => {

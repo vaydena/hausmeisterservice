@@ -87,6 +87,7 @@ export const MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
 export const API_MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
   qr_codes: ['/api/qr'],
   billing: ['/api/invoices', '/api/offers'],
+  documents: ['/api/documents'],
 };
 
 /** Laengster Praefix gewinnt; siehe `moduleForPath`. */

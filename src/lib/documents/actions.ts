@@ -6,6 +6,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
   DOC_ALLOWED_MIME,
+  DOC_BUCKET as BUCKET,
   DOC_MAX_BYTES,
   buildStoragePath,
   documentUploadTargetSchema,
@@ -14,8 +15,6 @@ import {
   pickExtension,
   type DocumentEntityType,
 } from '@/lib/schemas/documents';
-
-const BUCKET = 'attachments';
 
 function friendlyDbMessage(msg?: string | null): string {
   if (!msg) return 'Speichern fehlgeschlagen.';

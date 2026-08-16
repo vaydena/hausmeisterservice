@@ -14,6 +14,14 @@ export type DocumentKind = (typeof DOC_KINDS)[number];
 
 export const DOC_MAX_BYTES = 26_214_400; // 25 MB, muss zum DB-CHECK und Bucket-Limit passen
 
+/**
+ * Privater Storage-Bucket. Steht hier und nicht in `documents/actions.ts`,
+ * weil seit Sprint 120 auch der Download-Handler unter `/api/documents`
+ * darauf zugreift — zwei Literale wuerden beim ersten Umzug auseinanderlaufen,
+ * und der Fehler faellt erst auf, wenn ein Download ins Leere greift.
+ */
+export const DOC_BUCKET = 'attachments';
+
 export const DOC_ALLOWED_MIME: readonly string[] = [
   'image/jpeg',
   'image/png',
@@ -70,6 +78,52 @@ export const DOC_ENTITY_LABEL: Record<DocumentEntityType, string> = {
   property: 'Objekt',
   unit: 'Einheit',
 };
+
+/**
+ * Sprint 120: der Rueckweg von einem Dokument zu seiner Entitaet.
+ *
+ * Dokumente haben keine eigene Detailseite und sollen auch keine bekommen:
+ * ein Foto ohne den Auftrag, zu dem es gehoert, ist eine Datei ohne Aussage.
+ * Die zentrale Liste unter `/documents` braucht deshalb pro Zeile den Weg
+ * zurueck zu dem Vorgang, an dem das Dokument haengt.
+ *
+ * `unit` fuehrt auf das Objekt — eine Einheit hat keine eigene Route, sie
+ * steht auf der Objektseite. Dafuer ist `documents.property_id` denormalisiert
+ * vorhanden, ein Join entfaellt.
+ *
+ * `checklist_run_item` braucht die Run-ID, die nicht in der documents-Zeile
+ * steht; der Aufrufer loest sie gebuendelt fuer die sichtbare Seite auf. Fehlt
+ * sie, liefert die Funktion `null` statt auf einen geratenen Pfad zu zeigen —
+ * ein Link, der ins 404 fuehrt, ist schlechter als gar keiner.
+ */
+export function documentEntityHref(
+  entityType: DocumentEntityType,
+  entityId: string,
+  ctx: { propertyId?: string | null; checklistRunId?: string | null } = {},
+): string | null {
+  switch (entityType) {
+    case 'work_order':
+      return `/work-orders/${entityId}`;
+    case 'defect_report':
+      return `/defect-reports/${entityId}`;
+    case 'property':
+      return `/properties/${entityId}`;
+    case 'unit':
+      return ctx.propertyId ? `/properties/${ctx.propertyId}` : null;
+    case 'checklist_run_item':
+      return ctx.checklistRunId ? `/checklist-runs/${ctx.checklistRunId}` : null;
+    default: {
+      // Kommt ein Wert zu DOC_ENTITY_TYPES dazu, ohne hier bedacht zu werden,
+      // ist `entityType` nicht mehr `never` und der TypeCheck faellt aus.
+      // Zur Laufzeit trotzdem null: der DB-CHECK haelt die Menge zwar fest,
+      // aber ein `undefined` als href waere eine kaputte Seite statt einer
+      // fehlenden Verlinkung.
+      const exhaustive: never = entityType;
+      void exhaustive;
+      return null;
+    }
+  }
+}
 
 /**
  * Storage-Path-Format: {tenant_id}/{entity_type}/{entity_id}/{document_id}.{ext}

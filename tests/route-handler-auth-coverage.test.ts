@@ -61,6 +61,14 @@ const ALL_ROUTE_HANDLERS: RouteHandlerFile[] = walkRouteHandlers(APP_DIR)
  *  - `AUTOMATION_CRON_SECRET`: the cron endpoint checks a Bearer token
  *    against this env var; the presence of the constant name in the
  *    source is enough to signal the shared-secret auth pattern.
+ *  - `moduleGate(`: das Modul-Gate aus Sprint 118
+ *    (@/lib/modules/api-guard). Ruft `getTenantContext()` und antwortet
+ *    mit 404, sobald keiner da ist — ohne Session gibt es keinen
+ *    Mandanten und damit keine Antwort ausser der 404. Es ist also ein
+ *    echtes Auth-Gate, nur eines, das absichtlich nicht zwischen
+ *    "nicht angemeldet", "Modul abgeschaltet" und "gibt es nicht"
+ *    unterscheidet: fuer eine mandantengebundene Ressource sind das
+ *    dieselbe Auskunft.
  */
 const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /\brequireTenantContext\s*\(/, name: 'requireTenantContext(' },
@@ -69,6 +77,7 @@ const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /\bloadBillingDocumentData\s*\(/, name: 'loadBillingDocumentData(' },
   { pattern: /\.auth\.signOut\s*\(/, name: '.auth.signOut(' },
   { pattern: /\bAUTOMATION_CRON_SECRET\b/, name: 'AUTOMATION_CRON_SECRET (Bearer-token shared secret)' },
+  { pattern: /\bmoduleGate\s*\(/, name: 'moduleGate( (Modul-Gate, prueft getTenantContext)' },
 ];
 
 /**
@@ -84,16 +93,16 @@ const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
  *      every page load, including unauthenticated pages, so gating it
  *      would break push subscription entirely.
  *
- *  - src/app/api/qr/[type]/[id]/route.ts:
- *      Returns an SVG QR code that encodes a deep-link URL. QR scans
- *      happen from paper printouts on properties, keys, or meters,
- *      before any login flow can run — the scanner just decodes the
- *      URL, which THEN redirects into the auth-gated app. The route
- *      itself only reveals the deep-link URL structure (type + UUID),
- *      which is not sensitive because the destination page requires
- *      auth to actually see data. Query params are validated
- *      (isValidQrType, isValidUuid) so the endpoint isn't a UUID-
- *      guessing oracle either.
+ *  - src/app/api/qr/[type]/[id]/route.ts stand hier bis Sprint 120 mit
+ *      der Begruendung, ein QR-Scan vom Papierausdruck laufe vor jedem
+ *      Login. Das beschreibt aber den Scanner, der ein GEDRUCKTES Bild
+ *      dekodiert — dieser Endpunkt ERZEUGT das Bild und wird nur von
+ *      der Druckansicht `/qr/[type]/[id]` im (app)-Bereich aufgerufen.
+ *      Oeffentlich war er ohnehin nie: `/api/qr` steht nicht in
+ *      PUBLIC_API_PREFIXES, der Proxy verlangt also eine Session. Seit
+ *      Sprint 118 setzt `moduleGate('qr_codes')` den Mandanten
+ *      zusaetzlich im Handler durch. Damit greift der Marker, und der
+ *      Eintrag ist entfallen.
  *
  * The test asserts entries stay stale-relevant: if any of these files
  * ever gains an auth marker (someone tightened them accidentally, or
@@ -112,7 +121,6 @@ const INTENTIONALLY_PUBLIC_ROUTES = new Set<string>([
   //   brechen. Body enthaelt nur { public_key: string } — keine
   //   User-Daten.
   'src/app/api/portal/push/vapid-key/route.ts',
-  'src/app/api/qr/[type]/[id]/route.ts',
   // src/app/auth/callback/route.ts:
   //   Supabase-Auth-Callback für den Self-Signup-E-Mail-Verify-Flow. Ist per
   //   Definition ein Pre-Session-Endpoint: der Handler bekommt einen Code
