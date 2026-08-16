@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import * as Sentry from '@sentry/nextjs';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { SIGNUP_DEFAULT_MODULE_KEYS } from '@/lib/modules/registry';
 
 /**
  * Provisioniert einen Tenant für einen bestätigten User anhand des im
@@ -53,6 +54,42 @@ export async function ensureTenantForUser(
 
   const result = data as { created?: boolean; tenant_id?: string } | null;
   const created = result?.created ?? false;
+
+  // Sprint 123: Startmodule aktivieren. Ohne diesen Block bekommt der neue
+  // Mandant KEINE tenant_modules-Zeile, und weil eine fehlende Zeile ein
+  // AUS ist (siehe getEnabledModules), startet der Kunde in einer
+  // Anwendung ohne Objekte, ohne Auftraege, ohne Mitarbeiter.
+  //
+  // Warum die Modul-Liste hier aus dem TS-Registry kommt und nicht in der
+  // Provisionierungs-RPC steht: die Registry ist laut ihrem eigenen Kopf
+  // die einzige Wahrheit ueber Module. Eine zweite Liste in SQL waere eine
+  // Kopie, die beim naechsten neuen Modul lautlos veraltet — und der
+  // Fehler faellt erst dem Kunden auf, der das Modul nie zu sehen bekommt.
+  //
+  // Bewusst KEIN throw, gleiche Begruendung wie beim Tarif-Block darunter:
+  // der Mandant existiert an dieser Stelle schon. Eine Exception zeigt dem
+  // Kunden eine Fehlerseite fuer ein Konto, das erfolgreich entstanden
+  // ist — und beim zweiten Anlauf liefert die RPC `created: false`, dieser
+  // Block wird uebersprungen und die Module fehlen dann dauerhaft. Ohne
+  // Module kann der Inhaber sie unter Einstellungen → Mandant selbst
+  // einschalten; das ist reparierbar, die Fehlerseite nicht.
+  if (created && result?.tenant_id) {
+    const { error: modulesError } = await service.from('tenant_modules').upsert(
+      SIGNUP_DEFAULT_MODULE_KEYS.map((module_key) => ({
+        tenant_id: result.tenant_id!,
+        module_key,
+        enabled: true,
+      })),
+      { onConflict: 'tenant_id,module_key' },
+    );
+
+    if (modulesError) {
+      Sentry.captureException(
+        new Error(`Signup: Startmodule konnten nicht aktiviert werden: ${modulesError.message}`),
+        { extra: { tenantId: result.tenant_id, moduleCount: SIGNUP_DEFAULT_MODULE_KEYS.length } },
+      );
+    }
+  }
 
   // Plan-Vorauswahl aus Signup nachziehen — provision_signup_tenant setzt nur
   // die Kern-Felder, das SaaS-Modell hängt dran.

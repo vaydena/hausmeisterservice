@@ -111,3 +111,36 @@ export const CORE_MODULE_KEYS: readonly ModuleKey[] = MODULES.filter((m) => m.co
 export function isCoreModule(key: ModuleKey): boolean {
   return MODULES_BY_KEY[key]?.core === true;
 }
+
+/**
+ * Sprint 123 · Module, die ein NEUER Mandant beim Signup eingeschaltet
+ * bekommt. Nur die Ausnahmen stehen hier — alles andere ist an.
+ *
+ * Warum das ueberhaupt noetig ist: `getEnabledModules` startet bei
+ * `CORE_MODULE_KEYS` und ergaenzt ausschliesslich `tenant_modules`-Zeilen
+ * mit `enabled = true`. Eine fehlende Zeile ist also ein AUS.
+ * `provision_signup_tenant` legte keine einzige Zeile an — ein frisch
+ * registrierter Hausmeisterbetrieb sah damit Dashboard, Mandant, Benutzer
+ * & Rollen und Audit-Log. Keine Objekte, keine Auftraege, keine
+ * Mitarbeiter. Er haette vor dem ersten Handgriff 20 Schalter unter
+ * Einstellungen → Mandant finden und umlegen muessen; wer das nicht
+ * erraet, haelt die Software fuer kaputt und ist weg.
+ *
+ * Die Richtung ist bewusst "an, ausser": in der Testphase soll der Kunde
+ * das Produkt sehen, das er bewertet. Abschalten kann er jederzeit selbst,
+ * einschalten kann er nur, was er kennt.
+ *
+ * Wer ein Modul hier ausnimmt, sagt damit: "das ist noch nicht so weit,
+ * dass ein Kunde es sehen soll". Der Guard in
+ * tests/nav-module-coverage.test.ts haelt das ehrlich — ein Modul, dessen
+ * Seite laut KNOWN_MISSING_PAGES gar nicht existiert, darf nicht in der
+ * Standardauswahl stehen.
+ */
+const NOT_ENABLED_ON_SIGNUP: readonly ModuleKey[] = [
+  // Kein `/map` im Repo — der Menuepunkt fuehrt ins 404 (KNOWN_MISSING_PAGES).
+  'gps',
+];
+
+export const SIGNUP_DEFAULT_MODULE_KEYS: readonly ModuleKey[] = MODULES.filter(
+  (m) => !m.core && !NOT_ENABLED_ON_SIGNUP.includes(m.key),
+).map((m) => m.key);

@@ -7,6 +7,20 @@ import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 export interface TenantContext {
   userId: string;
   tenantId: string;
+  /**
+   * Sprint 123: Der Firmenname des Mandanten, in dem der User gerade
+   * arbeitet. Steht im Benutzermenue ueber der Rolle.
+   *
+   * Klingt nach Kosmetik, ist aber die Antwort auf eine echte Verwechslung:
+   * der Betreiber hat unter derselben E-Mail einen eigenen Mandanten UND
+   * den Plattform-Bereich; ein Kunde hat seinen eigenen. Ohne den Namen
+   * sieht jede dieser Ansichten gleich aus, und die Frage "in wessen Firma
+   * bin ich hier eigentlich?" ist aus der Oberflaeche nicht zu beantworten.
+   *
+   * Kommt ohne zusaetzlichen Roundtrip: als Embedded Resource an der
+   * Membership-Query, die ohnehin laeuft.
+   */
+  tenantName: string;
   membershipId: string;
   isOwner: boolean;
   displayName: string | null;
@@ -39,7 +53,7 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
   const membership = unwrapMaybeRow(
     await supabase
       .from('memberships')
-      .select('id, tenant_id, is_owner')
+      .select('id, tenant_id, is_owner, tenants(name)')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .order('created_at', { ascending: true })
@@ -58,6 +72,10 @@ export const getTenantContext = cache(async (): Promise<TenantContext | null> =>
   return {
     userId: user.id,
     tenantId: membership.tenant_id,
+    // Fallback statt Fehler: ohne Namen fehlt eine Beschriftung, ohne
+    // Kontext fehlt der Zugang. Das eine ist ein Schoenheitsfehler, das
+    // andere sperrt den Kunden aus seiner Firma aus.
+    tenantName: membership.tenants?.name ?? 'Ihr Unternehmen',
     membershipId: membership.id,
     isOwner: membership.is_owner,
     displayName: profile?.display_name ?? null,

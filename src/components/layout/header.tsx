@@ -6,11 +6,16 @@ import { NotificationBell } from './notification-bell';
 export function Header({
   displayName,
   email,
+  tenantName,
   roleLabel,
+  isPlatformAdmin = false,
 }: {
   displayName: string | null;
   email: string | null;
+  /** Firmenname des Mandanten. Optional, weil der Plattform-Bereich keinen hat. */
+  tenantName?: string;
   roleLabel: string;
+  isPlatformAdmin?: boolean;
 }) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-background)] px-4 md:px-6">
@@ -40,7 +45,13 @@ export function Header({
         >
           <NotificationBell />
         </Suspense>
-        <UserMenu displayName={displayName} email={email} roleLabel={roleLabel} />
+        <UserMenu
+          displayName={displayName}
+          email={email}
+          tenantName={tenantName}
+          roleLabel={roleLabel}
+          isPlatformAdmin={isPlatformAdmin}
+        />
       </div>
     </header>
   );

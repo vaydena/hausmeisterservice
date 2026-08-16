@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { MODULES } from '../src/lib/modules/registry';
+import { MODULES, SIGNUP_DEFAULT_MODULE_KEYS } from '../src/lib/modules/registry';
 import {
   NAV_GROUPS,
   MOBILE_NAV_ITEMS,
@@ -87,6 +87,47 @@ describe('Nav-config <-> module-registry consistency', () => {
           covering.length,
           `Module "${mod.key}" declares menuPath "${mod.menuPath}" but no NavItem uses module: "${mod.key}". The declared path is dead registry configuration — either wire up a NavItem or drop the menuPath.`,
         ).toBeGreaterThan(0);
+      });
+    }
+  });
+
+  /**
+   * Sprint 123: SIGNUP_DEFAULT_MODULE_KEYS ist die Menge, die ein neuer
+   * Kunde beim Signup eingeschaltet bekommt. Sie ist bewusst "alles ausser
+   * den Ausnahmen" formuliert, damit ein neu registriertes Modul
+   * automatisch beim Kunden ankommt statt vergessen zu werden.
+   *
+   * Genau diese Bequemlichkeit ist aber auch die Gefahr: ein halbfertiges
+   * Modul waere ab dem Tag seines Registry-Eintrags im Menue jedes neuen
+   * Kunden — mit einem Link, der ins 404 fuehrt. Der erste Eindruck des
+   * Produkts waere eine Fehlerseite.
+   *
+   * Deshalb dieser Riegel: was laut KNOWN_MISSING_PAGES noch keine Seite
+   * hat, darf nicht in der Standardauswahl stehen. Der Ausschluss gehoert
+   * nach NOT_ENABLED_ON_SIGNUP in src/lib/modules/registry.ts.
+   */
+  describe('Signup-Standardmodule zeigen auf gebaute Seiten', () => {
+    const defaults = new Set<string>(SIGNUP_DEFAULT_MODULE_KEYS);
+
+    it('sanity: die Standardauswahl ist nicht leer', () => {
+      expect(defaults.size).toBeGreaterThan(0);
+    });
+
+    it('kein Kernmodul steht in der Standardauswahl', () => {
+      // Core-Module sind laut getEnabledModules immer an. Stuenden sie
+      // zusaetzlich hier, schriebe die Provisionierung ueberfluessige
+      // tenant_modules-Zeilen — und ein `enabled: false` darauf saehe wie
+      // ein wirksamer Ausschalter aus, obwohl er nichts bewirkt.
+      const coreInDefaults = MODULES.filter((m) => m.core && defaults.has(m.key)).map((m) => m.key);
+      expect(coreInDefaults).toEqual([]);
+    });
+
+    for (const mod of MODULES.filter((m) => !!m.menuPath && defaults.has(m.key))) {
+      it(`Standardmodul "${mod.key}" (${mod.menuPath}) hat eine gebaute Seite`, () => {
+        expect(
+          KNOWN_MISSING_PAGES.has(mod.menuPath!),
+          `Modul "${mod.key}" wird beim Signup automatisch aktiviert, aber sein menuPath "${mod.menuPath}" steht in KNOWN_MISSING_PAGES — die Seite existiert also nicht. Jeder neue Kunde bekaeme einen Menuepunkt, der ins 404 fuehrt. Entweder die Seite bauen (dann faellt der KNOWN_MISSING_PAGES-Eintrag ohnehin) oder "${mod.key}" in NOT_ENABLED_ON_SIGNUP (src/lib/modules/registry.ts) aufnehmen.`,
+        ).toBe(false);
       });
     }
   });
