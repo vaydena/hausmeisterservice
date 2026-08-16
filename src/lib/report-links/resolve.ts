@@ -40,6 +40,7 @@ interface JoinedRow {
   label: string | null;
   properties: {
     name: string;
+    deleted_at: string | null;
     street: string | null;
     house_number: string | null;
     postal_code: string | null;
@@ -74,6 +75,14 @@ function formatAddress(p: JoinedRow['properties']): string | null {
  *      abgeschaltet hat oder selbst stillgelegt ist, nimmt auch ueber QR
  *      nichts entgegen. Ohne diese Pruefung waere der oeffentliche Pfad die
  *      einzige Stelle im Produkt, die das Modul-Gate umgeht.
+ *   4. `properties.deleted_at` — Objekte werden in diesem Produkt weich
+ *      geloescht (properties/actions.ts setzt deleted_at, statt die Zeile zu
+ *      entfernen). Der FK-Cascade auf property_report_links greift also nie.
+ *      Ohne diese Pruefung wuerde ein geloeschtes Objekt weiter Meldungen
+ *      annehmen — und zwar unwiderruflich, weil mit dem Objekt auch die
+ *      Melde-Links-Seite verschwindet, ueber die man den Aufkleber
+ *      abschalten koennte. Der Aufkleber im Treppenhaus wuerde den Loeschbutton
+ *      ueberleben.
  */
 export const resolveReportLink = cache(
   async (token: string): Promise<ReportLinkResolution> => {
@@ -85,7 +94,7 @@ export const resolveReportLink = cache(
       .from('property_report_links')
       .select(
         'id, tenant_id, property_id, building_id, label, ' +
-          'properties(name, street, house_number, postal_code, city), ' +
+          'properties(name, deleted_at, street, house_number, postal_code, city), ' +
           'buildings(name), tenants(name, status)',
       )
       .eq('token', token)
@@ -104,6 +113,21 @@ export const resolveReportLink = cache(
 
     // Ein stillgelegter Mandant ist kein Fehler, aber auch kein Empfaenger.
     if (data.tenants?.status !== 'active') return { ok: false, reason: 'unknown' };
+
+    // Fehlt das Objekt im Join, obwohl der FK es garantiert, ist etwas kaputt.
+    // Dann ist "gerade nicht erreichbar" die ehrliche Auskunft — nicht der
+    // Objektname 'Objekt' und ein Formular, das ins Blaue schreibt.
+    if (!data.properties) {
+      Sentry.captureException(
+        new Error('Melde-Link: Objekt zum Link nicht lesbar'),
+        { extra: { linkId: data.id, propertyId: data.property_id } },
+      );
+      return { ok: false, reason: 'unavailable' };
+    }
+
+    // Weich geloeschtes Objekt: der Aufkleber haengt an einer Wand, die den
+    // Mandanten nichts mehr angeht.
+    if (data.properties.deleted_at) return { ok: false, reason: 'unknown' };
 
     const modules = await service
       .from('tenant_modules')
@@ -134,7 +158,7 @@ export const resolveReportLink = cache(
         tenantId: data.tenant_id,
         tenantName: data.tenants?.name ?? 'Ihre Hausverwaltung',
         propertyId: data.property_id,
-        propertyName: data.properties?.name ?? 'Objekt',
+        propertyName: data.properties.name,
         propertyAddress: formatAddress(data.properties),
         buildingId: data.building_id,
         buildingName: data.buildings?.name ?? null,

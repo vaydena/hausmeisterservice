@@ -146,6 +146,42 @@ describe('Oeffentliches Meldeformular', () => {
   });
 });
 
+/**
+ * Objekte werden in diesem Produkt weich geloescht: properties/actions.ts
+ * setzt `deleted_at`, statt die Zeile zu entfernen. Der FK-Cascade von
+ * property_report_links auf properties feuert deshalb nie.
+ *
+ * Ohne eine eigene Pruefung nimmt ein geloeschtes Objekt weiter Meldungen
+ * entgegen — und zwar ohne Notausschalter, denn mit dem Objekt verschwindet
+ * auch die Melde-Links-Seite, ueber die man den Aufkleber abschalten koennte
+ * (sie filtert selbst auf deleted_at is null und liefert sonst 404). Der
+ * Zettel im Treppenhaus wuerde den Loeschbutton ueberleben.
+ *
+ * Der Test liest die Quelle, weil resolveReportLink am Service-Client haengt
+ * und ein Mock hier nur den Mock pruefen wuerde.
+ */
+describe('Melde-Link-Aufloesung kennt geloeschte Objekte', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src', 'lib', 'report-links', 'resolve.ts'),
+    'utf8',
+  );
+
+  it('liest deleted_at aus dem verknuepften Objekt mit', () => {
+    expect(source).toMatch(/properties\([^)]*\bdeleted_at\b/);
+  });
+
+  it('lehnt einen Link auf ein geloeschtes Objekt ab', () => {
+    expect(source).toMatch(/if\s*\(\s*data\.properties\.deleted_at\s*\)/);
+  });
+
+  it('behandelt ein fehlendes Objekt als "nicht erreichbar", nicht als gueltig', () => {
+    // Kein stiller Fallback-Objektname mehr: wer das Objekt nicht lesen kann,
+    // darf kein Formular anbieten, das ins Blaue schreibt.
+    expect(source).not.toContain("?? 'Objekt'");
+    expect(source).toMatch(/if\s*\(\s*!data\.properties\s*\)/);
+  });
+});
+
 describe('Melde-Link anlegen', () => {
   it('kommt ohne Angaben aus', () => {
     const parsed = createReportLinkSchema.safeParse({});
