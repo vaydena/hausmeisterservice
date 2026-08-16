@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   probeImagePipeline,
@@ -12,6 +13,7 @@ import {
   reportRuntime,
   needsX64V2,
   detectSharpVariant,
+  classifyNativeLoadError,
 } from '@/lib/images/probe';
 
 describe('sanitizeCode', () => {
@@ -155,6 +157,16 @@ describe('reportSharpBinary misst wirklich etwas', () => {
     expect(report.loads).toBe(true);
   });
 
+  it('nennt keinen Ladegrund, wo nichts zu begruenden ist', () => {
+    // Dieselbe Regel wie bei `libvips` und `x64v2`: `null` heisst "die Frage
+    // stellt sich nicht". Ein Befund neben `loads: true` waere eine
+    // Falschmeldung — und Falschmeldungen haben diesen Bericht schon einmal
+    // wertlos gemacht.
+    const report = reportSharpBinary();
+
+    expect(report.loadError).toBeNull();
+  });
+
   it('stellt die x86-64-v2-Frage nur dort, wo sie sich stellt', () => {
     // Ein `false` auf einer Plattform ohne diese Pruefung waere dieselbe Art
     // Falschmeldung, die den libvips-Block schon einmal unbrauchbar gemacht
@@ -180,6 +192,137 @@ describe('reportSharpBinary misst wirklich etwas', () => {
       // Wo es das Paket gibt, muss es hier auch liegen — sonst liefe sharp
       // auf dieser Maschine nicht, und die uebrigen Tests waeren rot.
       expect(report.libvips).toEqual({ expected: name, present: true });
+    }
+  });
+});
+
+describe('classifyNativeLoadError', () => {
+  // WOZU DAS UEBERHAUPT DA IST. Der Live-Abruf von Sprint 127 meldete
+  // `loads: false` und `x64v2: null` — die Datei liegt, sie laedt nicht, und
+  // der Grund stand nur im Serverlog. Drei gleich plausible Ursachen mit drei
+  // verschiedenen Adressaten: ein fehlendes .so (Installationslauf), ein
+  // noexec-Mount (Hoster), ein Speicherlimit (Tarif). Wer nicht weiss,
+  // welche, kann nichts tun ausser raten.
+  const ALLOWED = new Set([
+    'NOT_ATTEMPTED',
+    'FILE_MISSING',
+    'SHARED_LIBRARY_MISSING',
+    'GLIBC_TOO_OLD',
+    'SYMBOL_MISSING',
+    'EXEC_NOT_PERMITTED',
+    'WRONG_BINARY_FORMAT',
+    'OUT_OF_MEMORY',
+    'ABI_MISMATCH',
+    'UNCLASSIFIED',
+  ]);
+
+  // Echte Wortlaute von glibc, dem Dynamic Linker und Node — nicht erfunden.
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    [
+      '/app/node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node: cannot open shared object file: No such file or directory',
+      'SHARED_LIBRARY_MISSING',
+    ],
+    [
+      'libvips-cpp.so.42: cannot open shared object file: No such file or directory',
+      'SHARED_LIBRARY_MISSING',
+    ],
+    [
+      "/lib64/libm.so.6: version `GLIBC_2.29' not found (required by /app/node_modules/@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.42)",
+      'GLIBC_TOO_OLD',
+    ],
+    [
+      '/app/node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node: undefined symbol: _ZN4vips6VImage9new_memoryEv',
+      'SYMBOL_MISSING',
+    ],
+    [
+      '/app/node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node: failed to map segment from shared object',
+      'EXEC_NOT_PERMITTED',
+    ],
+    [
+      '/app/node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node: cannot enable executable stack as shared object requires: Permission denied',
+      'EXEC_NOT_PERMITTED',
+    ],
+    [
+      '/app/node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node: cannot allocate memory in static TLS block',
+      'OUT_OF_MEMORY',
+    ],
+    [
+      '/app/node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node: invalid ELF header',
+      'WRONG_BINARY_FORMAT',
+    ],
+    [
+      'The module was compiled against a different Node.js version using NODE_MODULE_VERSION 108. This version of Node.js requires NODE_MODULE_VERSION 127.',
+      'ABI_MISMATCH',
+    ],
+    ["Module did not self-register: '/app/node_modules/sharp/build/Release/sharp.node'", 'ABI_MISMATCH'],
+  ];
+
+  it.each(cases)('ordnet "%s" richtig zu', (message, reason) => {
+    expect(classifyNativeLoadError(new Error(message))).toBe(reason);
+  });
+
+  it('nimmt bei mehrdeutigen Meldungen die spezifischere Aussage', () => {
+    // "cannot enable executable stack as shared object requires: Permission
+    // denied" traegt zwei Signale. Wer das allgemeine zuerst prueft, bekommt
+    // einen Befund, der stimmt und trotzdem in die falsche Richtung zeigt —
+    // und schickt den Betreiber zum falschen Adressaten.
+    expect(
+      classifyNativeLoadError(
+        new Error('/app/lib/sharp.node: cannot enable executable stack as shared object requires: Permission denied'),
+      ),
+    ).toBe('EXEC_NOT_PERMITTED');
+  });
+
+  it('trennt "war nicht da" von "liess sich nicht laden"', () => {
+    // Der Unterschied entscheidet, wer handeln muss: eine fehlende Datei ist
+    // ein Installationslauf, ein abgewiesenes dlopen ist die Maschine.
+    expect(classifyNativeLoadError({ code: 'MODULE_NOT_FOUND', message: 'Cannot find module' })).toBe(
+      'FILE_MISSING',
+    );
+  });
+
+  it('gibt zu, wenn es die Meldung nicht kennt', () => {
+    // Lieber 'UNCLASSIFIED' und der Verweis aufs Serverlog als ein Befund,
+    // der irgendwie passt. Ein Messwert, der luegt, ist schaedlicher als
+    // keiner.
+    expect(classifyNativeLoadError(new Error('etwas ganz anderes'))).toBe('UNCLASSIFIED');
+    expect(classifyNativeLoadError(null)).toBe('UNCLASSIFIED');
+    expect(classifyNativeLoadError({ message: 42 })).toBe('UNCLASSIFIED');
+  });
+
+  it('ordnet auch einen echten, hier erzeugten Ladefehler zu', () => {
+    // DIE TABELLE OBEN IST ABGESCHRIEBEN, DIESER FALL IST GEMESSEN. Genau das
+    // hat in Sprint 126 gefehlt: eine Messung, die nur gegen die eigene
+    // Annahme prueft, bestaetigt die Annahme. Hier wirft der Kernel wirklich —
+    // unter Linux "invalid ELF header", unter Windows "is not a valid Win32
+    // application". Beide meinen dasselbe und muessen hier zusammenfallen.
+    const dir = mkdtempSync(join(tmpdir(), 'sharp-probe-'));
+    const file = join(dir, 'kaputt.node');
+    writeFileSync(file, 'das ist keine Binaerdatei');
+
+    const req = createRequire(join(process.cwd(), 'index.js'));
+    let thrown: unknown;
+
+    try {
+      req(file);
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(classifyNativeLoadError(thrown)).toBe('WRONG_BINARY_FORMAT');
+  });
+
+  it('gibt niemals die Meldung selbst zurueck', () => {
+    // HIER SITZT DIE SCHRANKE. Diese Funktion bekommt als einzige im Bericht
+    // Serverpfade zu sehen — sie liest sie und behaelt sie. Faellt jemand in
+    // Versuchung, "zur besseren Diagnose" die Meldung durchzureichen, ist das
+    // hier rot.
+    for (const [message] of cases) {
+      const reason = classifyNativeLoadError(new Error(message));
+
+      expect(ALLOWED.has(reason)).toBe(true);
+      expect(message).not.toContain(reason);
     }
   });
 });

@@ -239,17 +239,36 @@ Zuerst auf `variant` schauen — das Feld sagt, auf welchem Weg sharp arbeitet:
 | `libvips.present: false` | Wrapper da, die eigentliche Bildbibliothek fehlt. | `libvips.expected` nachinstallieren. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
 | alles `true`, `runtime.node` < v20.9.0 | Node auf dem Server ist zu alt für das native Paket. | **Selbst behebbar:** im Hostinger-Panel eine neuere Node-Version wählen (das Projekt verlangt ohnehin `>=22`), dann neu deployen. Kein Support nötig. |
 | `present: true`, **`x64v2: false`** | Die CPU des Servers beherrscht die Mikroarchitektur **x86-64-v2** nicht. sharp verwirft sein eigenes, einwandfrei geladenes Linux-Binary deshalb wieder. | **Nicht behebbar und nicht nötig:** genau dafür liegt der WASM-Rückfall bei. Wer den nativen Weg zurück will, braucht einen Server mit neuerer CPU — ein Tarifwechsel, kein Bugfix. |
-| `present: true`, **`loads: false`** | Das Paket liegt da und lässt sich trotzdem nicht ins Programm laden — fehlende Systembibliothek, `noexec`-gemountetes Verzeichnis, Speicherlimit. | **Serverlog öffnen.** Dort steht einmal pro Serverstart `[image-pipeline] sharp laesst sich nicht laden:` mit sharps eigener Fehlermeldung im Klartext — das ist der Text für die Support-Anfrage. `binary.libc.version` und `runtime.node` mitschicken. |
+| `present: true`, **`loads: false`** | Das Paket liegt da und lässt sich trotzdem nicht ins Programm laden. | **`binary.loadError.reason` lesen** — die Tabelle darunter sagt, wer handeln muss. |
 | `stage: "encode"` | Modul lädt, das Kodieren scheitert — Format-Backend fehlt. | Wie oben, mit dem Hinweis, dass libvips unvollständig gebaut ist. |
+
+### `loadError.reason` — warum das native Binary nicht lädt
+
+Steht seit Sprint 128 in der Antwort. Der Grund steht im Klartext in der Fehlermeldung des Systems, und die enthält Serverpfade — sie wird gelesen und verworfen, hinaus geht nur der Befund. Wichtig, weil die drei plausibelsten Ursachen **drei verschiedene Adressaten** haben: den Install-Lauf, den Hoster, den Tarif.
+
+| `reason` | Bedeutung | Wer handeln muss |
+| --- | --- | --- |
+| `SHARED_LIBRARY_MISSING` | Eine `.so`, an der das Binary hängt, fehlt — fast immer libvips. | **Install-Lauf.** Das Paket ist unvollständig ausgepackt worden. Neu deployen; hilft das nicht, `node_modules` auf dem Server leeren lassen. |
+| `EXEC_NOT_PERMITTED` | Der Kernel verweigert das Ausführen: `noexec`-Mount, SELinux, fehlendes Ausführrecht. | **Hoster.** Das kann niemand von außen ändern. Support-Anfrage mit genau diesem Wort. |
+| `GLIBC_TOO_OLD` | Die glibc des Servers ist älter als die, gegen die gebaut wurde. | **Hoster.** `binary.libc.version` mitschicken. |
+| `OUT_OF_MEMORY` | Kein Speicher zum Laden. | **Tarif.** Das Speicherlimit des Hosting-Pakets. |
+| `SYMBOL_MISSING` | Binary und libvips passen nicht zueinander — Versionsmix im `node_modules`. | **Install-Lauf.** `node_modules` leeren und neu installieren. |
+| `WRONG_BINARY_FORMAT` | Keine ladbare Binärdatei für diese Plattform — falsche Architektur oder beim Deploy beschädigt. | **Install-Lauf.** Prüfen, ob der Build auf derselben Architektur läuft wie der Server. |
+| `ABI_MISMATCH` | Gegen eine andere Node-Version gebaut als die laufende. | **Selbst behebbar:** Node-Version im Hostinger-Panel angleichen, neu deployen. |
+| `FILE_MISSING` | Die Datei war gar nicht da. | Deckt sich mit `present: false` — siehe oben. |
+| `UNCLASSIFIED` | Die Meldung passt auf keinen bekannten Fall. | **Hier hilft nur das Serverlog** — siehe unten. |
+| `null` | Es lädt. Kein Befund, weil nichts zu begründen ist. | Nichts. |
 
 Zwei Felder, die leicht zu verwechseln sind:
 
 - **`present` vs. `loads`** — `present` ist eine Datei-Frage („liegt es da?"), `loads` eine des Betriebssystems („lässt es sich laden?"). Der Live-Ausfall im August 2026 saß genau dazwischen: alles vorhanden, Laden scheiterte trotzdem.
-- **`libvips: null` und `x64v2: null`** heißen **nicht** „fehlt", sondern „die Frage stellt sich hier nicht" — libvips steckt unter Windows im Plattform-Paket, und die x86-64-v2-Prüfung gilt nur für Linux auf x64.
+- **`libvips: null`, `x64v2: null` und `loadError: null`** heißen **nicht** „fehlt", sondern „die Frage stellt sich hier nicht" — libvips steckt unter Windows im Plattform-Paket, die x86-64-v2-Prüfung gilt nur für Linux auf x64, und ein Ladegrund existiert nur, wo das Laden scheiterte.
 
-Warum die eigentliche Fehlermeldung nur im Log steht und nicht in der Antwort: sie enthält Serverpfade, und der Endpunkt ist unauthentifiziert. Das Log ist es nicht. Sie wird bewusst nur **einmal pro Serverstart** geschrieben — die Ursache ändert sich zwischen zwei Aufrufen nicht, und ein Monitor im Minutentakt würde sonst alles andere im Log zudecken.
+Warum die eigentliche Fehlermeldung nur im Log steht und nicht in der Antwort: sie enthält Serverpfade, und der Endpunkt ist unauthentifiziert. Das Log ist es nicht. Sie wird bewusst nur **einmal pro Serverstart** geschrieben — die Ursache ändert sich zwischen zwei Aufrufen nicht, und ein Monitor im Minutentakt würde sonst alles andere im Log zudecken. Zu suchen ist nach `[image-pipeline]`; die Zeile lautet je nach Lage `sharp laesst sich nicht laden:` (gar nichts geht) oder `sharp arbeitet ueber die WASM-Variante … nicht genommen:` (der Rückfall trägt, das native ist kaputt).
 
-`code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Der CPU-Fall sieht genauso aus — sharp setzt dort `code: "Unsupported CPU"`, mit Leerzeichen, und der Sanitizer verwirft alles, was nicht wie eine Konstante aussieht. Genau dafür gibt es den `binary`-Block.
+`code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Genau dafür gibt es den `binary`-Block.
+
+**Stand 16.08.2026 auf diesem Server** (Build `a5b317ca8d91`): `ok: true`, `variant: "wasm"` — die Uploads laufen über den Rückfall. Das native Binary liegt vollständig da (`present: true`, `libvips.present: true`, glibc 2.34, Node v22.22.0) und lädt trotzdem nicht. **Der CPU-Verdacht ist damit ausgeschlossen**, nicht bloß unwahrscheinlich: `x64v2` kam als `null` zurück, nicht als `false`. Auf Linux-x64 stellt sich diese Frage sehr wohl — dass sie unbeantwortet blieb, heißt, dass das Laden schon vorher scheiterte. `loadError.reason` beantwortet ab dem nächsten Deploy, welcher der Fälle aus der Tabelle oben es ist.
 
 **Der WASM-Rückfall** (`@img/sharp-wasm32`) steckt seit Sprint 127 als direkte Abhängigkeit im Paket. sharp probiert von sich aus erst das native Binary und greift dann darauf zurück; der Rückfall war immer schon im Loader, ihm fehlte nur das Paket — auf Linux-x64 wird es sonst nie mitinstalliert, weil sharp es lediglich über zwei plattformgefilterte Pakete führt. Der Eintrag ist exakt auf die sharp-Version festgenagelt, und ein Test in `tests/image-pipeline-probe.test.ts` schlägt an, wenn beide auseinanderlaufen.
 

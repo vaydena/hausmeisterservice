@@ -33,6 +33,13 @@ export const dynamic = 'force-dynamic';
 // wird es trotzdem nicht: `variant` steht in der Antwort, `binary` erklaert
 // warum der native Weg ausfiel, und beim Start geht einmal eine Zeile ins
 // Serverlog. Gruen heisst hier "es arbeitet", nicht "alles ist gut".
+//
+// Sprint 128: dazu kommt `binary.loadError` — Nodes Fehlercode und ein
+// Befund aus einer geschlossenen Liste (SHARED_LIBRARY_MISSING,
+// EXEC_NOT_PERMITTED, GLIBC_TOO_OLD, …). Die Fehlermeldung selbst bleibt
+// draussen, wie alles andere auch; sie wird nur gelesen, um den Befund zu
+// bestimmen. Damit beantwortet dieser Endpunkt jetzt auch die Frage, fuer
+// die bisher jemand ins Hoster-Log steigen musste.
 export async function GET() {
   const image = await probeImagePipeline();
   const healthy = image.ok;

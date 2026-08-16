@@ -40,6 +40,21 @@ import { join } from 'node:path';
  * auch dort, wo das native Binary nicht taugt — und genau das ist die neue
  * Gefahr: ein gruenes `ok: true`, unter dem der eigentliche Defekt
  * weiterlebt. Deshalb sagt die Probe jetzt nicht nur OB, sondern WORUEBER.
+ *
+ * SPRINT 128 — UND JETZT AUCH WARUM. Der erste Live-Abruf mit `loads` und
+ * `x64v2` hat den Verdacht aus Sprint 127 widerlegt: `x64v2` kam als `null`
+ * zurueck, nicht als `false`. Auf linux-x64 stellt sich diese Frage sehr
+ * wohl — dass sie unbeantwortet blieb, heisst, dass das `require` schon
+ * vorher geflogen ist. Der x86-64-v2-Gate war es also nicht.
+ *
+ * Damit stand wieder das alte Bild da: Datei liegt, Datei laedt nicht, Grund
+ * steht nur im Serverlog. Das muss nicht sein. Der eigentliche Grund steht in
+ * der Fehler*meldung*, und die traegt Serverpfade — aber sie traegt eben auch
+ * eine Handvoll wiederkehrender Formulierungen, die der Dynamic Linker selbst
+ * erzeugt. Aus denen laesst sich eine KONSTANTE ableiten. Nicht die Meldung
+ * geht raus, sondern ihr Befund, und der stammt aus einer geschlossenen
+ * Liste. Damit beantwortet der naechste Live-Abruf die Frage, fuer die bisher
+ * der Betreiber ins Hoster-Log steigen musste.
  */
 
 export type ImagePipelineProbe = {
@@ -114,6 +129,21 @@ export type SharpBinaryReport = {
    */
   loads: boolean;
   /**
+   * Warum es nicht laedt — als Konstante. `null`, wenn es laedt.
+   *
+   * DAS IST DIE AUSKUNFT, DIE BISHER GEFEHLT HAT. `loads: false` sagt, DASS
+   * der Kernel das Modul abgewiesen hat, und liess den Betreiber danach mit
+   * drei gleich plausiblen Vermutungen stehen. Der Grund selbst steht in der
+   * Fehlermeldung des Dynamic Linkers — zusammen mit den Serverpfaden, die
+   * hier nicht rausduerfen. Deshalb wird die Meldung gelesen und verworfen;
+   * hinaus geht nur der Befund aus einer geschlossenen Liste.
+   *
+   * `code` ist Nodes eigener Fehlercode und laeuft durch denselben Sanitizer
+   * wie oben: ERR_DLOPEN_FAILED trennt "der Kernel hat abgelehnt" von
+   * MODULE_NOT_FOUND, "die Datei war gar nicht da".
+   */
+  loadError: NativeLoadError | null;
+  /**
    * Erfuellt die CPU die Mikroarchitektur x86-64-v2?
    *
    * DAS IST DER VERDAECHTIGE, DEN DIE PROBE BISHER UEBERSEHEN HAT. sharp
@@ -169,6 +199,43 @@ export type SharpBinaryReport = {
 };
 
 /**
+ * Warum das native Binary nicht laedt — jeder Wert eine andere Handlung.
+ *
+ * Die Liste ist bewusst nach HANDLUNG geschnitten, nicht nach Fehlertext. Zwei
+ * Meldungen, die dasselbe zu tun geben, gehoeren auf denselben Wert; zwei, die
+ * verschiedene Adressaten haben, duerfen nie zusammenfallen. Ein Befund, der
+ * den Betreiber nicht weiterbringt, ist so wertlos wie das 'UNKNOWN', das
+ * dieser Sprint ersetzt.
+ */
+export type NativeLoadReason =
+  /** Es wurde nichts geladen — sharp selbst war nicht auffindbar. Kein Befund, sondern dessen Abwesenheit. */
+  | 'NOT_ATTEMPTED'
+  /** Die Datei war nicht da. Installationslauf unvollstaendig. */
+  | 'FILE_MISSING'
+  /** Eine .so, an der das Binary haengt, fehlt — typischerweise libvips. Paket unvollstaendig ausgepackt. */
+  | 'SHARED_LIBRARY_MISSING'
+  /** Die glibc des Servers ist aelter als die, gegen die gebaut wurde. Sache des Hosters. */
+  | 'GLIBC_TOO_OLD'
+  /** Binary und libvips passen nicht zueinander — Versionsmix im node_modules. Neu installieren. */
+  | 'SYMBOL_MISSING'
+  /** Der Kernel verweigert das Ausfuehren: noexec-Mount, SELinux, fehlendes Ausfuehrrecht. Nur der Hoster kann das. */
+  | 'EXEC_NOT_PERMITTED'
+  /** Keine ladbare Binaerdatei fuer diese Plattform — falsche Architektur oder beim Deploy beschaedigt. */
+  | 'WRONG_BINARY_FORMAT'
+  /** Kein Speicher zum Laden. Prozesslimit des Tarifs. */
+  | 'OUT_OF_MEMORY'
+  /** Gegen eine andere Node-Version gebaut als die laufende. */
+  | 'ABI_MISMATCH'
+  /** Geladen wurde nicht, und die Meldung passt auf keinen bekannten Fall. Hier hilft nur das Serverlog. */
+  | 'UNCLASSIFIED';
+
+export type NativeLoadError = {
+  /** Nodes eigener Fehlercode, durch denselben Sanitizer wie `ImagePipelineProbe.code`. */
+  code: string;
+  reason: NativeLoadReason;
+};
+
+/**
  * Fehlercodes sind maschinenlesbare Konstanten (ERR_DLOPEN_FAILED,
  * MODULE_NOT_FOUND, …) — Fehler*meldungen* dagegen enthalten Dateipfade des
  * Servers. Der Endpunkt ist unauthentifiziert, also geht nur der Code
@@ -183,6 +250,51 @@ export function sanitizeCode(err: unknown): string {
   const raw = (err as { code?: unknown } | null)?.code;
   if (typeof raw !== 'string') return 'UNKNOWN';
   return CODE_SHAPE.test(raw) ? raw : 'UNKNOWN';
+}
+
+/**
+ * Die Formulierungen, an denen der Dynamic Linker sich erkennen laesst.
+ *
+ * DIE REIHENFOLGE IST TEIL DER AUSSAGE, nicht Geschmack. Mehrere Muster
+ * treffen auf dieselbe Meldung zu — "cannot enable executable stack as shared
+ * object requires: Permission denied" enthaelt beides, ein Ausfuehrverbot und
+ * ein 'Permission denied'. Wer hier die allgemeinere Regel zuerst prueft,
+ * bekommt einen Befund, der zwar stimmt, aber in die falsche Richtung zeigt.
+ * Also erst die spezifische Aussage, dann die allgemeine.
+ *
+ * Die Muster sind absichtlich eng an den Wortlauten von glibc, musl und Node
+ * gehalten. Ein zu weites Muster (etwa blosses /memory/) faengt irgendwann
+ * einen Serverpfad ein und meldet mit voller Ueberzeugung den falschen Grund —
+ * ein Messwert, der luegt, ist schaedlicher als gar keiner.
+ */
+const NATIVE_LOAD_PATTERNS: ReadonlyArray<readonly [RegExp, NativeLoadReason]> = [
+  [/NODE_MODULE_VERSION|did not self-register/i, 'ABI_MISMATCH'],
+  [/GLIBC_\d/i, 'GLIBC_TOO_OLD'],
+  [/undefined symbol/i, 'SYMBOL_MISSING'],
+  [/invalid ELF header|wrong ELF class|file too short|not a valid Win32 application/i, 'WRONG_BINARY_FORMAT'],
+  [/static TLS block|cannot allocate memory|out of memory/i, 'OUT_OF_MEMORY'],
+  [/failed to map segment|executable stack|operation not permitted|permission denied/i, 'EXEC_NOT_PERMITTED'],
+  [/cannot open shared object file|no such file or directory/i, 'SHARED_LIBRARY_MISSING'],
+];
+
+/**
+ * Aus der Fehlermeldung wird ein Befund — und die Meldung bleibt hier.
+ *
+ * Exportiert, weil hier zweierlei zu pruefen ist: dass die Zuordnung stimmt,
+ * und dass wirklich nur die Konstante herauskommt. Die Funktion bekommt
+ * Serverpfade zu sehen; ihr Rueckgabewert stammt aus einer geschlossenen
+ * Liste, und der Test haelt genau darauf.
+ */
+export function classifyNativeLoadError(err: unknown): NativeLoadReason {
+  if ((err as { code?: unknown } | null)?.code === 'MODULE_NOT_FOUND') return 'FILE_MISSING';
+
+  const message = (err as { message?: unknown } | null)?.message;
+  if (typeof message !== 'string') return 'UNCLASSIFIED';
+
+  for (const [pattern, reason] of NATIVE_LOAD_PATTERNS) {
+    if (pattern.test(message)) return reason;
+  }
+  return 'UNCLASSIFIED';
 }
 
 /** Paketnamen sind kleingeschrieben und bindestrichgetrennt — sonst nichts. */
@@ -326,7 +438,16 @@ export function needsX64V2(
   return platform === 'linux' && arch === 'x64';
 }
 
-type NativeBinaryProbe = { loads: boolean; x64v2: boolean | null };
+type NativeBinaryProbe = {
+  loads: boolean;
+  x64v2: boolean | null;
+  loadError: NativeLoadError | null;
+  /**
+   * Der rohe Fehler — bleibt IM PROZESS. Er geht ins Serverlog und nie in die
+   * HTTP-Antwort; dafuer ist `loadError` da.
+   */
+  raw: unknown;
+};
 
 /**
  * Einmal pro Prozess.
@@ -345,7 +466,14 @@ function probeNativeBinary(): NativeBinaryProbe {
 
   const expected = expectedSharpBinary();
   const req = requireFromSharp();
-  nativeBinaryProbe = { loads: false, x64v2: null };
+  // Nichts versucht heisst nichts gemessen — und wird auch so benannt, statt
+  // als Ladefehler durchzugehen, den es nie gab.
+  nativeBinaryProbe = {
+    loads: false,
+    x64v2: null,
+    loadError: { code: 'UNKNOWN', reason: 'NOT_ATTEMPTED' },
+    raw: null,
+  };
 
   if (req !== null && expected !== 'UNKNOWN') {
     try {
@@ -356,9 +484,16 @@ function probeNativeBinary(): NativeBinaryProbe {
       nativeBinaryProbe = {
         loads: true,
         x64v2: needsX64V2() ? binding._isUsingX64V2?.() === true : null,
+        loadError: null,
+        raw: null,
       };
-    } catch {
-      nativeBinaryProbe = { loads: false, x64v2: null };
+    } catch (err) {
+      nativeBinaryProbe = {
+        loads: false,
+        x64v2: null,
+        loadError: { code: sanitizeCode(err), reason: classifyNativeLoadError(err) },
+        raw: err,
+      };
     }
   }
 
@@ -393,6 +528,7 @@ export function reportSharpBinary(): SharpBinaryReport {
     // darin auch da ist.
     present: req !== null && resolvesFrom(req, `${expected}/sharp.node`),
     loads: native.loads,
+    loadError: native.loadError,
     x64v2: native.x64v2,
     libvips:
       libvipsName === null
@@ -439,12 +575,19 @@ let wasmFallbackLogged = false;
  * sein natives Binary kaputt ist. Wer nur auf `ok: true` schaut, wuerde das nie
  * erfahren. Deshalb eine Zeile pro Prozessstart: laut genug, um beim Suchen
  * gefunden zu werden, leise genug, um kein Log zu fluten.
+ *
+ * SEIT SPRINT 128 HAENGT DER ECHTE FEHLER MIT DRAN. Solange sharp gar nicht
+ * lud, schrieb `logLoadFailure` ihn ins Log. Mit dem Rueckfall laedt sharp —
+ * und damit war die einzige Stelle weg, an der der Klartextgrund je auftauchte.
+ * Der Fallback haette also nicht nur den Defekt verdeckt, sondern auch dessen
+ * Begruendung.
  */
-function logWasmFallback(): void {
+function logWasmFallback(err: unknown): void {
   if (wasmFallbackLogged) return;
   wasmFallbackLogged = true;
   console.warn(
-    '[image-pipeline] sharp arbeitet ueber die WASM-Variante; das native Binary wurde nicht genommen.',
+    '[image-pipeline] sharp arbeitet ueber die WASM-Variante; das native Binary wurde nicht genommen:',
+    err,
   );
 }
 
@@ -471,7 +614,7 @@ export async function probeImagePipeline(): Promise<ImagePipelineProbe> {
   }
 
   const variant = detectSharpVariant();
-  if (variant === 'wasm') logWasmFallback();
+  if (variant === 'wasm') logWasmFallback(probeNativeBinary().raw);
   // Auf dem nativen Pfad ist der Bericht Rauschen; sobald er NICHT genommen
   // wurde, ist er die Begruendung.
   const binary = variant === 'wasm' ? { binary: reportSharpBinary() } : {};
