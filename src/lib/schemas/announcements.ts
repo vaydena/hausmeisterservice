@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { localDateTimeOptional } from './datetime-local';
+import { APP_TIME_ZONE } from '@/lib/utils/datetime-local';
 
 type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'muted';
 
@@ -50,15 +52,11 @@ const targetUserIds = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null));
 
-const expiresAt = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v && v.length > 0 ? v : null))
-  .refine(
-    (v) => v === null || !Number.isNaN(new Date(v).getTime()),
-    'Ungültiges Ablaufdatum.',
-  );
+// Sprint 113: ging vorher als Rohstring an Postgres und wurde dort in der
+// Session-Zeitzone (UTC) gelesen. "Laeuft ab am 20.08. um 18:00" stand damit
+// als 18:00Z in der Tabelle — die Ankuendigung war zwei Stunden laenger
+// sichtbar, als der Verfasser eingestellt hatte.
+const expiresAt = localDateTimeOptional('Ungültiges Ablaufdatum.');
 
 const requiresAck = z
   .union([z.literal('on'), z.literal('true'), z.literal('false'), z.literal('')])
@@ -110,28 +108,37 @@ export const announcementIdSchema = z.object({
   id: requiredUuid,
 });
 
+// Sprint 113: ohne `timeZone` liefen beide ueber die Prozess-Zeitzone. Ein
+// Ablaufdatum ist hier aber die Grenze, ab der eine Ankuendigung als
+// abgelaufen gilt — die Uhrzeit daneben muss dieselbe sein, die `isExpired`
+// meint.
+const ANNOUNCEMENT_DATETIME = new Intl.DateTimeFormat('de-DE', {
+  timeZone: APP_TIME_ZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+const ANNOUNCEMENT_DATE = new Intl.DateTimeFormat('de-DE', {
+  timeZone: APP_TIME_ZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+
 export function formatAnnouncementDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return Number.isNaN(d.getTime()) ? '—' : ANNOUNCEMENT_DATETIME.format(d);
 }
 
 export function formatAnnouncementDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return Number.isNaN(d.getTime()) ? '—' : ANNOUNCEMENT_DATE.format(d);
 }
 
 export function isExpired(expiresAt: string | null | undefined): boolean {

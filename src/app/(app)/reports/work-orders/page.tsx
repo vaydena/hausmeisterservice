@@ -8,7 +8,8 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Select, Field } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { formatDuration, formatMinutes, parsePeriod } from '@/lib/reports/utils';
+import { formatDuration, formatMinutes, parsePeriodRange } from '@/lib/reports/utils';
+import { formatDate } from '@/lib/utils/format';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Auftragsbericht' };
@@ -36,12 +37,11 @@ export default async function WorkOrdersReportPage({
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('reporting.view')) notFound();
 
-  const { from, to } = parsePeriod(sp);
+  // Sprint 113: Zeitfenster jetzt Berliner Kalendertage, Ende exklusiv.
+  const { from, to, startIso, endIso } = parsePeriodRange(sp);
   const propertyId = sp['property'] ?? '';
 
   const supabase = await createSupabaseServerClient();
-  const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
-  const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
   let q = supabase
     .from('work_orders')
@@ -49,8 +49,8 @@ export default async function WorkOrdersReportPage({
       'id, code, title, status, priority, is_emergency, property_id, assignee_id, created_at, closed_at, actual_minutes, estimated_minutes',
     )
     .is('deleted_at', null)
-    .gte('created_at', fromIso)
-    .lte('created_at', toIso)
+    .gte('created_at', startIso)
+    .lt('created_at', endIso)
     .order('created_at', { ascending: false });
   if (propertyId) q = q.eq('property_id', propertyId);
 
@@ -222,10 +222,10 @@ export default async function WorkOrdersReportPage({
                       {propById.get(o.property_id ?? '') ?? '—'}
                     </td>
                     <td className="py-2 pr-4 text-xs">
-                      {new Date(o.created_at).toLocaleDateString('de-DE')}
+                      {formatDate(o.created_at)}
                     </td>
                     <td className="py-2 pr-4 text-xs">
-                      {o.closed_at ? new Date(o.closed_at).toLocaleDateString('de-DE') : '—'}
+                      {o.closed_at ? formatDate(o.closed_at) : '—'}
                     </td>
                     <td className="py-2 pr-4 tabular-nums">{lead}</td>
                     <td className="py-2 pr-4 text-xs tabular-nums">

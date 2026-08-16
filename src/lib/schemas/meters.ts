@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localDateTimeRequired } from './datetime-local';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -89,11 +90,12 @@ export const meterStatusUpdateSchema = z.object({
 
 export const readingInputSchema = z.object({
   meter_id: requiredUuid,
-  read_at: z
-    .string()
-    .trim()
-    .min(1, 'Ablesezeitpunkt fehlt.')
-    .refine((v) => !Number.isNaN(new Date(v).getTime()), 'Ungültiges Datum.'),
+  // Sprint 113: Der Ablesezeitpunkt sortiert die Ablesungen und schneidet
+  // Abrechnungsperioden. Eine Ablesung am 31.12. um 23:30, in der falschen
+  // Zone gelesen, landet im Folgejahr — und der Verbrauch beider Perioden
+  // stimmt danach nicht mehr. Die Umrechnung stand vorher in der
+  // Server-Action und damit in der Prozess-Zeitzone.
+  read_at: localDateTimeRequired('Ablesezeitpunkt fehlt.', 'Ungültiges Datum.'),
   reading: z
     .coerce
     .number({ message: 'Zählerstand als Zahl angeben.' })

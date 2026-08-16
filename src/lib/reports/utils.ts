@@ -1,3 +1,5 @@
+import { addDaysToKey, localDayRange, todayKey } from '@/lib/utils/datetime-local';
+
 export function daysAgoIso(days: number): string {
   const d = new Date();
   d.setUTCHours(0, 0, 0, 0);
@@ -13,8 +15,14 @@ export function startOfMonthIso(offsetMonths = 0): string {
   return d.toISOString();
 }
 
+/**
+ * Sprint 113: lief ueber `toISOString().slice(0, 10)`, also ueber den
+ * UTC-Kalendertag. Zwischen 22:00 und Mitternacht Berliner Zeit ist das noch
+ * der Vortag — der voreingestellte Berichtszeitraum endete dann gestern und
+ * liess den laufenden Tag weg.
+ */
 export function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayKey();
 }
 
 export function formatMinutes(mins: number | null | undefined): string {
@@ -85,4 +93,41 @@ export function parsePeriod(searchParams: URLSearchParams | Record<string, strin
   const from = fromRaw && /^\d{4}-\d{2}-\d{2}$/.test(fromRaw) ? fromRaw : defaultFrom;
   const to = toRaw && /^\d{4}-\d{2}-\d{2}$/.test(toRaw) ? toRaw : defaultTo;
   return { from, to };
+}
+
+/**
+ * Zeitraum aus den Query-Parametern plus das passende Zeitfenster fuer die
+ * Datenbank — `[startIso, endIso)`, Ende exklusiv.
+ *
+ * Sprint 113: Alle sechs Berichtsseiten und Exporte haben ihr Fenster selbst
+ * gebaut, und zwar als `${from}T00:00:00Z` bis `${to}T23:59:59Z`. Das hat
+ * zwei Fehler auf einmal:
+ *
+ *   - Es ist der UTC-Tag, nicht der Berliner. Im Sommer fehlten dem Zeitraum
+ *     die ersten zwei Stunden des Starttags und es kamen zwei Stunden des
+ *     Folgetags dazu. Fuer den Zeitbericht heisst das: eine Fruehschicht ab
+ *     06:00 am Monatsersten faellt in den Vormonat — und der Zeitbericht ist
+ *     die Grundlage der Lohnabrechnung.
+ *   - Die letzte Sekunde des Endtages (23:59:59.001 bis 23:59:59.999) lag
+ *     zwischen den Grenzen. Selten, aber ein Eintrag dort war unauffindbar.
+ *
+ * Beides ist mit einer exklusiven Obergrenze auf Berliner Mitternacht erledigt.
+ * Die Aufrufer filtern entsprechend mit `.lt(endIso)`, nicht `.lte()`.
+ */
+export function parsePeriodRange(
+  searchParams: URLSearchParams | Record<string, string | undefined>,
+): { from: string; to: string; startIso: string; endIso: string } {
+  const { from, to } = parsePeriod(searchParams);
+  const range = localDayRange(from, to);
+  if (!range) {
+    // parsePeriod laesst nur "yyyy-MM-dd" durch, kalendarisch Unmoegliches
+    // (31.02.) kommt aber durch die Regex. Dann lieber der Standardzeitraum
+    // als ein Bericht ueber ein leeres Fenster.
+    const fallbackFrom = addDaysToKey(todayKey(), -30);
+    const fallbackTo = todayKey();
+    const fallback = localDayRange(fallbackFrom, fallbackTo);
+    if (!fallback) throw new Error('Berichtszeitraum konnte nicht bestimmt werden.');
+    return { from: fallbackFrom, to: fallbackTo, ...fallback };
+  }
+  return { from, to, ...range };
 }

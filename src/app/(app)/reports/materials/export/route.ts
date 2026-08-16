@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { csvResponse, parsePeriod, toCsv } from '@/lib/reports/utils';
+import { csvResponse, parsePeriodRange, toCsv } from '@/lib/reports/utils';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export async function GET(req: NextRequest) {
@@ -12,10 +12,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const url = new URL(req.url);
-  const { from, to } = parsePeriod(url.searchParams);
+  // Sprint 113: Berliner Kalendertage statt UTC, Ende exklusiv.
+  const { from, to, startIso, endIso } = parsePeriodRange(url.searchParams);
   const supabase = await createSupabaseServerClient();
-  const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
-  const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
   const [materialsRes, movementsRes] = await Promise.all([
     supabase
@@ -26,8 +25,8 @@ export async function GET(req: NextRequest) {
     supabase
       .from('stock_movements')
       .select('material_id, kind, quantity, unit_cost_at_time')
-      .gte('occurred_at', fromIso)
-      .lte('occurred_at', toIso),
+      .gte('occurred_at', startIso)
+      .lt('occurred_at', endIso),
   ]);
   const mats = unwrapRows(materialsRes, 'Auswertungen: materials');
   const movements = unwrapRows(movementsRes, 'Auswertungen: stock_movements');

@@ -6,6 +6,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createNotification } from '@/lib/notifications/create';
 import { createEntrySchema, updateEntrySchema } from '@/lib/schemas/scheduling';
+import { formatDateTime } from '@/lib/utils/format';
 
 function friendlyDbMessage(msg?: string | null): string {
   if (!msg) return 'Speichern fehlgeschlagen.';
@@ -73,7 +74,7 @@ export async function createScheduleEntryAction(formData: FormData): Promise<voi
       userId,
       kind: 'mention',
       subject: `Neuer Termin: ${parsed.data.title}`,
-      body: `${new Date(parsed.data.start_at).toLocaleString('de-DE')} – ${new Date(parsed.data.end_at).toLocaleString('de-DE')}`,
+      body: `${formatDateTime(parsed.data.start_at)} – ${formatDateTime(parsed.data.end_at)}`,
       entityType: null,
       entityId: null,
       url: '/schedule',

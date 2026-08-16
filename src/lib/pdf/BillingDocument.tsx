@@ -5,6 +5,7 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import type { TenantAddress, TenantInvoiceData } from '@/lib/schemas/tenant';
 import { formatAddressLines, formatIban } from '@/lib/schemas/tenant';
+import { formatDateOnly } from '@/lib/utils/format';
 
 export type BillingKind = 'invoice' | 'offer';
 
@@ -214,7 +215,7 @@ function formatDate(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('de-DE');
+  return formatDateOnly(iso);
 }
 
 function formatQty(q: number): string {

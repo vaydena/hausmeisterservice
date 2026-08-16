@@ -11,6 +11,7 @@ import {
   type AnnouncementTargetType,
 } from '@/lib/schemas/announcements';
 import type { AnnouncementFormState } from './actions';
+import { toLocalDateTimeInput } from '@/lib/utils/datetime-local';
 
 const INITIAL: AnnouncementFormState = {};
 
@@ -173,16 +174,19 @@ export function AnnouncementForm({
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
+              {/*
+                Sprint 113: Der Vorbelegungswert lief ueber
+                `toISOString().slice(0, 16)` und war damit der UTC-Zeitpunkt —
+                im Sommer zwei Stunden vor dem Ablaufdatum, das die Seite
+                daneben anzeigt. Wer eine Ankuendigung nur bearbeitet hat, hat
+                ihre Laufzeit bei jedem Speichern um diese Differenz verkuerzt.
+              */}
               <Field label="Ablauf" htmlFor="expires_at" optional error={err['expires_at']}>
                 <Input
                   id="expires_at"
                   name="expires_at"
                   type="datetime-local"
-                  defaultValue={
-                    initial?.expires_at
-                      ? new Date(initial.expires_at).toISOString().slice(0, 16)
-                      : ''
-                  }
+                  defaultValue={toLocalDateTimeInput(initial?.expires_at)}
                 />
               </Field>
               <Field label="Optionen" htmlFor="requires_acknowledgement">

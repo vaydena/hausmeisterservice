@@ -12,14 +12,19 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   SCHEDULE_KIND_LABEL,
   SCHEDULE_KIND_TONE,
-  addDays,
-  formatDayShort,
   formatTimeShort,
-  parseIsoDate,
-  startOfWeek,
-  toIsoDate,
-  type ScheduleKind,
 } from '@/lib/schemas/scheduling';
+import type { ScheduleKind } from '@/lib/schemas/scheduling';
+import {
+  addDaysToKey,
+  formatDayShort,
+  isoWeekOf,
+  localDayRange,
+  parseDayKey,
+  startOfWeekKey,
+  toLocalDateKey,
+  todayKey,
+} from '@/lib/utils/datetime-local';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Einsatzplanung' };
@@ -54,9 +59,14 @@ export default async function SchedulePage({
   const canEdit = permissions.has('scheduling.edit');
 
   const params = await searchParams;
-  const weekStart = startOfWeek(parseIsoDate(params.week) ?? new Date());
-  const weekEnd = addDays(weekStart, 7);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  // Sprint 113: Das Raster laeuft ueber Kalendertage, nicht ueber Zeitstempel.
+  // Vorher hat `startOfWeek` per setHours(0,0,0,0) die Prozess-Zeitzone
+  // eingesetzt — auf einem UTC-Server begann die Woche damit um 02:00
+  // Berliner Zeit, und die Fruehschicht am Montag fiel aus dem Plan.
+  const weekStart = startOfWeekKey(parseDayKey(params.week) ?? todayKey());
+  const days = Array.from({ length: 7 }, (_, i) => addDaysToKey(weekStart, i));
+  const range = localDayRange(weekStart, days[6]!);
+  if (!range) redirect('/schedule');
 
   const supabase = await createSupabaseServerClient();
 
@@ -69,8 +79,8 @@ export default async function SchedulePage({
     supabase
       .from('schedule_entries')
       .select('id, employee_id, kind, title, start_at, end_at, all_day')
-      .gte('start_at', weekStart.toISOString())
-      .lt('start_at', weekEnd.toISOString())
+      .gte('start_at', range.startIso)
+      .lt('start_at', range.endIso)
       .order('start_at', { ascending: true })
       .limit(1000),
     supabase
@@ -79,8 +89,8 @@ export default async function SchedulePage({
       .is('deleted_at', null)
       .not('assignee_id', 'is', null)
       .not('planned_start', 'is', null)
-      .gte('planned_start', weekStart.toISOString())
-      .lt('planned_start', weekEnd.toISOString())
+      .gte('planned_start', range.startIso)
+      .lt('planned_start', range.endIso)
       .order('planned_start', { ascending: true })
       .limit(1000),
   ]);
@@ -129,11 +139,10 @@ export default async function SchedulePage({
     return c;
   };
 
-  const dayIndexOf = (iso: string): number => {
-    const d = new Date(iso);
-    const diffMs = d.getTime() - weekStart.getTime();
-    return Math.floor(diffMs / (24 * 60 * 60 * 1000));
-  };
+  // Ueber den Berliner Kalendertag, nicht ueber eine Differenz in Millisekunden:
+  // an den Umstellungssonntagen hat der Tag 23 bzw. 25 Stunden, eine Division
+  // durch 24h haette die Spalten danach um eins verschoben.
+  const dayIndexOf = (iso: string): number => days.indexOf(toLocalDateKey(iso));
 
   for (const e of scheduleEntries) {
     const idx = dayIndexOf(e.start_at);
@@ -161,11 +170,11 @@ export default async function SchedulePage({
     });
   }
 
-  const prevWeek = toIsoDate(addDays(weekStart, -7));
-  const nextWeek = toIsoDate(addDays(weekStart, 7));
-  const thisWeek = toIsoDate(startOfWeek(new Date()));
-  const isCurrentWeek = toIsoDate(weekStart) === thisWeek;
-  const weekLabel = `KW ${getIsoWeek(weekStart)} · ${formatDayShort(weekStart)} – ${formatDayShort(addDays(weekStart, 6))}`;
+  const prevWeek = addDaysToKey(weekStart, -7);
+  const nextWeek = addDaysToKey(weekStart, 7);
+  const thisWeek = startOfWeekKey(todayKey());
+  const isCurrentWeek = weekStart === thisWeek;
+  const weekLabel = `KW ${isoWeekOf(weekStart)} · ${formatDayShort(weekStart)} – ${formatDayShort(days[6]!)}`;
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col gap-6">
@@ -220,10 +229,7 @@ export default async function SchedulePage({
                       Mitarbeiter
                     </th>
                     {days.map((d) => (
-                      <th
-                        key={d.toISOString()}
-                        className="min-w-40 px-2 py-2 text-left font-medium"
-                      >
+                      <th key={d} className="min-w-40 px-2 py-2 text-left font-medium">
                         {formatDayShort(d)}
                       </th>
                     ))}
@@ -239,7 +245,7 @@ export default async function SchedulePage({
                         const cell = cells.get(cellKey(r.id, dayIdx));
                         return (
                           <td
-                            key={dayIdx}
+                            key={d}
                             className="min-w-40 border-r border-[var(--color-border)] px-2 py-2 align-top last:border-r-0"
                           >
                             {!cell ||
@@ -304,17 +310,4 @@ export default async function SchedulePage({
       )}
     </div>
   );
-}
-
-/**
- * ISO-8601 Kalenderwoche (Deutschland: Woche startet Montag, erste Woche mit
- * mindestens 4 Tagen).
- */
-function getIsoWeek(date: Date): number {
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  target.setDate(target.getDate() + 3 - ((target.getDay() + 6) % 7));
-  const firstThursday = new Date(target.getFullYear(), 0, 4);
-  const diff = target.getTime() - firstThursday.getTime();
-  return 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000));
 }

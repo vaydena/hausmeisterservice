@@ -16,6 +16,7 @@ import {
   retiredSchema,
   replacedSchema,
 } from '@/lib/schemas/keys';
+import { formatDateTime } from '@/lib/utils/format';
 
 export type KeyFormState = {
   error?: string;
@@ -215,7 +216,7 @@ export async function issueKeyAction(formData: FormData): Promise<void> {
       kind: 'mention',
       subject: `Schlüssel ausgegeben: ${label}`,
       body: parsed.data.expected_return_at
-        ? `Rückgabe erwartet bis ${new Date(parsed.data.expected_return_at).toLocaleString('de-DE')}`
+        ? `Rückgabe erwartet bis ${formatDateTime(parsed.data.expected_return_at)}`
         : undefined,
       entityType: null,
       entityId: null,

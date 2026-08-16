@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { csvResponse, formatMinutes, parsePeriod, toCsv } from '@/lib/reports/utils';
+import { csvResponse, formatMinutes, parsePeriodRange, toCsv } from '@/lib/reports/utils';
+import { formatDateTime } from '@/lib/utils/format';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export async function GET(req: NextRequest) {
@@ -12,12 +13,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const url = new URL(req.url);
-  const { from, to } = parsePeriod(url.searchParams);
+  // Sprint 113: Berliner Kalendertage statt UTC, Ende exklusiv.
+  const { from, to, startIso, endIso } = parsePeriodRange(url.searchParams);
   const propertyId = url.searchParams.get('property') ?? '';
 
   const supabase = await createSupabaseServerClient();
-  const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
-  const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
   let q = supabase
     .from('work_orders')
@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
       'code, title, status, priority, is_emergency, property_id, created_at, closed_at, actual_minutes, estimated_minutes',
     )
     .is('deleted_at', null)
-    .gte('created_at', fromIso)
-    .lte('created_at', toIso)
+    .gte('created_at', startIso)
+    .lt('created_at', endIso)
     .order('created_at', { ascending: false });
   if (propertyId) q = q.eq('property_id', propertyId);
 
@@ -64,8 +64,8 @@ export async function GET(req: NextRequest) {
         r.priority,
         r.is_emergency ? 'Ja' : 'Nein',
         propById.get(r.property_id ?? '') ?? '',
-        new Date(r.created_at).toLocaleString('de-DE'),
-        r.closed_at ? new Date(r.closed_at).toLocaleString('de-DE') : '',
+        formatDateTime(r.created_at),
+        r.closed_at ? formatDateTime(r.closed_at) : '',
         leadMin,
         r.actual_minutes ?? '',
         r.estimated_minutes ?? '',

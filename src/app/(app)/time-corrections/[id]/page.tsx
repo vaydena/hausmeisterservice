@@ -16,18 +16,17 @@ import {
 import { ENTRY_KIND_LABEL } from '@/lib/schemas/time-tracking';
 import { DecideForm } from './decide-form';
 import { WithdrawForm } from './withdraw-form';
+import { formatDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Korrekturantrag' };
 
+// Sprint 113: Hier stehen beantragte und erfasste Zeit nebeneinander, und
+// genehmigt wird auf dieser Seite Arbeitszeit. Ohne `timeZone` war das die
+// Zone des Servers — auf einem in UTC also zwei Stunden neben dem, was der
+// Antragsteller im Formular eingetragen hat.
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTime(iso);
 }
 
 function labelValue(id: string | null, map: Map<string, string>): string {

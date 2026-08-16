@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea, Select, Field } from '@/components/ui/input';
 import { Card, CardBody, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import type { TourFormState } from './actions';
+import { todayKey } from '@/lib/utils/datetime-local';
 
 const INITIAL: TourFormState = {};
 
@@ -58,12 +59,18 @@ export function TourForm({
             </Field>
 
             <div className="grid gap-4 md:grid-cols-3">
+              {/*
+                Sprint 113: Der Vorbelegungswert war `toISOString().slice(0, 10)`,
+                also der UTC-Tag. Zwischen Mitternacht und 02:00 Berliner Zeit
+                stand hier der Vortag — und eine Tour, die jemand nachts
+                anlegt, war auf gestern datiert.
+              */}
               <Field label="Datum" htmlFor="planned_date" error={err['planned_date']}>
                 <Input
                   id="planned_date"
                   name="planned_date"
                   type="date"
-                  defaultValue={initial?.planned_date ?? new Date().toISOString().slice(0, 10)}
+                  defaultValue={initial?.planned_date ?? todayKey()}
                   required
                 />
               </Field>

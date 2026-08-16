@@ -24,6 +24,7 @@ import {
 import { DEADLINE_TONE, deadlineStatus, describeDeadline } from '@/lib/deadlines/status';
 import { EventForm } from '../event-form';
 import { setVehicleStatusAction, softDeleteVehicleAction } from '../actions';
+import { formatDateOnly } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Fahrzeug' };
 
@@ -257,7 +258,7 @@ export default async function VehicleDetailPage({
                             className="border-b border-[var(--color-border)] last:border-b-0 align-top"
                           >
                             <td className="py-2 pr-3">
-                              {new Date(e.event_date).toLocaleDateString('de-DE')}
+                              {formatDateOnly(e.event_date)}
                               {creator && (
                                 <div className="text-xs text-[var(--color-muted-foreground)]">
                                   von {creator}
@@ -271,7 +272,7 @@ export default async function VehicleDetailPage({
                               {e.next_due_at && (
                                 <div className="mt-1 text-xs text-[var(--color-muted-foreground)]">
                                   nächste Frist:{' '}
-                                  {new Date(e.next_due_at).toLocaleDateString('de-DE')}
+                                  {formatDateOnly(e.next_due_at)}
                                 </div>
                               )}
                             </td>

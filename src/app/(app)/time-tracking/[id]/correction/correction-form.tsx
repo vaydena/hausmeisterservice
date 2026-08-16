@@ -11,6 +11,7 @@ import {
   formatDurationMinutes,
   minutesBetween,
 } from '@/lib/schemas/time-tracking';
+import { formatDateTime } from '@/lib/utils/format';
 
 type Option = { id: string; label: string };
 
@@ -33,14 +34,10 @@ function SubmitButton() {
   );
 }
 
+// Sprint 113: zeigt die erfasste Zeit, gegen die der Antrag gestellt wird —
+// muss dieselbe Zone benutzen wie das datetime-local-Feld darunter.
 function fmt(iso: string): string {
-  return new Date(iso).toLocaleString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTime(iso);
 }
 
 function labelFor(id: string | null, options: Option[]): string {

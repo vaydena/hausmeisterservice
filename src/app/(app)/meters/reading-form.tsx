@@ -4,11 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea, Select, Field } from '@/components/ui/input';
 import { READING_SOURCES, SOURCE_LABEL } from '@/lib/schemas/meters';
 import { addReadingAction } from './actions';
+import { toLocalDateTimeInput } from '@/lib/utils/datetime-local';
 
+// Sprint 113: Der Vorbelegungswert lief ueber getHours() und damit ueber die
+// Zeitzone des Rechners, der rendert — beim Server-Rendering also die des
+// Servers. Auf einem UTC-Server stand hier zwei Stunden vor der tatsaechlichen
+// Uhrzeit, und wer den Vorschlag stehen laesst, datiert die Ablesung zurueck.
 function toLocalInputValue(iso: string | null | undefined): string {
-  const d = iso ? new Date(iso) : new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toLocalDateTimeInput(iso ?? new Date());
 }
 
 export function ReadingForm({

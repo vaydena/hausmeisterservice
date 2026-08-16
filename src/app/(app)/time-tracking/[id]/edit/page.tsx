@@ -10,6 +10,7 @@ import { EntryForm } from '../../entry-form';
 import { deleteEntryAction, updateEntryAction } from '../../actions';
 import { Button, LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDateTime, formatTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Zeit bearbeiten' };
 
@@ -53,8 +54,8 @@ export default async function EditTimeEntryPage({
         title="Zeit bearbeiten"
         description={
           entry.end_at
-            ? `${new Date(entry.start_at).toLocaleString('de-DE')} – ${new Date(entry.end_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`
-            : `${new Date(entry.start_at).toLocaleString('de-DE')} — läuft noch`
+            ? `${formatDateTime(entry.start_at)} – ${formatTime(entry.end_at)}`
+            : `${formatDateTime(entry.start_at)} — läuft noch`
         }
       />
       <EntryForm

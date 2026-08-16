@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localDateTimeRequired } from './datetime-local';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -111,11 +112,11 @@ export const movementInputSchema = z.object({
   unit_id: optionalUuid,
   work_order_id: optionalUuid,
   assignee_user_id: optionalUuid,
-  occurred_at: z
-    .string()
-    .trim()
-    .min(1, 'Zeitpunkt fehlt.')
-    .refine((v) => !Number.isNaN(new Date(v).getTime()), 'Ungültiges Datum.'),
+  // Sprint 113: Die Umrechnung stand vorher in der Server-Action
+  // (`new Date(parsed.data.occurred_at).toISOString()`), also hinter dem
+  // Schema und in der Prozess-Zeitzone. Jetzt liefert das Schema bereits den
+  // fertigen Zeitpunkt.
+  occurred_at: localDateTimeRequired('Zeitpunkt fehlt.', 'Ungültiges Datum.'),
   note: optionalText,
 });
 

@@ -14,14 +14,12 @@ import {
   type TriggerKey,
 } from '@/lib/automations/registry';
 import { unwrapRows } from '@/lib/supabase/unwrap';
+import { formatDateTime as formatBerlinDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Automatisierungen' };
 
 function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  return iso ? formatBerlinDateTime(iso) : '—';
 }
 
 export default async function AutomationsPage() {

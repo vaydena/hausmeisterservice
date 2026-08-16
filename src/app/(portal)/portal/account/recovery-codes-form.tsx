@@ -5,6 +5,7 @@ import {
   generatePortalMfaRecoveryCodesAction,
   type PortalRecoveryCodesState,
 } from './actions';
+import { formatDateTime } from '@/lib/utils/format';
 
 const INITIAL: PortalRecoveryCodesState = {};
 
@@ -31,7 +32,7 @@ export function PortalRecoveryCodesForm({ unusedCount }: { unusedCount: number }
     const stamp = now.toISOString().slice(0, 10);
     const header = [
       'Bewohner-Portal — Recovery-Codes fuer die Zwei-Faktor-Authentifizierung',
-      `Generiert am ${now.toLocaleString('de-DE')}`,
+      `Generiert am ${formatDateTime(now)}`,
       '',
       'Jeder Code kann genau EINMAL verwendet werden. Bewahren Sie diese',
       'Datei sicher auf (Passwort-Manager, Tresor). Ohne diese Codes und',

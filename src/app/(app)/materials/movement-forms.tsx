@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea, Select, Field } from '@/components/ui/input';
 import { MOVEMENT_KINDS, KIND_LABEL, type MovementKind } from '@/lib/schemas/materials';
 import { recordMovementAction } from './actions';
+import { toLocalDateTimeInput } from '@/lib/utils/datetime-local';
 
+// Sprint 113: Der Vorbelegungswert lief ueber getHours() und damit ueber die
+// Zeitzone des Rechners, der rendert — beim Server-Rendering also die des
+// Servers. Auf einem UTC-Server stand hier zwei Stunden vor der tatsaechlichen
+// Uhrzeit, und wer den Vorschlag stehen laesst, bucht genau diese.
 function toLocalInputValue(iso: string | null | undefined): string {
-  const d = iso ? new Date(iso) : new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toLocalDateTimeInput(iso ?? new Date());
 }
 
 type PropertyOption = { id: string; name: string; code: string | null };

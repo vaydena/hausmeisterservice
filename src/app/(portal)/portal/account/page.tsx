@@ -16,6 +16,7 @@ import { PortalSessionsList } from './sessions-list';
 import { PortalRevokeSessionsForm } from './revoke-sessions-form';
 import { PortalExportButton } from './portal-export-button';
 import { PortalPushPanel } from './portal-push-panel';
+import { formatDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Konto — Bewohner-Portal' };
 
@@ -303,12 +304,12 @@ export default async function PortalAccountPage({
                       </td>
                       <td className="py-2">
                         {s.created_at
-                          ? new Date(s.created_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+                          ? formatDateTime(s.created_at)
                           : '—'}
                       </td>
                       <td className="py-2">
                         {s.last_used_at
-                          ? new Date(s.last_used_at).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+                          ? formatDateTime(s.last_used_at)
                           : '—'}
                       </td>
                       <td className="py-2 text-xs text-[var(--color-destructive)]">{s.last_error ?? '—'}</td>

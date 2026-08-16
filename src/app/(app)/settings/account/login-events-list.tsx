@@ -1,4 +1,5 @@
 import { summarizeUserAgent } from '@/lib/ua/summarize';
+import { formatDateTime } from '@/lib/utils/format';
 
 type LoginEvent = {
   id: string;
@@ -38,7 +39,7 @@ export function LoginEventsList({ events }: { events: LoginEvent[] }) {
           {events.map((e) => (
             <tr key={e.id} className="border-b border-[var(--color-border)]/60 last:border-0">
               <td className="py-2 pr-3 whitespace-nowrap">
-                {new Date(e.at).toLocaleString('de-DE')}
+                {formatDateTime(e.at)}
               </td>
               <td className="py-2 pr-3">{summarizeUserAgent(e.userAgent)}</td>
               <td className="py-2 pr-3 font-mono text-xs">{e.ip ?? '–'}</td>

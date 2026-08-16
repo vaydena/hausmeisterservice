@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { localDateTimeOptional, localDateTimeRequired } from './datetime-local';
+import { toLocalDateTimeInput } from '@/lib/utils/datetime-local';
 
 export const ENTRY_KINDS = ['work', 'break', 'travel', 'standby'] as const;
 export type TimeEntryKind = (typeof ENTRY_KINDS)[number];
@@ -37,21 +39,16 @@ const optionalUuid = z
 /**
  * Datetime aus dem <input type="datetime-local"> (yyyy-MM-ddTHH:mm) — wird als
  * lokale Berlin-Zeit interpretiert und in ISO umgewandelt.
+ *
+ * Sprint 113: der Kommentar stand hier schon, der Code hat es nicht getan.
+ * `new Date(v)` liest einen Wert ohne Zonensuffix als Lokalzeit des
+ * Node-Prozesses. Auf einem Server in UTC wurde aus einem eingetippten
+ * Arbeitsbeginn 09:00 damit 11:00 — und Arbeitszeiten sind hier die
+ * Lohngrundlage (§16 Abs. 2 ArbZG), keine Anzeigekosmetik.
  */
-const dateTimeLocal = z
-  .string()
-  .trim()
-  .min(1, 'Zeitpunkt fehlt.')
-  .refine((v) => !Number.isNaN(new Date(v).getTime()), 'Ungültiges Datum.')
-  .transform((v) => new Date(v).toISOString());
+const dateTimeLocal = localDateTimeRequired('Zeitpunkt fehlt.', 'Ungültiges Datum.');
 
-const dateTimeLocalOptional = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v && v.length > 0 ? v : null))
-  .refine((v) => v === null || !Number.isNaN(new Date(v).getTime()), 'Ungültiges Datum.')
-  .transform((v) => (v === null ? null : new Date(v).toISOString()));
+const dateTimeLocalOptional = localDateTimeOptional('Ungültiges Datum.');
 
 export const punchInSchema = z.object({
   kind: z.enum(ENTRY_KINDS).default('work'),
@@ -133,9 +130,14 @@ export function elapsedSince(startIso: string, now = new Date()): number {
   return Math.max(0, Math.round((now.getTime() - new Date(startIso).getTime()) / 60000));
 }
 
-/** Für <input type="datetime-local"> — ISO → yyyy-MM-ddTHH:mm (lokal). */
+/**
+ * Für <input type="datetime-local"> — ISO → yyyy-MM-ddTHH:mm (Berliner Zeit).
+ *
+ * Sprint 113: muss dieselbe Zone benutzen wie `dateTimeLocal` oben, sonst
+ * verschiebt jedes Oeffnen-und-Speichern eines Eintrags dessen Uhrzeit. Die
+ * Zeile stand vorher auf `getHours()` und damit auf der Prozess-Zeitzone —
+ * die eine Richtung haette also nach dem Fix zur anderen nicht mehr gepasst.
+ */
 export function toDateTimeLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toLocalDateTimeInput(iso);
 }

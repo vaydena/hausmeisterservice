@@ -3,7 +3,8 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
-import { csvResponse, parsePeriod, toCsv } from '@/lib/reports/utils';
+import { csvResponse, parsePeriodRange, toCsv } from '@/lib/reports/utils';
+import { formatDateTime } from '@/lib/utils/format';
 
 export async function GET(req: NextRequest) {
   const ctx = await requireTenantContext();
@@ -11,10 +12,11 @@ export async function GET(req: NextRequest) {
   if (!permissions.has('reporting.download')) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const url = new URL(req.url);
-  const { from, to } = parsePeriod(url.searchParams);
+  // Sprint 113: Berliner Kalendertage statt UTC — der Export muss denselben
+  // Zeitraum abdecken wie die Seite, sonst weichen Bericht und Lohn-CSV
+  // voneinander ab.
+  const { from, to, startIso, endIso } = parsePeriodRange(url.searchParams);
   const supabase = await createSupabaseServerClient();
-  const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
-  const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
   // Sprint 108: Diese Datei geht in die Lohnabrechnung. Zwei Aenderungen:
   //
@@ -31,8 +33,8 @@ export async function GET(req: NextRequest) {
     await supabase
       .from('time_entries')
       .select('user_id, kind, start_at, end_at, property_id, work_order_id, note')
-      .gte('start_at', fromIso)
-      .lte('start_at', toIso)
+      .gte('start_at', startIso)
+      .lt('start_at', endIso)
       .order('start_at', { ascending: true }),
     'Zeitbericht-Export: Zeiten',
   );
@@ -69,8 +71,13 @@ export async function GET(req: NextRequest) {
       return [
         userById.get(e.user_id) ?? '',
         e.kind,
-        new Date(e.start_at).toLocaleString('de-DE'),
-        e.end_at ? new Date(e.end_at).toLocaleString('de-DE') : 'NICHT BEENDET',
+        // Sprint 113: `toLocaleString('de-DE')` ohne Zone hat die Uhrzeit in
+        // der Zone des Servers ausgegeben. Auf einem Server in UTC stand in
+        // der Lohn-CSV im Sommer 07:00, wo der Mitarbeiter um 09:00 angefangen
+        // hat — bei unveraenderter Dauer-Spalte, also ohne dass die Summe
+        // widerspricht.
+        formatDateTime(e.start_at),
+        e.end_at ? formatDateTime(e.end_at) : 'NICHT BEENDET',
         mins,
         propById.get(e.property_id ?? '') ?? '',
         e.work_order_id ?? '',

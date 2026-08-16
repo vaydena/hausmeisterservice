@@ -13,6 +13,7 @@ import {
   type TimeEntryKind,
 } from '@/lib/schemas/time-tracking';
 import { punchInAction, punchOutAction } from './actions';
+import { formatTime } from '@/lib/utils/format';
 
 type Option = { id: string; label: string };
 type OpenEntry = {
@@ -165,10 +166,7 @@ function OpenPanel({
             {elapsed}
           </span>
           <span className="text-xs text-[var(--color-muted-foreground)]">
-            gestartet {new Date(entry.start_at).toLocaleTimeString('de-DE', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+            gestartet {formatTime(entry.start_at)}
           </span>
         </div>
 

@@ -5,6 +5,8 @@ import { getResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { PortalReplyForm } from './portal-reply-form';
+import { formatTime } from '@/lib/utils/format';
+import { addDaysToKey, toLocalDateKey, todayKey } from '@/lib/utils/datetime-local';
 
 export const metadata: Metadata = {
   title: 'Konversation · Bewohner-Portal',
@@ -12,36 +14,32 @@ export const metadata: Metadata = {
 
 function formatTimeOnly(iso: string | null | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('de-DE', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatTime(iso);
 }
 
-// Sprint 93: Datums-Trenner analog Messenger-Apps. Lokale Zeitzone reicht,
-// weil Bewohner und Server-Rendering im selben Kontext denken; jahres-
-// grenzuebergreifend fallen ohnehin die alten Nachrichten in "13. Aug 2025".
-function getDayKey(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
+/**
+ * Datums-Trenner analog Messenger-Apps.
+ *
+ * Sprint 93 stand hier: "Lokale Zeitzone reicht, weil Bewohner und
+ * Server-Rendering im selben Kontext denken." Diese Seite ist eine
+ * Server-Komponente, und der Server steht in UTC — der Kontext ist also nicht
+ * derselbe. Eine Nachricht von 00:30 Berliner Zeit landete unter dem Vortag,
+ * und "Heute" sprang schon um 22:00 auf "Gestern". Jetzt Berliner
+ * Kalendertage, wie ueberall sonst.
+ */
+const DAY_LABEL = new Intl.DateTimeFormat('de-DE', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
 
 function formatDayLabel(iso: string): string {
-  const date = new Date(iso);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dateStart = new Date(date);
-  dateStart.setHours(0, 0, 0, 0);
-  const diffDays = Math.round(
-    (today.getTime() - dateStart.getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (diffDays === 0) return 'Heute';
-  if (diffDays === 1) return 'Gestern';
-  return date.toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
+  const key = toLocalDateKey(iso);
+  if (!key) return '—';
+  if (key === todayKey()) return 'Heute';
+  if (key === addDaysToKey(todayKey(), -1)) return 'Gestern';
+  return DAY_LABEL.format(new Date(`${key}T00:00:00Z`));
 }
 
 export default async function PortalMessageThreadPage({
@@ -166,7 +164,7 @@ export default async function PortalMessageThreadPage({
           let lastDayKey: string | null = null;
           const nodes: React.ReactNode[] = [];
           for (const m of messages) {
-            const dayKey = getDayKey(m.sent_at);
+            const dayKey = toLocalDateKey(m.sent_at);
             if (dayKey !== lastDayKey) {
               nodes.push(
                 <li

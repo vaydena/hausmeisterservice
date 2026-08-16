@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea, Select, Field } from '@/components/ui/input';
 import { Card, CardBody, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import type { WorkOrderFormState } from './actions';
+import { toLocalDateTimeInput } from '@/lib/utils/datetime-local';
 
 const INITIAL: WorkOrderFormState = {};
 
@@ -25,13 +26,12 @@ type Order = {
   is_emergency?: boolean;
 };
 
-function toLocalDateTime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+// Sprint 113: Die Zeile lief ueber getHours() und damit ueber die Zeitzone
+// des Rechners, der rendert. Beim Server-Rendering ist das der Server, nach
+// der Hydration der Browser — das Feld konnte also unterwegs seinen Wert
+// aendern. Jetzt ist es beidseitig Berliner Zeit, genau wie das Schema, das
+// den Wert wieder einliest.
+const toLocalDateTime = toLocalDateTimeInput;
 
 export function WorkOrderForm({
   action,

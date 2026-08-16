@@ -9,7 +9,7 @@ import { describeUnclosedEntries, summarizeUnclosedEntries } from '@/lib/time-tr
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Field } from '@/components/ui/input';
-import { formatMinutes, parsePeriod } from '@/lib/reports/utils';
+import { formatMinutes, parsePeriodRange } from '@/lib/reports/utils';
 
 export const metadata: Metadata = { title: 'Zeitbericht' };
 
@@ -23,10 +23,12 @@ export default async function TimeReportPage({
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('reporting.view')) notFound();
 
-  const { from, to } = parsePeriod(sp);
+  // Sprint 113: Das Fenster lief ueber UTC-Kalendertage. Fuer genau diese
+  // Seite ist das die teuerste Variante des Fehlers: eine Fruehschicht ab
+  // 06:00 am Monatsersten faellt im Sommer in den Vormonat, und die Summe hier
+  // ist die Grundlage der Lohnabrechnung (§16 Abs. 2 ArbZG).
+  const { from, to, startIso, endIso } = parsePeriodRange(sp);
   const supabase = await createSupabaseServerClient();
-  const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
-  const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
   // Sprint 108: Diese Seite ist die Grundlage fuer Lohn- und
   // Kundenabrechnung. Ein verschluckter Query-Fehler wurde hier zu weniger
@@ -36,8 +38,8 @@ export default async function TimeReportPage({
     await supabase
       .from('time_entries')
       .select('user_id, kind, start_at, end_at, property_id')
-      .gte('start_at', fromIso)
-      .lte('start_at', toIso)
+      .gte('start_at', startIso)
+      .lt('start_at', endIso)
       .not('end_at', 'is', null),
     'Zeitbericht: abgeschlossene Zeiten',
   );
@@ -50,8 +52,8 @@ export default async function TimeReportPage({
     await supabase
       .from('time_entries')
       .select('user_id, start_at, end_at')
-      .gte('start_at', fromIso)
-      .lte('start_at', toIso)
+      .gte('start_at', startIso)
+      .lt('start_at', endIso)
       .is('end_at', null),
     'Zeitbericht: nicht beendete Zeiten',
   );

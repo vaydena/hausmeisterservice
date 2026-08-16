@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localDateTimeOptional } from './datetime-local';
 
 const optionalText = z
   .string()
@@ -16,15 +17,11 @@ const optionalNumber = z
     message: 'Ungültige Anzahl.',
   });
 
-const optionalDateTime = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v && v.length > 0 ? new Date(v).toISOString() : null))
-  .refine(
-    (v) => v === null || !Number.isNaN(new Date(v).getTime()),
-    'Ungültiges Datum.',
-  );
+// Sprint 113: Die Pruefung stand hier hinter dem Transform und kam damit zu
+// spaet — `new Date('kaputt').toISOString()` wirft eine RangeError, und die
+// faengt safeParse nicht. Ein POST mit unbrauchbarem planned_start hat also
+// einen 500 erzeugt statt eines Feldfehlers.
+const optionalDateTime = localDateTimeOptional('Ungültiges Datum.');
 
 const optionalUuid = z
   .string()

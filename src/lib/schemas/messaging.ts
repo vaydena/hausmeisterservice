@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { formatDateTime, formatTime } from '@/lib/utils/format';
+import { toLocalDateKey } from '@/lib/utils/datetime-local';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -65,17 +67,10 @@ export function formatMessageTime(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   const today = new Date();
-  const sameDay =
-    d.getDate() === today.getDate() &&
-    d.getMonth() === today.getMonth() &&
-    d.getFullYear() === today.getFullYear();
-  return sameDay
-    ? d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+  // Sprint 113: Der Tagesvergleich lief ueber getDate()/getMonth()/
+  // getFullYear(), also ueber die Zone des Prozesses. Auf einem Server in UTC
+  // galt eine Nachricht von 00:30 Berliner Zeit als "von gestern" und bekam
+  // statt der Uhrzeit das volle Datum.
+  const sameDay = toLocalDateKey(d) === toLocalDateKey(today);
+  return sameDay ? formatTime(d) : formatDateTime(d);
 }

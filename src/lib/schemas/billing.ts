@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatDateOnly } from '@/lib/utils/format';
 
 type BadgeTone = 'neutral' | 'primary' | 'success' | 'warning' | 'danger' | 'muted';
 
@@ -141,11 +142,10 @@ export function formatCents(cents: number | null | undefined): string {
   });
 }
 
+// Sprint 113: `issued_at` und `due_at` sind DATE-Spalten (siehe
+// 20260803001300_billing.sql) — reine Kalenderdaten ohne Uhrzeit.
 export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('de-DE');
+  return formatDateOnly(iso);
 }
 
 export function isOverdue(dueAt: string | null | undefined, status: InvoiceStatus): boolean {

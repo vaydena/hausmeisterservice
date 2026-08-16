@@ -16,6 +16,7 @@ import {
   getEmailProvider,
 } from '@/lib/email/provider';
 import type { BillingKind } from '@/lib/pdf/BillingDocument';
+import { formatDateOnly } from '@/lib/utils/format';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -86,11 +87,11 @@ function fieldErrorsFromZod(err: z.ZodError): Record<string, string> {
   return out;
 }
 
+// Sprint 113: `issued_at`/`due_at` sind DATE-Spalten — reine Kalenderdaten.
 function formatGermanDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('de-DE');
+  const formatted = formatDateOnly(iso);
+  return formatted === '–' ? null : formatted;
 }
 
 function pdfFilename(kind: BillingKind, code: string): string {

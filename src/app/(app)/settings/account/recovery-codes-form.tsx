@@ -5,6 +5,7 @@ import {
   generateMfaRecoveryCodesAction,
   type RecoveryCodesState,
 } from './actions';
+import { formatDateTime } from '@/lib/utils/format';
 
 const INITIAL: RecoveryCodesState = {};
 
@@ -32,7 +33,7 @@ export function RecoveryCodesForm({ unusedCount }: { unusedCount: number }) {
     const stamp = now.toISOString().slice(0, 10);
     const header = [
       'Hausmeister-App — Recovery-Codes fuer die Zwei-Faktor-Authentifizierung',
-      `Generiert am ${now.toLocaleString('de-DE')}`,
+      `Generiert am ${formatDateTime(now)}`,
       '',
       'Jeder Code kann genau EINMAL verwendet werden. Bewahren Sie diese',
       'Datei sicher auf (Passwort-Manager, Tresor). Ohne diese Codes und',

@@ -17,26 +17,30 @@ import {
   minutesBetween,
   type TimeEntryKind,
 } from '@/lib/schemas/time-tracking';
+import { formatTimeShort as formatTime } from '@/lib/schemas/scheduling';
+import {
+  addDaysToKey,
+  formatDayShort,
+  localDayRange,
+  startOfWeekKey,
+  toLocalDateKey,
+  todayKey,
+  type DayKey,
+} from '@/lib/utils/datetime-local';
 
 export const metadata: Metadata = { title: 'Team-Zeiten' };
 
-function startOfWeek(now = new Date()): Date {
-  const d = new Date(now);
-  const diff = (d.getDay() + 6) % 7;
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatWeekRange(start: Date): string {
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  const fmt = (d: Date) => d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-  return `${fmt(start)} – ${fmt(end)}`;
+/**
+ * Sprint 113: `startOfWeek` hat die Woche ueber `setHours(0,0,0,0)` und
+ * `getDay()` bestimmt, also in der Zeitzone des Node-Prozesses. Auf einem
+ * Server in UTC begann die Woche erst montags um 02:00 Berliner Zeit und
+ * endete entsprechend zwei Stunden in den naechsten Montag hinein. Genau die
+ * fruehen Schichten am Wochenanfang fehlten damit in der Summe, die eine
+ * Fuehrungskraft hier liest — und die Stunden des Folgemontags standen
+ * stattdessen drin.
+ */
+function formatWeekRange(startKey: DayKey): string {
+  return `${formatDayShort(startKey)} – ${formatDayShort(addDaysToKey(startKey, 6))}`;
 }
 
 export default async function TimeTrackingTeamPage({
@@ -52,9 +56,9 @@ export default async function TimeTrackingTeamPage({
   const params = await searchParams;
   const selectedEmployeeId = params.employee ?? null;
 
-  const week = startOfWeek();
-  const weekEnd = new Date(week);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekStart = startOfWeekKey(todayKey());
+  const week = localDayRange(weekStart, addDaysToKey(weekStart, 6));
+  if (!week) throw new Error(`Team-Zeiten: Wochenraster unlesbar (${weekStart}).`);
 
   const [employeesRes, entriesRes] = await Promise.all([
     supabase
@@ -64,8 +68,8 @@ export default async function TimeTrackingTeamPage({
     supabase
       .from('time_entries')
       .select('id, employee_id, kind, start_at, end_at, work_order_id, property_id, note')
-      .gte('start_at', week.toISOString())
-      .lt('start_at', weekEnd.toISOString())
+      .gte('start_at', week.startIso)
+      .lt('start_at', week.endIso)
       .order('start_at', { ascending: false })
       .limit(2000),
   ]);
@@ -140,7 +144,7 @@ export default async function TimeTrackingTeamPage({
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <PageHeader
         title="Team-Zeiten"
-        description={`Woche ${formatWeekRange(week)} · gesamt ${formatDurationMinutes(totalMinutes)}`}
+        description={`Woche ${formatWeekRange(weekStart)} · gesamt ${formatDurationMinutes(totalMinutes)}`}
       />
 
       {unclosedNote && (
@@ -211,11 +215,7 @@ export default async function TimeTrackingTeamPage({
                         <div className="flex flex-col gap-1">
                           <div className="flex flex-wrap items-center gap-2 text-sm">
                             <span className="text-[var(--color-muted-foreground)]">
-                              {new Date(e.start_at).toLocaleDateString('de-DE', {
-                                weekday: 'short',
-                                day: '2-digit',
-                                month: '2-digit',
-                              })}
+                              {formatDayShort(toLocalDateKey(e.start_at))}
                             </span>
                             <span className="font-mono tabular-nums">
                               {formatTime(e.start_at)} –{' '}

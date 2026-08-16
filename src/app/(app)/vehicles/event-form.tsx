@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input, Textarea, Select, Field } from '@/components/ui/input';
 import { EVENT_KINDS, EVENT_KIND_LABEL, type EventKind } from '@/lib/schemas/vehicles';
 import { recordVehicleEventAction } from './actions';
+import { todayKey } from '@/lib/utils/datetime-local';
 
+// Sprint 113: lief ueber getFullYear()/getMonth()/getDate(), also ueber die
+// Zeitzone des Rechners, der rendert. Beim Server-Rendering war das der
+// Server; auf einem in UTC stand vor 02:00 Berliner Zeit noch das Datum von
+// gestern im Feld — und der Fahrzeug-Termin wurde entsprechend zurueckdatiert.
 function todayISO(): string {
-  const d = new Date();
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return todayKey();
 }
 
 /**

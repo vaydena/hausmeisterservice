@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input, Field } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { formatEuro, formatNumber, parsePeriod } from '@/lib/reports/utils';
+import { formatEuro, formatNumber, parsePeriodRange } from '@/lib/reports/utils';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Materialbericht' };
@@ -23,10 +23,9 @@ export default async function MaterialsReportPage({
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
   if (!permissions.has('reporting.view')) notFound();
 
-  const { from, to } = parsePeriod(sp);
+  // Sprint 113: Zeitfenster jetzt Berliner Kalendertage, Ende exklusiv.
+  const { from, to, startIso, endIso } = parsePeriodRange(sp);
   const supabase = await createSupabaseServerClient();
-  const fromIso = new Date(`${from}T00:00:00Z`).toISOString();
-  const toIso = new Date(`${to}T23:59:59Z`).toISOString();
 
   const [materialsRes, movementsRes] = await Promise.all([
     supabase
@@ -37,8 +36,8 @@ export default async function MaterialsReportPage({
     supabase
       .from('stock_movements')
       .select('material_id, kind, quantity, unit_cost_at_time, occurred_at')
-      .gte('occurred_at', fromIso)
-      .lte('occurred_at', toIso),
+      .gte('occurred_at', startIso)
+      .lt('occurred_at', endIso),
   ]);
   const mats = unwrapRows(materialsRes, 'Auswertungen: materials');
   const movs = unwrapRows(movementsRes, 'Auswertungen: stock_movements');

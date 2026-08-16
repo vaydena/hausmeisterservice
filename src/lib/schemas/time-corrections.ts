@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ENTRY_KINDS } from './time-tracking';
+import { localDateTimeOptional } from './datetime-local';
 
 export const CORRECTION_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn'] as const;
 export type CorrectionStatus = (typeof CORRECTION_STATUSES)[number];
@@ -39,13 +40,11 @@ const optionalText = (max: number) =>
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null));
 
-const dateTimeLocalOptional = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => (v && v.length > 0 ? v : null))
-  .refine((v) => v === null || !Number.isNaN(new Date(v).getTime()), 'Ungültiges Datum.')
-  .transform((v) => (v === null ? null : new Date(v).toISOString()));
+// Sprint 113: Ein Korrekturantrag schlaegt eine andere Uhrzeit vor als die
+// erfasste. Wurde der Vorschlag in einer anderen Zone gelesen als der
+// Bestand, verglich die Genehmigung zwei Zahlen, die nicht zueinander
+// gehoerten — und genehmigt wird hier Arbeitszeit.
+const dateTimeLocalOptional = localDateTimeOptional('Ungültiges Datum.');
 
 const optionalKind = z
   .string()

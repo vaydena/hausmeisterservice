@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatDate } from '@/lib/utils/format';
 
 export const NOTIFICATION_KINDS = [
   'work_order_assigned',
@@ -117,5 +118,5 @@ export function formatRelativeGerman(iso: string): string {
   if (h < 24) return `vor ${h} Std.`;
   const d = Math.round(h / 24);
   if (d < 7) return `vor ${d} Tag${d === 1 ? '' : 'en'}`;
-  return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return formatDate(iso);
 }

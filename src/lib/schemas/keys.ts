@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { localDateTimeOptional } from './datetime-local';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -71,11 +72,13 @@ export const issueSchema = z
     holder_user_id: optionalUuid,
     holder_name: optionalShort,
     holder_contact: optionalShort,
-    expected_return_at: z
-      .string()
-      .trim()
-      .optional()
-      .transform((v) => (v && v.length > 0 ? v : null)),
+    // Sprint 113: hier stand gar keine Datumspruefung — der Rohstring ging an
+    // Postgres und wurde dort in UTC gelesen. "Rueckgabe bis Donnerstag
+    // 18:00" lag damit in der Datenbank auf 18:00Z und wurde als 20:00
+    // angezeigt. Der Schluessel galt zwei Stunden laenger als vereinbart
+    // nicht als ueberfaellig — genau der Zustand, den Sprint 110 fuer diese
+    // Tabelle geschlossen hat.
+    expected_return_at: localDateTimeOptional('Ungültiger Rückgabezeitpunkt.'),
     copies_count: z.coerce.number().int().min(1).max(999).default(1),
     reference_work_order_id: optionalUuid,
     note: optionalText,

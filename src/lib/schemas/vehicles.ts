@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatDateOnly } from '@/lib/utils/format';
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -214,7 +215,8 @@ export const EVENT_KIND_TONE: Record<EventKind, 'success' | 'muted' | 'warning' 
  * 24-Stunden-Bloecken rechnet.
  */
 export function dueLabel(dueDate: string | null | undefined): string {
-  if (!dueDate) return '—';
-  const d = new Date(dueDate);
-  return d.toLocaleDateString('de-DE');
+  // Sprint 113: `next_tuev_at` & Co. sind DATE-Spalten. `new Date()` liest sie
+  // als UTC-Mitternacht; sie danach in einer Zone zu formatieren, stellt einer
+  // Angabe ohne Uhrzeit eine Zeitzonenfrage. Deshalb `formatDateOnly`.
+  return formatDateOnly(dueDate);
 }

@@ -8,6 +8,7 @@ import {
   type PortalAccountActionState,
   type PortalMfaEnrollState,
 } from './actions';
+import { formatDate } from '@/lib/utils/format';
 
 type Factor = {
   id: string;
@@ -57,7 +58,7 @@ export function PortalMfaForm({ factors }: { factors: Factor[] }) {
                   {f.friendlyName ?? 'Authenticator-App'}
                 </p>
                 <p className="text-xs text-[var(--color-muted-foreground)]">
-                  Aktiv seit {new Date(f.createdAt).toLocaleDateString('de-DE')}
+                  Aktiv seit {formatDate(f.createdAt)}
                 </p>
               </div>
               <form action={unenrollAction}>

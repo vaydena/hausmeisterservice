@@ -160,8 +160,8 @@ export async function softDeleteMeterAction(formData: FormData): Promise<void> {
 }
 
 /**
- * Neue Ablesung — read_at kommt als lokales datetime-local aus dem Form, wird
- * zu ISO konvertiert.
+ * Neue Ablesung — read_at kommt als lokales datetime-local aus dem Form und
+ * wird im Schema als Berliner Zeit in einen ISO-Zeitpunkt umgerechnet.
  *
  * Sprint 111, Plausibilitaet: ein Zaehler laeuft nicht rueckwaerts. Diese
  * Regel stand vorher auf zwei wackligen Beinen.
@@ -206,7 +206,9 @@ export async function addReadingAction(formData: FormData): Promise<void> {
   );
   if (!meter) throw new Error('Zähler nicht gefunden.');
 
-  const readIso = new Date(parsed.data.read_at).toISOString();
+  // Sprint 113: `read_at` kommt bereits als ISO-Zeitpunkt aus dem Schema —
+  // dort in Berliner Zeit verankert statt hier in der Prozess-Zeitzone.
+  const readIso = parsed.data.read_at;
 
   // Nur die beiden direkten Nachbarn, nicht die ganze Reihe: mit
   // source 'gateway' ist eine hochfrequente Ablesehistorie vorgesehen, und

@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { formatDateTime } from '@/lib/utils/format';
+import { formatDateOnly, formatDateTime } from '@/lib/utils/format';
 import {
   SOURCE_LABEL,
   STATUS_LABEL,
@@ -382,13 +382,13 @@ export default async function MeterDetailPage({
                 {meter.installed_at && (
                   <div className="flex justify-between gap-4">
                     <dt className="text-[var(--color-muted-foreground)]">Eingebaut</dt>
-                    <dd>{new Date(meter.installed_at).toLocaleDateString('de-DE')}</dd>
+                    <dd>{formatDateOnly(meter.installed_at)}</dd>
                   </div>
                 )}
                 {meter.last_replacement_at && (
                   <div className="flex justify-between gap-4">
                     <dt className="text-[var(--color-muted-foreground)]">Letzter Wechsel</dt>
-                    <dd>{new Date(meter.last_replacement_at).toLocaleDateString('de-DE')}</dd>
+                    <dd>{formatDateOnly(meter.last_replacement_at)}</dd>
                   </div>
                 )}
               </dl>

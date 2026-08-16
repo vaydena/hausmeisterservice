@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { summarizeUserAgent } from '@/lib/ua/summarize';
 import type { UserSession } from '@/lib/auth/user-sessions';
 import { revokePortalSessionAction, type PortalAccountActionState } from './actions';
+import { formatDateTime } from '@/lib/utils/format';
 
 const INITIAL: PortalAccountActionState = {};
 
@@ -11,7 +12,7 @@ function formatWhen(iso: string | null): string {
   if (!iso) return '–';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '–';
-  return d.toLocaleString('de-DE');
+  return formatDateTime(d);
 }
 
 function relativeLastSeen(iso: string | null): string {

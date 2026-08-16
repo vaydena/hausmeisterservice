@@ -16,6 +16,7 @@ import {
   correctionDiff,
   type CorrectionStatus,
 } from '@/lib/schemas/time-corrections';
+import { formatDate } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Korrekturanträge' };
 
@@ -28,12 +29,9 @@ const FILTER_LABEL: Record<Filter, string> = {
   all: 'Alle',
 };
 
+// Sprint 113: ohne `timeZone` war das der Kalendertag der Prozess-Zone.
 function fmt(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
+  return formatDate(iso);
 }
 
 export default async function TimeCorrectionsPage({

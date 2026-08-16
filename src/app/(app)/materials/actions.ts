@@ -178,7 +178,8 @@ export async function recordMovementAction(formData: FormData): Promise<void> {
   }
 
   const signed = signedQuantity(parsed.data.kind, parsed.data.quantity, parsed.data.direction);
-  const occurredIso = new Date(parsed.data.occurred_at).toISOString();
+  // Sprint 113: bereits im Schema als Berliner Zeit verankert.
+  const occurredIso = parsed.data.occurred_at;
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.from('stock_movements').insert({

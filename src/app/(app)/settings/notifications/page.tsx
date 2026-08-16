@@ -5,15 +5,12 @@ import { unwrapRows } from '@/lib/supabase/unwrap';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { PushSubscriptionsPanel } from './push-panel';
+import { formatDateTime as formatBerlinDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Benachrichtigungen' };
 
 function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  return iso ? formatBerlinDateTime(iso) : '—';
 }
 
 export default async function NotificationsSettingsPage() {

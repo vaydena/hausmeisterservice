@@ -16,15 +16,12 @@ import {
 import { parseActionConfig, parseTriggerConfig } from '@/lib/schemas/automations';
 import { RuleAdminBar } from './admin-bar';
 import { unwrapMaybeRow, unwrapRows, unwrapRowsWithCount } from '@/lib/supabase/unwrap';
+import { formatDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'Automatisierungs-Regel' };
 
 function fmt(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? '—'
-    : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  return iso ? formatDateTime(iso) : '—';
 }
 
 export default async function AutomationDetailPage({

@@ -5,6 +5,16 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { describeOwnOpenEntry } from '@/lib/time-tracking/unclosed';
+import { formatTimeShort } from '@/lib/schemas/scheduling';
+import {
+  addDaysToKey,
+  formatDayKey,
+  formatDayShort,
+  localDayRange,
+  startOfWeekKey,
+  toLocalDateKey,
+  todayKey,
+} from '@/lib/utils/datetime-local';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,38 +30,21 @@ import {
 
 export const metadata: Metadata = { title: 'Zeiterfassung' };
 
-const WEEKDAY_LABEL: Record<number, string> = {
-  0: 'So',
-  1: 'Mo',
-  2: 'Di',
-  3: 'Mi',
-  4: 'Do',
-  5: 'Fr',
-  6: 'Sa',
-};
-
-function startOfWeekBerlin(now = new Date()): Date {
-  const d = new Date(now);
-  const day = d.getDay();
-  const diff = (day + 6) % 7;
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-DE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
-
+/**
+ * Sprint 113: Diese Seite hiess `startOfWeekBerlin`, hat die Woche aber ueber
+ * `setHours(0,0,0,0)` und `getDay()` bestimmt — also in der Zeitzone des
+ * Node-Prozesses. Auf einem Server in UTC begann die Woche damit erst am
+ * Montag um 02:00 Berliner Zeit; eine Fruehschicht ab 06:00, die jemand
+ * Sonntagnacht gestempelt hat, fiel aus dem Raster. Auch die Tagesgruppierung
+ * lief ueber den UTC-Tag: ein Einsatz ab 00:30 stand unter dem Vortag, und
+ * dessen Tagessumme wuchs entsprechend.
+ *
+ * Beides rechnet jetzt auf Tagesschluesseln, die Zone steht nur noch dort, wo
+ * sie hingehoert: beim Umrechnen in Zeitpunkte fuer die Query und beim
+ * Zuordnen eines Zeitstempels zu seinem Tag.
+ */
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatTimeShort(iso);
 }
 
 export default async function TimeTrackingPage() {
@@ -63,9 +56,13 @@ export default async function TimeTrackingPage() {
   const canEdit = permissions.has('time_tracking.edit');
   const canViewOthers = permissions.has('time_tracking.view_others');
 
-  const weekStart = startOfWeekBerlin();
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  const weekStart = startOfWeekKey(todayKey());
+  // Der Wochenrahmen war schon immer gemeint — `weekEnd` wurde hier berechnet
+  // und dann nie benutzt, die Query hatte nur eine untere Grenze. Ohne obere
+  // Grenze zaehlt "Arbeitszeit diese Woche" auch nachgetragene Zeiten der
+  // Folgewochen mit.
+  const week = localDayRange(weekStart, addDaysToKey(weekStart, 6));
+  if (!week) throw new Error(`Zeiterfassung: Wochenraster unlesbar (${weekStart}).`);
 
   const [openRes, entriesRes, propsRes, workOrdersRes] = await Promise.all([
     supabase
@@ -82,7 +79,8 @@ export default async function TimeTrackingPage() {
         'id, kind, start_at, end_at, work_order_id, property_id, note, source',
       )
       .eq('user_id', ctx.userId)
-      .gte('start_at', weekStart.toISOString())
+      .gte('start_at', week.startIso)
+      .lt('start_at', week.endIso)
       .order('start_at', { ascending: false })
       .limit(200),
     supabase
@@ -119,7 +117,7 @@ export default async function TimeTrackingPage() {
 
   const byDay = new Map<string, typeof entries>();
   for (const e of entries) {
-    const dayKey = new Date(e.start_at).toISOString().slice(0, 10);
+    const dayKey = toLocalDateKey(e.start_at);
     const arr = byDay.get(dayKey) ?? [];
     arr.push(e);
     byDay.set(dayKey, arr);
@@ -145,7 +143,7 @@ export default async function TimeTrackingPage() {
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <PageHeader
         title="Zeiterfassung"
-        description={`Woche vom ${formatDate(weekStart.toISOString())}`}
+        description={`Woche vom ${formatDayKey(weekStart)}`}
         action={
           <div className="flex gap-2">
             {canViewOthers && (
@@ -203,17 +201,10 @@ export default async function TimeTrackingPage() {
               const dayTotal = dayEntries
                 .filter((e) => e.kind === 'work' && e.end_at)
                 .reduce((sum, e) => sum + minutesBetween(e.start_at, e.end_at), 0);
-              const dayDate = new Date(day + 'T00:00:00');
               return (
                 <div key={day} className="flex flex-col gap-2">
                   <div className="flex items-baseline justify-between border-b border-[var(--color-border)] pb-1">
-                    <h3 className="text-sm font-semibold">
-                      {WEEKDAY_LABEL[dayDate.getDay()]}{' '}
-                      {dayDate.toLocaleDateString('de-DE', {
-                        day: '2-digit',
-                        month: '2-digit',
-                      })}
-                    </h3>
+                    <h3 className="text-sm font-semibold">{formatDayShort(day)}</h3>
                     <span className="text-xs text-[var(--color-muted-foreground)]">
                       {formatDurationMinutes(dayTotal)}
                     </span>

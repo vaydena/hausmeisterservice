@@ -15,6 +15,7 @@ import {
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { PortalMfaReminderBanner } from './portal-mfa-reminder-banner';
 import { PortalWelcomeOverlay } from './portal-welcome-overlay';
+import { formatDate } from '@/lib/utils/format';
 
 // Sprint 36: Portal-Reminder bleibt nach Dismiss 7 Tage stumm, danach
 // wieder sichtbar. Analog zum Staff-Banner in Sprint 28 — der zweite
@@ -374,7 +375,7 @@ export default async function PortalDashboardPage() {
                         </div>
                         {a.published_at && (
                           <p className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
-                            {new Date(a.published_at).toLocaleDateString('de-DE')}
+                            {formatDate(a.published_at)}
                           </p>
                         )}
                       </div>
