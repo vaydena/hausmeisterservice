@@ -286,7 +286,35 @@ Es fehlt eine `.so`, und seit Sprint 129 ist gemessen, welche:
 
 **Die Bibliothek von libvips selbst fehlt** — nicht eine Systembibliothek darunter. Das Paketverzeichnis ist erreichbar (Node hat dessen `package.json` gelesen), aber die Datei, die das Paket in seiner eigenen exports-Map als `./binary` ausweist, liegt nicht auf der Platte.
 
-Dazu gemessen (`npm view @img/sharp-libvips-linux-x64@1.3.2`): **sechs Dateien, kein Install-Script, 18,2 MB entpackt.** Die `.so` wird nicht nachgeladen, sie liegt im Tarball. Sie kann also nur beim Auspacken oder beim Ausliefern verlorengehen — und daneben liegt eine wenige hundert Byte große JS-Datei im selben Verzeichnis. **`libvips.lib` sagt ab Sprint 130, ob nur die große Datei fehlt (⟹ Hoster) oder das ganze Verzeichnis (⟹ Install-Lauf).**
+Dazu gemessen (`npm view @img/sharp-libvips-linux-x64@1.3.2`): **sechs Dateien, kein Install-Script, 18,2 MB entpackt.** Die `.so` wird nicht nachgeladen, sie liegt im Tarball. Sie kann also nur beim Auspacken oder beim Ausliefern verlorengehen.
+
+Sprint 130 hat daneben die kleine Datei aus demselben Verzeichnis gemessen, und damit ist die Frage entschieden:
+
+```json
+"libvips": { "present": true, "binary": false, "lib": true }
+```
+
+**Nur die große Datei fehlt.** Im Vergleich:
+
+| Datei | Größe | auf dem Server |
+| --- | --- | --- |
+| `@img/sharp-linux-x64` (das `.node`-Binary) | 427 KB entpackt | **da** — es wurde geladen, daher überhaupt `ERR_DLOPEN_FAILED` |
+| `@img/sharp-libvips-linux-x64` → `lib/index.js` | wenige hundert Byte | **da** |
+| `@img/sharp-libvips-linux-x64` → `lib/libvips-cpp.so.8.18.3` | **18,2 MB** | **fehlt** |
+
+Alles unter einem halben MB kommt an, die eine 18-MB-Datei nicht — und zwar aus demselben Verzeichnis wie eine Datei, die ankommt. **Über drei unabhängige Deploys hinweg identisch** (`48e4cb2`, `dbc2448`, `01239ac`). Damit ist „einmal neu deployen" bereits dreimal widerlegt: kein abgebrochener Transfer, sondern eine Regel im Ausliefern oder Auspacken — entweder eine Größenschranke oder ein Ausschluss nach Dateityp (`*.so`). Welche von beiden, lässt sich von außen nicht unterscheiden; **der Adressat und die Bitte sind in beiden Fällen dieselben.**
+
+### Was der Betreiber damit tun kann
+
+**Nicht** nachinstallieren, **nicht** den KI-Reparaturknopf drücken — es fehlt kein Paket, und der Install-Lauf ist nachweislich nicht schuld.
+
+Zuerst selbst prüfbar: Plattenkontingent im hPanel. Reicht der Platz, dann eine Support-Anfrage mit genau diesem Inhalt:
+
+> Auf meinem Node.js-Hosting fehlt nach jedem Deploy eine einzelne Datei aus `node_modules`:
+> `@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.8.18.3` (18,2 MB).
+> Die übrigen Dateien desselben Pakets sind vorhanden, ebenso ein 427 KB großes Binary aus einem Nachbarpaket. Reproduzierbar über drei Deploys. Gibt es im Build- oder Deploy-Schritt eine Größenschranke pro Datei oder einen Ausschluss für `*.so`?
+
+**Dringlichkeit: niedrig.** Die Uploads laufen über den WASM-Rückfall, rund 2,4× langsamer bei voller Funktion. Es geht um Geschwindigkeit, nicht um eine kaputte Funktion.
 
 > **Korrektur zum bisherigen Stand.** Bis Sprint 129 stand hier und im Runbook, ein fehlendes `@img/sharp-libvips-linux-x64` sei „durch Messung ausgeschlossen". Das war es nicht. Die libvips-Pakete haben keinen `"."`-Eintrag in ihrer exports-Map, `require.resolve` auf den blanken Paketnamen endet deshalb immer in `ERR_PACKAGE_PATH_NOT_EXPORTED`, und das zählt die Probe absichtlich als „gefunden". **`libvips.present` konnte nie `false` werden**, auch bei leerem `lib/`-Verzeichnis nicht. Ein Messwert, der nur ein Ergebnis kennt, schließt nichts aus. Deshalb misst `libvips.binary` jetzt die Datei statt das Paket.
 
