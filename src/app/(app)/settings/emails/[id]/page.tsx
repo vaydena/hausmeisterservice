@@ -7,6 +7,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ModuleLink } from '@/components/ui/module-link';
 import { formatDateTime } from '@/lib/utils/format';
 import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
@@ -226,9 +227,13 @@ export default async function SentEmailDetailPage({ params }: { params: Promise<
             </dt>
             <dd>
               {link ? (
-                <Link href={link} className="underline-offset-2 hover:underline">
-                  {bereichLabel} öffnen
-                </Link>
+                // Siehe Liste: Ziel im Abrechnungsmodul, Seite unter /settings.
+                // Nur der Bereichsname als Linktext, ohne "öffnen": faellt der
+                // Link bei abgeschaltetem Modul weg, bliebe sonst eine
+                // Aufforderung stehen, der man nicht nachkommen kann.
+                <ModuleLink href={link} className="underline-offset-2 hover:underline">
+                  {bereichLabel}
+                </ModuleLink>
               ) : (
                 <span>{bereichLabel}</span>
               )}

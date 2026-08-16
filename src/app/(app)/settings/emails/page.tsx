@@ -8,6 +8,7 @@ import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { PageHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ModuleLink } from '@/components/ui/module-link';
 import { formatDateTime } from '@/lib/utils/format';
 
 export const metadata: Metadata = { title: 'E-Mail-Log' };
@@ -209,9 +210,12 @@ export default async function SentEmailsPage({
                     </td>
                     <td className="px-4 py-2">
                       {link ? (
-                        <Link href={link} className="underline-offset-2 hover:underline">
+                        // ModuleLink: das Ziel liegt immer im Abrechnungsmodul,
+                        // das E-Mail-Log aber unter /settings. Ist Abrechnung
+                        // abgeschaltet, bleibt der Bereichsname stehen.
+                        <ModuleLink href={link} className="underline-offset-2 hover:underline">
                           {bereichLabel}
-                        </Link>
+                        </ModuleLink>
                       ) : (
                         <span>{bereichLabel}</span>
                       )}

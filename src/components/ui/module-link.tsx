@@ -1,9 +1,7 @@
 import 'server-only';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { requireTenantContext } from '@/lib/tenant/current';
-import { isModuleAvailable } from '@/lib/modules/enabled';
-import { moduleForPath } from '@/lib/modules/module-map';
+import { hrefAvailable } from '@/lib/modules/href-guard';
 
 /**
  * Sprint 119: Links auf ein fremdes Modul.
@@ -23,15 +21,12 @@ import { moduleForPath } from '@/lib/modules/module-map';
  * Kosten: `getTenantContext()` und `getAvailableModules()` sind beide
  * `cache`d. Eine Tabelle mit 50 Zeilen kostet dieselbe eine Abfrage wie ein
  * einzelner Link.
+ *
+ * Sprint 121: Die Pruefung selbst steht in `lib/modules/href-guard.ts`. Nicht
+ * jeder Sprung auf ein fremdes Modul geht durch ein `<a>` — der Klick auf eine
+ * Benachrichtigung landet in einer Server-Action, die `redirect()` aufruft und
+ * dieselbe Frage beantworten muss.
  */
-
-async function targetAvailable(href: string): Promise<boolean> {
-  const moduleKey = moduleForPath(href);
-  // Kein Modul-Gate auf dem Ziel: Kernrouten, /settings/konto, /hilfe.
-  if (!moduleKey) return true;
-  const ctx = await requireTenantContext();
-  return isModuleAvailable(ctx.tenantId, moduleKey);
-}
 
 interface ModuleLinkProps {
   href: string;
@@ -65,7 +60,7 @@ export async function ModuleLink({
   target,
   children,
 }: ModuleLinkProps) {
-  if (await targetAvailable(href)) {
+  if (await hrefAvailable(href)) {
     return (
       <Link href={href} className={className} title={title} target={target}>
         {children}
@@ -85,5 +80,5 @@ export async function ModuleLink({
  * keiner: er verspricht eine Funktion, die dieser Mandant abbestellt hat.
  */
 export async function ModuleGate({ href, children }: { href: string; children: ReactNode }) {
-  return (await targetAvailable(href)) ? <>{children}</> : null;
+  return (await hrefAvailable(href)) ? <>{children}</> : null;
 }

@@ -3,42 +3,19 @@
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
 import { dismissOnboardingAction } from './onboarding-actions';
+import type { OnboardingStep } from './onboarding-steps';
 
-interface Step {
-  title: string;
-  body: string;
-  href?: string;
-  cta?: string;
-}
-
-const STEPS: Step[] = [
-  {
-    title: '1. Ihr erstes Objekt anlegen',
-    body: 'Erfassen Sie das erste Gebäude oder Objekt, das Sie betreuen. Später können Sie Wohnungen, Zähler und Schlüssel darunter organisieren.',
-    href: '/properties/new',
-    cta: 'Objekt anlegen',
-  },
-  {
-    title: '2. Mitarbeiter einladen',
-    body: 'Fügen Sie Ihr Team hinzu und weisen Sie Rollen zu — Vorarbeiter, Hausmeister, Reinigungskraft usw. Jeder bekommt eine Einladung per E-Mail.',
-    href: '/settings/users',
-    cta: 'Team verwalten',
-  },
-  {
-    title: '3. Ersten Auftrag erstellen',
-    body: 'Ein Auftrag ist die kleinste Arbeitseinheit — vom Wasserhahn-Wechsel bis zur Winterdienst-Runde. Zuweisen, dokumentieren, abschließen.',
-    href: '/work-orders/new',
-    cta: 'Auftrag anlegen',
-  },
-  {
-    title: '4. Rechnungs-Absenderdaten hinterlegen',
-    body: 'Firmenanschrift, Steuernummer und Bankverbindung — damit Ihre späteren Rechnungen und Angebote als PDF gültig sind.',
-    href: '/settings/tenant',
-    cta: 'Mandantendaten',
-  },
-];
-
-export function WelcomeOverlay({ tenantName }: { tenantName: string }) {
+/**
+ * `steps` kommt vom Server, nicht aus einer Konstante hier: zwei der Ziele
+ * liegen in abschaltbaren Modulen. Siehe `onboarding-steps.ts`.
+ */
+export function WelcomeOverlay({
+  tenantName,
+  steps,
+}: {
+  tenantName: string;
+  steps: OnboardingStep[];
+}) {
   const [open, setOpen] = useState(true);
   const [pending, startTransition] = useTransition();
 
@@ -95,7 +72,7 @@ export function WelcomeOverlay({ tenantName }: { tenantName: string }) {
         </header>
 
         <ol className="mt-6 space-y-4">
-          {STEPS.map((step) => (
+          {steps.map((step) => (
             <li
               key={step.title}
               className="rounded-xl border border-[var(--color-border)] p-4"

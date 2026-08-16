@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ModuleLink } from '@/components/ui/module-link';
 import { formatDateTime } from '@/lib/utils/format';
 import {
   ACTIONS_BY_KEY,
@@ -187,9 +188,12 @@ export default async function AutomationRunDetailPage({
                       <tr key={`${d.entity_type}-${d.entity_id}-${d.dispatch_key}`}>
                         <td className="py-2 pr-4">
                           {link ? (
-                            <Link href={link} className="underline-offset-2 hover:underline">
+                            // Jedes Ziel von entityLink() liegt in einem
+                            // fremden Modul — Abrechnung, Meldungen, Auftraege,
+                            // Wartung. Der Lauf selbst gehoert zu automations.
+                            <ModuleLink href={link} className="underline-offset-2 hover:underline">
                               {label}
-                            </Link>
+                            </ModuleLink>
                           ) : (
                             <span>{label}</span>
                           )}

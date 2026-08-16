@@ -7,11 +7,17 @@ import { Badge } from '@/components/ui/badge';
 
 type BadgeTone = 'primary' | 'warning' | 'neutral' | 'muted';
 
+/**
+ * Sprint 121: Kein `href` mehr. Das Feld wurde befuellt, aber nie gerendert —
+ * geklickt wird der Formular-Knopf, der `openAction` ausloest, und die
+ * entscheidet serverseitig ueber das Ziel. Ein mitgeschlepptes `href` legt
+ * nahe, hier gaebe es einen Link, den man absichern muesste; die Pruefung
+ * sitzt in der Action.
+ */
 export interface NotificationDropdownItem {
   id: string;
   subject: string;
   body: string | null;
-  href: string;
   isUnread: boolean;
   relative: string;
   label: string;

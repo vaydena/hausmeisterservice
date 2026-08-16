@@ -3,8 +3,6 @@ import {
   NOTIFICATION_KIND_LABEL,
   NOTIFICATION_KIND_TONE,
   formatRelativeGerman,
-  notificationHref,
-  type NotificationEntityType,
   type NotificationKind,
 } from '@/lib/schemas/notifications';
 import { openNotificationAction } from '@/app/(app)/notifications/actions';
@@ -24,7 +22,9 @@ export async function NotificationBell() {
       .is('read_at', null),
     supabase
       .from('notifications')
-      .select('id, kind, subject, body, entity_type, entity_id, url, read_at, created_at')
+      // Ohne entity_type/entity_id/url: das Ziel loest die Server-Action beim
+      // Klick selbst auf, die Glocke braucht es nicht.
+      .select('id, kind, subject, body, read_at, created_at')
       .order('created_at', { ascending: false })
       .limit(10),
   ]);
@@ -35,11 +35,6 @@ export async function NotificationBell() {
     kind: n.kind as NotificationKind,
     subject: n.subject,
     body: n.body,
-    href: notificationHref(
-      (n.entity_type as NotificationEntityType | null) ?? null,
-      n.entity_id,
-      n.url,
-    ),
     isUnread: n.read_at === null,
     relative: formatRelativeGerman(n.created_at),
   }));

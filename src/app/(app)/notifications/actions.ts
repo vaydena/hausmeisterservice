@@ -11,6 +11,7 @@ import {
   type NotificationEntityType,
 } from '@/lib/schemas/notifications';
 import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
+import { hrefAvailable } from '@/lib/modules/href-guard';
 
 export async function markNotificationReadAction(formData: FormData): Promise<void> {
   await requireTenantContext();
@@ -56,6 +57,20 @@ export async function dismissNotificationAction(formData: FormData): Promise<voi
  * Markiert die Notification als gelesen und redirected auf ihr Ziel. Wird von
  * Bell-Dropdown und Inbox verwendet, damit Klick = "als gelesen + öffnen" in
  * einem einzigen Server-Roundtrip.
+ *
+ * Sprint 121: Das Ziel kann in einem abgeschalteten Modul liegen. Eine
+ * Benachrichtigung ueberlebt die Entscheidung, ihr Modul abzuschalten — sie
+ * steht schon in der Tabelle, wenn der Schalter faellt, und die Glocke zeigt
+ * sie weiter an. Der Klick landete damit auf einer 404, und zwar an der
+ * unangenehmsten Stelle: der Nutzer hat nichts falsch gemacht, er hat auf
+ * etwas geklickt, das die Anwendung ihm selbst hingelegt hat.
+ *
+ * Sprint 119 hat diese Sackgassen fuer Links geschlossen. Hier gibt es keinen
+ * Link — der Sprung passiert serverseitig per `redirect()`, an `ModuleLink`
+ * vorbei. Deshalb dieselbe Pruefung ueber denselben Helfer.
+ *
+ * Gelesen wird die Meldung trotzdem: dass ihr Ziel nicht mehr erreichbar ist,
+ * aendert nichts daran, dass der Nutzer sie zur Kenntnis genommen hat.
  */
 export async function openNotificationAction(formData: FormData): Promise<void> {
   await requireTenantContext();
@@ -90,5 +105,11 @@ export async function openNotificationAction(formData: FormData): Promise<void> 
         data.url,
       )
     : '/notifications';
+
+  // Nicht stumm auf die Inbox zurueckwerfen: aus der Inbox heraus geklickt
+  // sieht das aus, als haette der Knopf nicht funktioniert. Der Hinweis oben
+  // auf der Seite sagt, was passiert ist.
+  if (!(await hrefAvailable(href))) redirect('/notifications?info=modul-aus');
+
   redirect(href);
 }

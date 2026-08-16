@@ -7,6 +7,7 @@ import { Card, CardBody } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { ModuleLink } from '@/components/ui/module-link';
 import {
   NOTIFICATION_KIND_LABEL,
   NOTIFICATION_KIND_TONE,
@@ -29,11 +30,15 @@ const PAGE_SIZE = 50;
 export default async function NotificationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; page?: string }>;
+  searchParams: Promise<{ filter?: string; page?: string; info?: string }>;
 }) {
   await requireTenantContext();
   const params = await searchParams;
   const onlyUnread = params.filter === 'unread';
+  // Gesetzt von openNotificationAction, wenn das Ziel in einem abgeschalteten
+  // Modul liegt. Ohne diesen Hinweis waere der Klick ein stummer Rueckwurf auf
+  // dieselbe Seite — nicht unterscheidbar von einem kaputten Knopf.
+  const moduleOff = params.info === 'modul-aus';
   const page = Math.max(1, Number.parseInt(params.page ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -69,6 +74,16 @@ export default async function NotificationsPage({
             : `${total} Einträge · ${unreadCount ?? 0} ungelesen`
         }
       />
+
+      {moduleOff && (
+        <div
+          role="status"
+          className="rounded-md border border-[var(--color-border)] bg-[var(--color-muted)] px-4 py-3 text-sm"
+        >
+          Der Bereich, auf den diese Benachrichtigung zeigt, ist für Ihren Mandanten
+          abgeschaltet. Die Meldung wurde als gelesen markiert.
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
@@ -151,9 +166,12 @@ export default async function NotificationsPage({
                       )}
                       <div className="mt-2 text-xs text-[var(--color-muted-foreground)]">
                         Ziel:{' '}
-                        <Link href={href} className="text-[var(--color-primary)] hover:underline">
+                        <ModuleLink
+                          href={href}
+                          className="text-[var(--color-primary)] hover:underline"
+                        >
                           {href}
-                        </Link>
+                        </ModuleLink>
                       </div>
                     </div>
                     <form action={dismissNotificationAction}>

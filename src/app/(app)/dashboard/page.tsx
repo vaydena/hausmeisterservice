@@ -7,7 +7,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
+import { hrefAvailable } from '@/lib/modules/href-guard';
 import { WelcomeOverlay } from './welcome-overlay';
+import { ONBOARDING_STEPS } from './onboarding-steps';
 import { MfaReminderBanner } from './mfa-reminder-banner';
 
 // 7 Tage — nach dem Dismiss bleibt der Banner solange stumm. Danach kommt
@@ -86,6 +88,21 @@ export default async function DashboardPage() {
 
   const activeToggleable = [...enabledModules].filter((key) => !MODULES_BY_KEY[key]?.core);
 
+  // Sprint 121: Schritte, deren Ziel in einem abgeschalteten Modul liegt,
+  // faellt der Knopf weg — der erklaerende Text bleibt. Ueber `hrefAvailable`
+  // und nicht ueber `enabledModules` direkt, damit es genau eine Stelle gibt,
+  // die "Ziel erreichbar?" beantwortet. Die Menge ist `cache`d; die vier
+  // Aufrufe kosten keine zusaetzliche Abfrage.
+  const onboardingSteps = showWelcome
+    ? await Promise.all(
+        ONBOARDING_STEPS.map(async (step) =>
+          !step.href || (await hrefAvailable(step.href))
+            ? step
+            : { ...step, href: undefined, cta: undefined },
+        ),
+      )
+    : [];
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <section>
@@ -120,7 +137,7 @@ export default async function DashboardPage() {
         <ActiveModulesGrid enabled={activeToggleable} />
       )}
 
-      {showWelcome && <WelcomeOverlay tenantName={tenantName} />}
+      {showWelcome && <WelcomeOverlay tenantName={tenantName} steps={onboardingSteps} />}
     </div>
   );
 }
