@@ -64,14 +64,22 @@ export type ImagePipelineProbe = {
  * Betriebssystem und Architektur stecken zwangslaeufig im Paketnamen; das
  * ist der Preis dafuer, dass die Antwort ueberhaupt eine Handlung nahelegt,
  * und ein Linux-x64-Webserver ist kein Geheimnis.
+ *
+ * WORAN DER ERSTE VERSUCH SCHEITERTE, damit es niemand wiederholt: gemessen
+ * wurde vom App-Verzeichnis aus. pnpm legt `@img/sharp-<plattform>` aber
+ * nicht dorthin, sondern neben sharp in den .pnpm-Speicher. Die Antwort
+ * lautete deshalb `present: false` — auch auf einer Maschine, auf der sharp
+ * einwandfrei laeuft. Ein Messwert, der immer dasselbe sagt, ist kein
+ * Messwert. Gemessen wird jetzt von sharp aus, und ein Test haelt auf
+ * DIESER Maschine dagegen.
  */
 export type SharpBinaryReport = {
   /** z. B. '@img/sharp-linux-x64'. */
   expected: string;
-  /** Ist das Wrapper-Paket aufloesbar? */
+  /** Ist sharp selbst auffindbar? Trennt "sharp fehlt ganz" von "nur das Binary fehlt". */
+  sharpPresent: boolean;
+  /** Liegt das native Paket dort, wo sharp danach sucht? */
   present: boolean;
-  /** Ist das zugehoerige libvips-Paket aufloesbar? sharp braucht beide. */
-  libvipsPresent: boolean;
 };
 
 /**
@@ -92,7 +100,7 @@ export function sanitizeCode(err: unknown): string {
 }
 
 /** Paketnamen sind kleingeschrieben und bindestrichgetrennt — sonst nichts. */
-const PACKAGE_SHAPE = /^@img\/sharp-(libvips-)?[a-z0-9]+-[a-z0-9]+$/;
+const PACKAGE_SHAPE = /^@img\/sharp-[a-z0-9]+-[a-z0-9]+$/;
 
 /**
  * glibc oder musl?
@@ -110,54 +118,71 @@ function detectLinuxLibc(): 'glibc' | 'musl' {
 }
 
 /**
- * Baut die beiden Paketnamen, die sharp auf diesem Host braucht.
+ * Der Paketname, den sharp auf diesem Host braucht.
  *
  * Exportiert und mit expliziten Parametern, damit alle Plattformen testbar
  * sind — auf der Maschine, auf der die Tests laufen, ist ja immer nur eine
  * davon wahr.
  */
-export function sharpPackageNames(
+export function expectedSharpBinary(
   platform: string = process.platform,
   arch: string = process.arch,
   libc: 'glibc' | 'musl' = platform === 'linux' ? detectLinuxLibc() : 'glibc',
-): { binary: string; libvips: string } {
+): string {
   const os = platform === 'linux' && libc === 'musl' ? 'linuxmusl' : platform;
-  const binary = `@img/sharp-${os}-${arch}`;
-  const libvips = `@img/sharp-libvips-${os}-${arch}`;
-  return PACKAGE_SHAPE.test(binary) && PACKAGE_SHAPE.test(libvips)
-    ? { binary, libvips }
-    : { binary: 'UNKNOWN', libvips: 'UNKNOWN' };
+  const name = `@img/sharp-${os}-${arch}`;
+  return PACKAGE_SHAPE.test(name) ? name : 'UNKNOWN';
 }
 
 /**
- * Laesst sich das Paket aufloesen?
+ * Ein `require`, das vom sharp-Paket aus sucht — nicht vom App-Verzeichnis.
+ *
+ * DAS IST DER GANZE TRICK, und der erste Versuch hatte ihn falsch: pnpm legt
+ * `@img/sharp-<plattform>` NICHT ins oberste node_modules, sondern neben
+ * sharp in den .pnpm-Speicher. Vom App-Verzeichnis aus meldet die Aufloesung
+ * deshalb auch dann "fehlt", wenn alles in Ordnung ist. Gemessen werden muss
+ * dort, wo sharp selbst sucht.
+ */
+function requireFromSharp(): NodeRequire | null {
+  try {
+    const fromApp = createRequire(join(process.cwd(), 'index.js'));
+    return createRequire(fromApp.resolve('sharp'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Liegt das Paket da?
  *
  * Aufloesen, nicht laden: ein natives Modul zu laden hiesse, denselben
  * Absturz noch einmal auszuloesen. Und nur das Ergebnis als Boolean — der
  * aufgeloeste Pfad waere genau die Serverpfad-Auskunft, die dieser Endpunkt
  * nicht gibt.
  *
- * Der Name ist zur Bauzeit unbekannt (er entsteht erst aus process.platform),
- * deshalb fasst der Bundler ihn nicht an und die Aufloesung passiert
- * tatsaechlich im node_modules des Servers.
+ * ERR_PACKAGE_PATH_NOT_EXPORTED zaehlt als GEFUNDEN: die @img-Pakete fuehren
+ * keinen Haupteinstieg in ihrem exports-Feld. Wer diesen Fehler bekommt, hat
+ * das Verzeichnis erreicht — nur eben keine Datei darin benannt. Wer es
+ * nicht hat, bekommt MODULE_NOT_FOUND.
  */
-function resolves(packageName: string): boolean {
+function resolvesFrom(req: NodeRequire, packageName: string): boolean {
   if (packageName === 'UNKNOWN') return false;
   try {
-    const requireFromApp = createRequire(join(process.cwd(), 'index.js'));
-    requireFromApp.resolve(`${packageName}/package.json`);
+    req.resolve(packageName);
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    return (err as { code?: unknown } | null)?.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED';
   }
 }
 
-function reportSharpBinary(): SharpBinaryReport {
-  const names = sharpPackageNames();
+/** Exportiert, damit ein Test auf DIESER Maschine nachweist, dass die Messung stimmt. */
+export function reportSharpBinary(): SharpBinaryReport {
+  const expected = expectedSharpBinary();
+  const req = requireFromSharp();
   return {
-    expected: names.binary,
-    present: resolves(names.binary),
-    libvipsPresent: resolves(names.libvips),
+    expected,
+    sharpPresent: req !== null,
+    present: req !== null && resolvesFrom(req, expected),
   };
 }
 

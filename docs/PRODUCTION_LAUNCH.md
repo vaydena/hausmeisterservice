@@ -205,3 +205,37 @@ Nach erfolgreichem Deploy im Browser prüfen:
 ## 8. Impressum-Meldung (nur Info)
 
 Nach Live-Gang keine gesonderte Anmeldung nötig. Bei Änderungen am Impressum (Umzug, neuer Geschäftsführer, neue USt-IdNr) → `src/lib/legal/config.ts` aktualisieren, `lastUpdated` hochzählen, Deploy.
+
+## 9. Laufende Kontrolle: die zwei Health-Endpunkte
+
+Beide sind absichtlich unauthentifiziert — ein Monitor führt keine Zugangsdaten mit. Beide geben deshalb nur Konstanten aus, nie Fehlermeldungen oder Serverpfade.
+
+**`/api/health` — läuft der Server überhaupt?** Flach und billig, für den Minutentakt. Enthält `build.sha`; damit lässt sich nach jedem Push prüfen, ob der Deploy wirklich durch ist:
+
+```bash
+curl -s https://hausmeisterservice.vaydena.de/api/health
+```
+
+Stimmt `build.sha` nicht mit `git rev-parse --short=12 HEAD` überein, läuft draußen noch der alte Stand — dann ist jede weitere Fehlersuche am falschen Code.
+
+**`/api/health/deep` — kann der Server auch arbeiten?** Kodiert ein winziges Bild und antwortet **503**, wenn das misslingt. Ein Monitor braucht dafür kein JSON zu lesen.
+
+```bash
+curl -s https://hausmeisterservice.vaydena.de/api/health/deep
+```
+
+Warum es diesen zweiten Endpunkt gibt: Der Bild-Upload kann ausfallen, ohne dass irgendwo ein roter Punkt angeht — die Meldung eines Bewohners kommt an, nur das Foto fehlt still. Ein Ausfall, den nur der Melder sieht und der Betreiber nie, läuft unbegrenzt lange weiter.
+
+Antwort im Fehlerfall lesen:
+
+| Befund | Bedeutung | Was zu tun ist |
+| --- | --- | --- |
+| `ok: true` | Bildverarbeitung arbeitet. | Nichts. |
+| `stage: "load"`, `sharpPresent: false` | Nicht einmal `sharp` selbst liegt im `node_modules` des Servers. | Der Deploy hat die Abhängigkeiten nicht (vollständig) installiert. Install-Schritt prüfen. |
+| `stage: "load"`, `sharpPresent: true`, `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
+| `stage: "load"`, beide `true` | Paket liegt da, lässt sich aber nicht laden — meist fehlende Systembibliotheken. | `code` mitschicken; Hostinger-Support mit dem Paketnamen anfragen. |
+| `stage: "encode"` | Modul lädt, das Kodieren scheitert — Format-Backend fehlt. | Wie oben, mit dem Hinweis, dass libvips unvollständig gebaut ist. |
+
+`code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Genau dafür gibt es den `binary`-Block.
+
+**Solange `/api/health/deep` rot ist:** Fotos und Dokumenten-Uploads werden abgelehnt, nicht etwa ungefiltert gespeichert. Das ist Absicht — das Neu-Kodieren ist der einzige Grund, warum aus einem Wohnungsfoto keine GPS-Koordinate der Wohnung wird. Meldungen ohne Foto funktionieren normal weiter.
