@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { clientEnv } from '@/lib/env';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { FEATURE_KEYS, FEATURE_LABEL } from '@/lib/tenant/feature-map';
 
 export const metadata: Metadata = {
   title: 'Preise',
@@ -11,16 +11,17 @@ export const metadata: Metadata = {
 
 export const revalidate = 300;
 
-const FEATURE_LABELS: Array<{ key: string; label: string }> = [
-  { key: 'gps',         label: 'GPS-Tracking + Touren' },
-  { key: 'portal',      label: 'Bewohner-/Eigentümerportal' },
-  { key: 'vehicles',    label: 'Fuhrpark' },
-  { key: 'automations', label: 'Automatisierungs-Regeln' },
-  { key: 'api',         label: 'API-Zugang' },
-];
+/**
+ * Sprint 115: Die Liste kommt bewusst aus feature-map.ts und wird hier
+ * nicht zweitgepflegt. Seit Sprint 114 setzt das Gate durch, was diese
+ * Seite verspricht — eine eigene Kopie hiesse, dass der Kunde etwas kauft,
+ * das die App ihm anschliessend verweigert (oder dass ein enthaltenes
+ * Feature hier gar nicht auftaucht). Aus demselben Grund derselbe
+ * Wortlaut wie auf der Sperrseite: der Kunde liest hier "GPS-Tracking &
+ * Touren" und spaeter "Benoetigt GPS-Tracking & Touren".
+ */
 
 export default async function PreisePage() {
-  const service = createSupabaseServiceClient();
   const { data: plans } = await createPlatformServiceClient()
     .from('subscription_plans')
     .select('*')
@@ -64,9 +65,9 @@ export default async function PreisePage() {
               <ul className="mt-4 space-y-1.5 text-sm">
                 <li>• bis {plan.max_employees ?? '∞'} Mitarbeiter</li>
                 <li>• bis {plan.max_properties ?? '∞'} Objekte</li>
-                {FEATURE_LABELS.map((f) => (
-                  <li key={f.key} className={features[f.key] ? '' : 'text-[var(--color-muted-foreground)] line-through'}>
-                    {features[f.key] ? '✓' : '—'} {f.label}
+                {FEATURE_KEYS.map((key) => (
+                  <li key={key} className={features[key] ? '' : 'text-[var(--color-muted-foreground)] line-through'}>
+                    {features[key] ? '✓' : '—'} {FEATURE_LABEL[key]}
                   </li>
                 ))}
               </ul>

@@ -231,6 +231,39 @@ describe('Konsistenz mit Registry und Nav', () => {
   });
 });
 
+describe('Preisseite fuehrt keine zweite Feature-Liste', () => {
+  /**
+   * Sprint 115: /preise ist das Verkaufsversprechen, das seit Sprint 114
+   * durchgesetzt wird. Eine handgepflegte Kopie der Liste dort faellt
+   * beim naechsten Feature auseinander — der Kunde kauft dann etwas, das
+   * die App ihm verweigert, oder sieht ein enthaltenes Feature nicht.
+   */
+  const page = readFileSync(join(process.cwd(), 'src', 'app', 'preise', 'page.tsx'), 'utf8');
+
+  // Kommentare raus: sonst schlaegt die Pruefung unten an jedem Kommentar
+  // an, der ein Label beim Namen nennt — "Fuhrpark" ist ein Wort, das in
+  // dieser Datei durchaus in einer Erklaerung stehen darf. Der Strip ist
+  // absichtlich naiv; eine URL in einem String wuerde den Rest ihrer Zeile
+  // mitnehmen und die Pruefung damit hoechstens zu lasch machen, nie zu
+  // streng — und der Import-Test oben haelt die Linie ohnehin.
+  const code = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  it('bezieht Keys und Labels aus feature-map', () => {
+    expect(page).toMatch(/from '@\/lib\/tenant\/feature-map'/);
+    expect(code).toContain('FEATURE_KEYS');
+    expect(code).toContain('FEATURE_LABEL');
+  });
+
+  it('nennt kein Feature-Label als Literal', () => {
+    for (const feature of FEATURE_KEYS) {
+      expect(
+        code.includes(FEATURE_LABEL[feature]),
+        `Die Preisseite schreibt "${FEATURE_LABEL[feature]}" aus, statt es aus FEATURE_LABEL zu lesen. Beim naechsten Wortlaut-Wechsel driftet die Seite gegen die Sperrseite, die derselbe Kunde spaeter sieht.`,
+      ).toBe(false);
+    }
+  });
+});
+
 describe('Deckung mit dem Tarif-Seed', () => {
   /**
    * Die Feature-Keys sind kein internes Vokabular: sie stehen so im

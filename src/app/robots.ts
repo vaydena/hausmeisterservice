@@ -31,6 +31,7 @@ export default function robots(): MetadataRoute.Robots {
           '/portal/',
           '/no-access',
           '/zahlung-erforderlich',
+          '/tarif-erforderlich',
           '/reset-password',
           '/invite',
           '/qr/',
