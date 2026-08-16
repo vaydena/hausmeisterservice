@@ -236,7 +236,8 @@ Zuerst auf `variant` schauen — das Feld sagt, auf welchem Weg sharp arbeitet:
 | `ok: true`, `variant: "wasm"` | Uploads laufen, aber über den WASM-Rückfall: das native Binary war nicht brauchbar. Rund 2,4× langsamer (gemessen: 12-MP-Foto 148 ms statt 61 ms) — für Uploads unkritisch. | **Kein Notfall, aber auch nicht erledigt.** Der `binary`-Block sagt jetzt, woran das native lag; die Zeilen unten gelten unverändert. Ohne diesen Eintrag hätte niemand je erfahren, dass der Server den Umweg nimmt. |
 | `stage: "load"`, `sharpPresent: false` | Nicht einmal `sharp` selbst liegt im `node_modules` des Servers. | Der Deploy hat die Abhängigkeiten nicht (vollständig) installiert. Install-Schritt prüfen. |
 | `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
-| `libvips.present: false` | Wrapper da, die eigentliche Bildbibliothek fehlt. | `libvips.expected` nachinstallieren. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
+| **`libvips.binary: false`** | Das libvips-Paket ist erreichbar, die Bibliothek darin (`lib/libvips-cpp.so.…`) fehlt. | `libvips.expected` neu installieren lassen. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
+| `libvips.present: false` | Nicht einmal das Paketverzeichnis ist erreichbar. | Wie oben, eine Stufe gröber. |
 | alles `true`, `runtime.node` < v20.9.0 | Node auf dem Server ist zu alt für das native Paket. | **Selbst behebbar:** im Hostinger-Panel eine neuere Node-Version wählen (das Projekt verlangt ohnehin `>=22`), dann neu deployen. Kein Support nötig. |
 | `present: true`, **`x64v2: false`** | Die CPU des Servers beherrscht die Mikroarchitektur **x86-64-v2** nicht. sharp verwirft sein eigenes, einwandfrei geladenes Linux-Binary deshalb wieder. | **Nicht behebbar und nicht nötig:** genau dafür liegt der WASM-Rückfall bei. Wer den nativen Weg zurück will, braucht einen Server mit neuerer CPU — ein Tarifwechsel, kein Bugfix. |
 | `present: true`, **`loads: false`** | Das Paket liegt da und lässt sich trotzdem nicht ins Programm laden. | **`binary.loadError.reason` lesen** — die Tabelle darunter sagt, wer handeln muss. |
@@ -248,7 +249,7 @@ Steht seit Sprint 128 in der Antwort. Der Grund steht im Klartext in der Fehlerm
 
 | `reason` | Bedeutung | Wer handeln muss |
 | --- | --- | --- |
-| `SHARED_LIBRARY_MISSING` | Eine `.so`, an der das Binary hängt, fehlt — fast immer libvips. | **Install-Lauf.** Das Paket ist unvollständig ausgepackt worden. Neu deployen; hilft das nicht, `node_modules` auf dem Server leeren lassen. |
+| `SHARED_LIBRARY_MISSING` | Eine `.so`, an der das Binary hängt, fehlt — fast immer libvips. | **Install-Lauf.** Erst `libvips.binary` lesen: `false` heißt, die Bibliothek selbst fehlt; `true` heißt, sie ist da und es fehlt eine **System**bibliothek darunter — dann ist es doch der Hoster. Neu deployen; hilft das nicht, `node_modules` auf dem Server leeren lassen. |
 | `EXEC_NOT_PERMITTED` | Der Kernel verweigert das Ausführen: `noexec`-Mount, SELinux, fehlendes Ausführrecht. | **Hoster.** Das kann niemand von außen ändern. Support-Anfrage mit genau diesem Wort. |
 | `GLIBC_TOO_OLD` | Die glibc des Servers ist älter als die, gegen die gebaut wurde. | **Hoster.** `binary.libc.version` mitschicken. |
 | `OUT_OF_MEMORY` | Kein Speicher zum Laden. | **Tarif.** Das Speicherlimit des Hosting-Pakets. |
@@ -268,7 +269,17 @@ Warum die eigentliche Fehlermeldung nur im Log steht und nicht in der Antwort: s
 
 `code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Genau dafür gibt es den `binary`-Block.
 
-**Stand 16.08.2026 auf diesem Server** (Build `a5b317ca8d91`): `ok: true`, `variant: "wasm"` — die Uploads laufen über den Rückfall. Das native Binary liegt vollständig da (`present: true`, `libvips.present: true`, glibc 2.34, Node v22.22.0) und lädt trotzdem nicht. **Der CPU-Verdacht ist damit ausgeschlossen**, nicht bloß unwahrscheinlich: `x64v2` kam als `null` zurück, nicht als `false`. Auf Linux-x64 stellt sich diese Frage sehr wohl — dass sie unbeantwortet blieb, heißt, dass das Laden schon vorher scheiterte. `loadError.reason` beantwortet ab dem nächsten Deploy, welcher der Fälle aus der Tabelle oben es ist.
+**Stand 16.08.2026 auf diesem Server:** `ok: true`, `variant: "wasm"` — die Uploads laufen über den Rückfall. Das native Binary lädt nicht, und der Befund lautet:
+
+```json
+"loadError": { "code": "ERR_DLOPEN_FAILED", "reason": "SHARED_LIBRARY_MISSING" }
+```
+
+Damit sind ausgeschlossen — **durch Messung, nicht durch Vermutung**: `noexec`/SELinux (wäre `EXEC_NOT_PERMITTED`), die glibc-Version (`GLIBC_TOO_OLD`), die Node-Version (`ABI_MISMATCH`), ein Speicherlimit (`OUT_OF_MEMORY`) und die CPU-Mikroarchitektur — letztere, weil `x64v2` als `null` zurückkam und nicht als `false`: auf Linux-x64 stellt sich die Frage sehr wohl, sie blieb also unbeantwortet, weil das Laden schon vorher scheiterte.
+
+Es fehlt eine `.so`. **`libvips.binary` sagt ab dem nächsten Deploy, welche** — die von libvips selbst (dann: Install-Lauf) oder eine System­bibliothek darunter (dann doch: Hoster).
+
+> **Korrektur zum bisherigen Stand.** Bis Sprint 129 stand hier und im Runbook, ein fehlendes `@img/sharp-libvips-linux-x64` sei „durch Messung ausgeschlossen". Das war es nicht. Die libvips-Pakete haben keinen `"."`-Eintrag in ihrer exports-Map, `require.resolve` auf den blanken Paketnamen endet deshalb immer in `ERR_PACKAGE_PATH_NOT_EXPORTED`, und das zählt die Probe absichtlich als „gefunden". **`libvips.present` konnte nie `false` werden**, auch bei leerem `lib/`-Verzeichnis nicht. Ein Messwert, der nur ein Ergebnis kennt, schließt nichts aus. Deshalb misst `libvips.binary` jetzt die Datei statt das Paket.
 
 **Der WASM-Rückfall** (`@img/sharp-wasm32`) steckt seit Sprint 127 als direkte Abhängigkeit im Paket. sharp probiert von sich aus erst das native Binary und greift dann darauf zurück; der Rückfall war immer schon im Loader, ihm fehlte nur das Paket — auf Linux-x64 wird es sonst nie mitinstalliert, weil sharp es lediglich über zwei plattformgefilterte Pakete führt. Der Eintrag ist exakt auf die sharp-Version festgenagelt, und ein Test in `tests/image-pipeline-probe.test.ts` schlägt an, wenn beide auseinanderlaufen.
 

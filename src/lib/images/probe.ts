@@ -171,8 +171,38 @@ export type SharpBinaryReport = {
    * `@img/sharp-libvips-linux-x64` als OPTIONALE Abhaengigkeit — eine
    * optionale Abhaengigkeit einer optionalen Abhaengigkeit. Genau so etwas
    * laesst ein Installationslauf aus, ohne mit einem Fehler abzubrechen.
+   *
+   * SPRINT 129 — `present` ALLEIN WAR WERTLOS, ZUM ZWEITEN MAL. Die
+   * libvips-Pakete haben keinen `"."`-Eintrag in ihrer exports-Map. Eine
+   * Aufloesung des blossen Paketnamens endet deshalb IMMER in
+   * ERR_PACKAGE_PATH_NOT_EXPORTED, und den zaehlt `resolvesFrom` bewusst als
+   * gefunden. `present: true` bewies also nur, dass eine package.json
+   * erreichbar ist — das `lib/`-Verzeichnis daneben durfte leer sein.
+   *
+   * Genau dieser Fall stand am 16.08.2026 live da: `present: true` und
+   * gleichzeitig `loadError.reason: 'SHARED_LIBRARY_MISSING'`. Kein
+   * Widerspruch, sondern ein Messwert, der nicht messen konnte.
    */
-  libvips: { expected: string; present: boolean } | null;
+  libvips: {
+    expected: string;
+    /** Paket erreichbar — beweist NUR das, siehe oben. */
+    present: boolean;
+    /**
+     * Die Bibliothek selbst (`lib/libvips-cpp.so.…` bzw. `.dylib`).
+     *
+     * Das ist die Frage, auf die es ankommt. Die Pakete weisen sie als
+     * `./binary` aus; fehlt die Datei, endet die Aufloesung in
+     * MODULE_NOT_FOUND statt in ERR_PACKAGE_PATH_NOT_EXPORTED — der
+     * Unterschied, der die Messung ueberhaupt erst zu einer macht.
+     *
+     * `null` heisst wie ueberall hier "die Frage stellt sich nicht" — das
+     * Paket weist gar kein `./binary` aus, oder sharp selbst war nicht
+     * auffindbar, dann ist von dort auch nichts messbar. Ein `false` waere
+     * dort eine Falschmeldung, und Falschmeldungen sind der Grund, warum
+     * dieser Block jetzt zum zweiten Mal umgebaut werden musste.
+     */
+    binary: boolean | null;
+  } | null;
   /**
    * Die C-Bibliothek des Servers.
    *
@@ -425,6 +455,34 @@ function resolvesFrom(req: NodeRequire, packageName: string): boolean {
 }
 
 /**
+ * Liegt die DATEI da? — die strengere Schwester von `resolvesFrom`.
+ *
+ * DER UNTERSCHIED IST DER GANZE SPRINT 129. `resolvesFrom` behandelt
+ * ERR_PACKAGE_PATH_NOT_EXPORTED als Erfolg, weil "Verzeichnis erreicht" bei
+ * einem Paket ohne Haupteinstieg die bestmoegliche Auskunft ist. Fuer eine
+ * Datei ist genau das die falsche Auskunft: die Frage lautet nicht "ist das
+ * Paket da", sondern "ist die Bibliothek da", und ein Paket mit leerem
+ * lib/-Verzeichnis haette beides Mal `true` gemeldet.
+ *
+ * Deshalb drei Zustaende statt zwei:
+ *   true   Die Datei ist aufloesbar, sie existiert.
+ *   false  Der Eintrag existiert in der exports-Map, die Datei nicht
+ *          (MODULE_NOT_FOUND). Das ist der Befund.
+ *   null   Das Paket weist diesen Eintrag gar nicht aus. Keine Aussage —
+ *          und ganz sicher kein `false`.
+ */
+function resolvesFileFrom(req: NodeRequire, specifier: string): boolean | null {
+  try {
+    req.resolve(specifier);
+    return true;
+  } catch (err) {
+    return (err as { code?: unknown } | null)?.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED'
+      ? null
+      : false;
+  }
+}
+
+/**
  * Nur Linux auf x64 stellt die x86-64-v2-Frage.
  *
  * sharp prueft sie genau fuer 'linux-x64' und 'linuxmusl-x64' — beide haben
@@ -533,7 +591,14 @@ export function reportSharpBinary(): SharpBinaryReport {
     libvips:
       libvipsName === null
         ? null
-        : { expected: libvipsName, present: req !== null && resolvesFrom(req, libvipsName) },
+        : {
+            expected: libvipsName,
+            present: req !== null && resolvesFrom(req, libvipsName),
+            // Nicht der Paketname, sondern die Bibliothek: die Pakete weisen
+            // sie als './binary' aus. Der Paketname allein hat die Frage nie
+            // beantwortet — siehe die Begruendung am Typ.
+            binary: req === null ? null : resolvesFileFrom(req, `${libvipsName}/binary`),
+          },
     libc: reportLibc(),
     runtime: reportRuntime(),
   };

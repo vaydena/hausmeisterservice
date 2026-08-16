@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -190,9 +190,76 @@ describe('reportSharpBinary misst wirklich etwas', () => {
       expect(report.libvips).toBeNull();
     } else {
       // Wo es das Paket gibt, muss es hier auch liegen — sonst liefe sharp
-      // auf dieser Maschine nicht, und die uebrigen Tests waeren rot.
-      expect(report.libvips).toEqual({ expected: name, present: true });
+      // auf dieser Maschine nicht, und die uebrigen Tests waeren rot. Und die
+      // Bibliothek selbst genauso: `present` allein hat diese Frage nie
+      // beantwortet, siehe die Suite unten.
+      expect(report.libvips).toEqual({ expected: name, present: true, binary: true });
     }
+  });
+});
+
+describe('Die libvips-Messung fragt nach der Datei, nicht nach dem Paket', () => {
+  // WARUM DIESE SUITE MIT EINER ATTRAPPE ARBEITET UND NICHT MIT DEM ECHTEN
+  // PAKET: unter Windows steckt libvips im Plattform-Paket, es gibt gar kein
+  // `@img/sharp-libvips-win32-x64`. Der Mechanismus laesst sich hier also
+  // nicht am Original messen — wohl aber an einem Paket mit derselben
+  // exports-Struktur, und der Mechanismus ist genau das, was falsch war.
+  //
+  // FALSCH WAR FOLGENDES. Die libvips-Pakete haben keinen `"."`-Eintrag in
+  // exports. `require.resolve('@img/sharp-libvips-linux-x64')` endet deshalb
+  // IMMER in ERR_PACKAGE_PATH_NOT_EXPORTED, und den zaehlt die Probe
+  // absichtlich als gefunden. `present` konnte damit nie `false` werden — auch
+  // dann nicht, wenn das lib/-Verzeichnis leer war. Live stand am 16.08.2026
+  // genau das da: `present: true` neben `SHARED_LIBRARY_MISSING`.
+  const root = mkdtempSync(join(tmpdir(), 'libvips-fixture-'));
+  const pkgDir = join(root, 'node_modules', 'fake-libvips');
+
+  mkdirSync(join(pkgDir, 'lib'), { recursive: true });
+  writeFileSync(
+    join(pkgDir, 'package.json'),
+    JSON.stringify({
+      name: 'fake-libvips',
+      version: '1.0.0',
+      // Exakt die Struktur von @img/sharp-libvips-*: kein "." und die
+      // Bibliothek unter "./binary".
+      exports: { './binary': './lib/libvips-cpp.so.8.18.3', './package': './package.json' },
+    }),
+  );
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'host', version: '1.0.0' }));
+
+  const req = createRequire(join(root, 'index.js'));
+  const resolve = (spec: string): string => {
+    try {
+      req.resolve(spec);
+      return 'OK';
+    } catch (err) {
+      return String((err as { code?: unknown } | null)?.code);
+    }
+  };
+
+  it('meldet den blossen Paketnamen als erreichbar, obwohl die Bibliothek fehlt', () => {
+    // Das ist der Fehlbefund in Reinform: das lib/-Verzeichnis ist leer, und
+    // die alte Messung haette hier trotzdem "vorhanden" gesagt.
+    expect(resolve('fake-libvips')).toBe('ERR_PACKAGE_PATH_NOT_EXPORTED');
+  });
+
+  it('meldet die fehlende Bibliothek als fehlend', () => {
+    // MODULE_NOT_FOUND, nicht ERR_PACKAGE_PATH_NOT_EXPORTED — der Unterschied
+    // ist es, der aus dem Feld ueberhaupt einen Messwert macht.
+    expect(resolve('fake-libvips/binary')).toBe('MODULE_NOT_FOUND');
+  });
+
+  it('meldet die vorhandene Bibliothek als vorhanden', () => {
+    writeFileSync(join(pkgDir, 'lib', 'libvips-cpp.so.8.18.3'), 'x');
+
+    expect(resolve('fake-libvips/binary')).toBe('OK');
+  });
+
+  it('unterscheidet "Eintrag gibt es nicht" von "Datei gibt es nicht"', () => {
+    // Ein Paket ohne diesen Eintrag darf kein `false` bekommen. Genau solche
+    // Falschmeldungen haben den libvips-Block schon zweimal unbrauchbar
+    // gemacht — deshalb tri-state.
+    expect(resolve('fake-libvips/gibtesnicht')).toBe('ERR_PACKAGE_PATH_NOT_EXPORTED');
   });
 });
 
