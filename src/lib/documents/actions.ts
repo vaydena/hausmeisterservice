@@ -1,9 +1,9 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import sharp from 'sharp';
 import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { stripImageMetadata } from '@/lib/images/strip-metadata';
 import {
   DOC_ALLOWED_MIME,
   DOC_BUCKET as BUCKET,
@@ -89,32 +89,6 @@ async function resolveTarget(
       return { propertyId, revalidateHref: `/properties/${propertyId ?? ''}` };
     }
   }
-}
-
-type ProcessedImage = {
-  buffer: Buffer;
-  mime: string;
-  extension: string;
-};
-
-/**
- * EXIF/GPS entfernen. sharp strippt Metadata standardmäßig beim Re-Encode.
- * .rotate() ohne Argument wendet EXIF-Orientation an, sodass die Ausrichtung
- * korrekt bleibt, ohne die Metadata behalten zu müssen.
- * HEIC → JPEG (browsertauglich, EXIF weg).
- */
-async function stripImageMetadata(buffer: Buffer, mime: string): Promise<ProcessedImage> {
-  const img = sharp(buffer, { failOn: 'none' }).rotate();
-  if (mime === 'image/png') {
-    const out = await img.png().toBuffer();
-    return { buffer: out, mime: 'image/png', extension: 'png' };
-  }
-  if (mime === 'image/webp') {
-    const out = await img.webp({ quality: 88 }).toBuffer();
-    return { buffer: out, mime: 'image/webp', extension: 'webp' };
-  }
-  const out = await img.jpeg({ quality: 88 }).toBuffer();
-  return { buffer: out, mime: 'image/jpeg', extension: 'jpg' };
 }
 
 export async function uploadDocumentAction(formData: FormData): Promise<void> {

@@ -2,11 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import sharp from 'sharp';
 import { z } from 'zod';
 import { requireResidentContext } from '@/lib/portal/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
+import { stripImageMetadata } from '@/lib/images/strip-metadata';
 import {
   DOC_ALLOWED_MIME,
   DOC_MAX_BYTES,
@@ -224,10 +224,10 @@ export async function withdrawPortalDefectAction(formData: FormData): Promise<vo
  * macht davor einen reporter_user_id-Match). Fehler werfen throw — Aufrufer
  * entscheidet, ob als form-error zurueckgegeben oder als Redirect-Query.
  *
- * EXIF/GPS wird bei Bildern durch sharp re-encode entfernt (analog zum Staff-
- * Pfad in @/lib/documents/actions.ts). HEIC/HEIF → JPEG, damit Browser sie
- * direkt anzeigen koennen. Kein Rollback bei documents-Insert-Fehler auf den
- * Storage-Blob mehr — der Storage-Upload wird explizit revert (remove).
+ * EXIF/GPS entfernt @/lib/images/strip-metadata — dort liegt seit Sprint 126
+ * auch der Grund, warum sharp NICHT oben im Modul importiert wird. Kein
+ * Rollback bei documents-Insert-Fehler auf den Storage-Blob mehr — der
+ * Storage-Upload wird explizit revert (remove).
  */
 async function uploadDefectAttachment(params: {
   supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>;
@@ -245,20 +245,10 @@ async function uploadDefectAttachment(params: {
   let effectiveExt = pickExtension(file.name, file.type);
 
   if (isImageMime(file.type)) {
-    const img = sharp(buffer, { failOn: 'none' }).rotate();
-    if (file.type === 'image/png') {
-      buffer = await img.png().toBuffer();
-      effectiveMime = 'image/png';
-      effectiveExt = 'png';
-    } else if (file.type === 'image/webp') {
-      buffer = await img.webp({ quality: 88 }).toBuffer();
-      effectiveMime = 'image/webp';
-      effectiveExt = 'webp';
-    } else {
-      buffer = await img.jpeg({ quality: 88 }).toBuffer();
-      effectiveMime = 'image/jpeg';
-      effectiveExt = 'jpg';
-    }
+    const stripped = await stripImageMetadata(buffer, file.type);
+    buffer = stripped.buffer;
+    effectiveMime = stripped.mime;
+    effectiveExt = stripped.extension;
   }
 
   const documentId = crypto.randomUUID();

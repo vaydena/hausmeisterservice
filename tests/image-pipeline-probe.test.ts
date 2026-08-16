@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { probeImagePipeline, sanitizeCode } from '@/lib/images/probe';
+import { probeImagePipeline, sanitizeCode, sharpPackageNames } from '@/lib/images/probe';
 
 describe('sanitizeCode', () => {
   it('reicht einen echten Node-Fehlercode durch', () => {
@@ -25,6 +25,49 @@ describe('sanitizeCode', () => {
 
   it('begrenzt die Laenge, damit kein Freitext durchrutscht', () => {
     expect(sanitizeCode({ code: 'A'.repeat(200) })).toBe('UNKNOWN');
+  });
+});
+
+describe('sharpPackageNames', () => {
+  // Der erste Live-Lauf meldete `stage: 'load'` mit `code: 'UNKNOWN'` — eine
+  // Auskunft, mit der niemand etwas tun kann. Diese Namen sind die Antwort
+  // auf "und was soll ich jetzt installieren?".
+  it('nennt fuer Linux mit glibc die glibc-Pakete', () => {
+    expect(sharpPackageNames('linux', 'x64', 'glibc')).toEqual({
+      binary: '@img/sharp-linux-x64',
+      libvips: '@img/sharp-libvips-linux-x64',
+    });
+  });
+
+  it('nennt fuer Alpine die musl-Pakete', () => {
+    // Der haeufigste Grund fuer ein sharp, das lokal laeuft und im Container
+    // nicht: dieselbe Architektur, andere libc.
+    expect(sharpPackageNames('linux', 'x64', 'musl')).toEqual({
+      binary: '@img/sharp-linuxmusl-x64',
+      libvips: '@img/sharp-libvips-linuxmusl-x64',
+    });
+  });
+
+  it('unterscheidet die Architektur', () => {
+    expect(sharpPackageNames('linux', 'arm64', 'glibc').binary).toBe('@img/sharp-linux-arm64');
+    expect(sharpPackageNames('darwin', 'arm64').binary).toBe('@img/sharp-darwin-arm64');
+    expect(sharpPackageNames('win32', 'x64').binary).toBe('@img/sharp-win32-x64');
+  });
+
+  it('verwirft alles, was nicht wie ein Paketname aussieht', () => {
+    // Die Antwort ist unauthentifiziert — dieselbe Schranke wie bei `code`.
+    expect(sharpPackageNames('../../etc', 'x64')).toEqual({
+      binary: 'UNKNOWN',
+      libvips: 'UNKNOWN',
+    });
+  });
+
+  it('beschreibt die Maschine, auf der dieser Test laeuft', () => {
+    // Ohne Argumente muss die Funktion die echte Umgebung treffen — sonst
+    // haette der Betreiber im Ernstfall einen Namen, der nirgends existiert.
+    const { binary } = sharpPackageNames();
+    expect(binary).toContain(process.arch);
+    expect(binary).not.toBe('UNKNOWN');
   });
 });
 

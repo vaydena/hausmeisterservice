@@ -8,12 +8,8 @@ import { checkAuthRateLimit, formatRateLimitError } from '@/lib/security/rate-li
 import { resolveReportLink } from '@/lib/report-links/resolve';
 import { isValidReportToken } from '@/lib/report-links/token';
 import { publicDefectReportSchema } from '@/lib/schemas/report-links';
-import {
-  DOC_BUCKET,
-  buildStoragePath,
-  isImageMime,
-  pickExtension,
-} from '@/lib/schemas/documents';
+import { stripImageMetadata } from '@/lib/images/strip-metadata';
+import { DOC_BUCKET, buildStoragePath, isImageMime } from '@/lib/schemas/documents';
 
 /**
  * Sprint 124 · Anonymer Foto-Anhang: engere Grenzen als im angemeldeten Pfad.
@@ -207,41 +203,17 @@ async function storePublicAttachment(params: {
     throw new Error(`Unerwarteter MIME-Typ im oeffentlichen Upload: ${file.type}`);
   }
 
-  // sharp erst hier laden, nicht als Modul-Import oben.
-  //
-  // sharp ist ein natives Modul. Steht das passende Binary auf dem Server
-  // nicht bereit, wirft schon der Import — und zwar beim Laden DIESER Datei,
-  // also bevor irgendeine Zeile der Meldelogik laeuft. Als Top-Level-Import
-  // haette damit das optionale Foto die pflichtige Meldung mit ins Grab
-  // gezogen: auch wer gar kein Bild anhaengt, haette nur einen 500er
-  // gesehen. Genau das ist beim ersten Live-Durchlauf passiert.
-  //
-  // Als dynamischer Import faellt ein kaputtes sharp in den try/catch des
-  // Aufrufers und wird zu `attachmentFailed` — die Meldung ist dann da, nur
-  // das Bild fehlt. Das ist die richtige Rangfolge: der Mangel ist die
-  // Nachricht, das Foto ist Beiwerk.
-  const { default: sharp } = await import('sharp');
-
+  // Das Re-Encode laedt sharp erst beim Aufruf — die Begruendung steht in
+  // @/lib/images/strip-metadata. Hier zaehlt die Folge davon: wirft der
+  // Helfer, faellt das in den try/catch des Aufrufers und wird zu
+  // `attachmentFailed`. Die Meldung ist dann da, nur das Bild fehlt. Das ist
+  // die richtige Rangfolge — der Mangel ist die Nachricht, das Foto Beiwerk.
   const source = Buffer.from(await file.arrayBuffer());
-  const img = sharp(source, { failOn: 'none' }).rotate();
-
-  let buffer: Buffer;
-  let effectiveMime: string;
-  let effectiveExt: string;
-  if (file.type === 'image/png') {
-    buffer = await img.png().toBuffer();
-    effectiveMime = 'image/png';
-    effectiveExt = 'png';
-  } else if (file.type === 'image/webp') {
-    buffer = await img.webp({ quality: 88 }).toBuffer();
-    effectiveMime = 'image/webp';
-    effectiveExt = 'webp';
-  } else {
-    // JPEG/HEIC/HEIF landen als JPEG — HEIC zeigt sonst kein Browser an.
-    buffer = await img.jpeg({ quality: 88 }).toBuffer();
-    effectiveMime = 'image/jpeg';
-    effectiveExt = 'jpg';
-  }
+  const {
+    buffer,
+    mime: effectiveMime,
+    extension: effectiveExt,
+  } = await stripImageMetadata(source, file.type);
 
   const documentId = crypto.randomUUID();
   const storagePath = buildStoragePath({

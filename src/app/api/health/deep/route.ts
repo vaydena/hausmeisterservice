@@ -17,8 +17,10 @@ export const dynamic = 'force-dynamic';
 // Ausfall, den nur der Melder sieht und der Betreiber nie, ist ein Ausfall
 // mit unbegrenzter Laufzeit.
 //
-// Antwort ist bewusst schmal und ohne Freitext: `stage` und `code` sind
-// Konstanten, keine Fehlermeldungen. Begruendung in src/lib/images/probe.ts.
+// Antwort ist bewusst schmal und ohne Freitext: `stage`, `code` und der
+// Paketname in `binary` sind Konstanten, keine Fehlermeldungen. Der
+// `binary`-Block kommt nur bei `stage: 'load'` mit, weil er nur dann etwas
+// erklaert — Begruendung in src/lib/images/probe.ts.
 //
 // Der HTTP-Status trennt "Runtime laeuft" von "Runtime kann arbeiten":
 // 200 wenn alle Proben gruen sind, 503 sonst. Ein Monitor kann damit ohne
