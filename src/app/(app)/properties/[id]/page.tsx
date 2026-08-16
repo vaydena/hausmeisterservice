@@ -10,6 +10,9 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDateTime } from '@/lib/utils/format';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
+import { isModuleAvailable } from '@/lib/modules/enabled';
+import { DocumentList, type DocumentRow } from '@/components/documents/document-list';
+import { DocumentUploader } from '@/components/documents/document-uploader';
 
 export const metadata: Metadata = { title: 'Objekt' };
 
@@ -45,6 +48,39 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
 
   const canEdit = permissions.has('properties.edit');
   const canCreateOrder = permissions.has('work_orders.create');
+
+  /**
+   * SPRINT 135 — DER OBJEKTORDNER, DEN ES NIE GAB.
+   *
+   * `DOC_ENTITY_TYPES` kennt `property` seit Sprint 63, `resolveTarget` in
+   * lib/documents/actions.ts loest es auf und revalidiert `/properties/<id>`,
+   * die RLS-Policies decken es ab. Nur einen Uploader dafuer gab es nirgends:
+   * `DocumentUploader` stand an genau drei Stellen (Auftrag, Meldung,
+   * Pruefpunkt). Ein Dokument entstand also ausschliesslich INNERHALB eines
+   * Vorgangs.
+   *
+   * Was dadurch nicht ablegbar war, ist genau das, was ein Hausmeisterbetrieb
+   * dauerhaft am Objekt braucht: Grundriss, Versicherungsschein,
+   * Wartungsvertrag, Schliessplan, Heizungsprotokoll. Nichts davon gehoert zu
+   * einem einzelnen Auftrag.
+   *
+   * Sichtbare Folge: der Filter "Gehoert zu: Objekt" auf /documents konnte
+   * seit dem ersten Tag keinen einzigen Treffer haben.
+   */
+  const documentsAvailable = await isModuleAvailable(ctx.tenantId, 'documents');
+  const docs = documentsAvailable
+    ? unwrapRows(
+        await supabase
+          .from('documents')
+          .select(
+            'id, kind, storage_path, original_filename, mime_type, byte_size, caption, created_at, uploaded_by',
+          )
+          .eq('entity_type', 'property')
+          .eq('entity_id', property.id)
+          .order('created_at', { ascending: false }),
+        'Objekte: Dokumente',
+      )
+    : [];
 
   // Sprint 112: openOrders ist die Liste, auf die jemand schaut, BEVOR er den
   // Button "Auftrag anlegen" direkt daneben drueckt. Verschluckt stand dort
@@ -197,6 +233,38 @@ export default async function PropertyDetailPage({ params }: { params: Promise<{
               )}
             </CardBody>
           </Card>
+
+          {documentsAvailable && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Objektunterlagen{docs.length > 0 ? ` (${docs.length})` : ''}
+                </CardTitle>
+              </CardHeader>
+              <CardBody className="flex flex-col gap-4">
+                <DocumentList
+                  documents={docs as DocumentRow[]}
+                  canDelete={canEdit || permissions.has('documents.delete')}
+                  emptyLabel="Noch keine Unterlagen zu diesem Objekt."
+                />
+                {permissions.has('documents.create') ? (
+                  <div className="flex flex-col gap-2">
+                    <DocumentUploader
+                      entityType="property"
+                      entityId={property.id}
+                      label="Unterlage hochladen"
+                    />
+                    <p className="text-xs text-[var(--color-muted-foreground)]">
+                      Für Dauerhaftes am Objekt: Grundriss, Schließplan,
+                      Versicherungsschein, Wartungsvertrag. Was zu einem
+                      einzelnen Vorgang gehört, wird besser am Auftrag oder an
+                      der Meldung abgelegt — dort steht es im Zusammenhang.
+                    </p>
+                  </div>
+                ) : null}
+              </CardBody>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
