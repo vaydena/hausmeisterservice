@@ -29,10 +29,16 @@ export const getEnabledModules = cache(async (tenantId: string): Promise<Set<Mod
   return enabled;
 });
 
-export async function isModuleEnabled(tenantId: string, moduleKey: ModuleKey): Promise<boolean> {
-  const enabled = await getEnabledModules(tenantId);
-  return enabled.has(moduleKey);
-}
+/*
+ * Sprint 117: Hier stand `isModuleEnabled(tenantId, moduleKey)`. Die Funktion
+ * hatte seit ihrer Entstehung keinen einzigen Aufrufer und sah trotzdem so
+ * aus, als gaebe es irgendwo eine Modul-Pruefung — die gab es nicht.
+ *
+ * Das Gate sitzt jetzt im Layout unter `src/app/(app)/layout.tsx` und prueft
+ * gegen das Set aus `getAvailableModules()`, das dort ohnehin fuer die
+ * Navigation geladen wird. Ein zweiter Einzelabruf daneben waere nur eine
+ * weitere Stelle, an der jemand vergessen kann, ihn aufzurufen.
+ */
 
 /**
  * Sprint 114: Module, die der Mandant aktiviert hat UND die sein Tarif

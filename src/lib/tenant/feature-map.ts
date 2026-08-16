@@ -18,6 +18,7 @@
  * abgeglichen.
  */
 import type { ModuleKey } from '@/lib/modules/registry';
+import { normalizeRoutePath, pathHasPrefix } from '@/lib/routing/path-prefix';
 
 export type FeatureKey = 'gps' | 'portal' | 'vehicles' | 'automations' | 'api';
 
@@ -74,17 +75,18 @@ export const FEATURE_PATHS: Record<FeatureKey, readonly string[]> = {
 /**
  * Welches Feature deckt diesen Pfad ab — oder keines?
  *
- * Praefix-Vergleich mit Segmentgrenze: `/vehicles` deckt `/vehicles/neu` ab,
- * aber nicht ein spaeteres `/vehicles-export`. Ein `startsWith` ohne diese
- * Grenze wuerde irgendwann still eine fremde Route mitsperren.
+ * Der Praefix-Vergleich haelt an der Segmentgrenze und liegt seit Sprint 117
+ * in `@/lib/routing/path-prefix` — dasselbe Stueck Logik entscheidet auch
+ * ueber das Modul-Gate, und die beiden duerfen sich ueber einen Pfad nicht
+ * uneinig sein.
  */
 export function featureForPath(pathname: string): FeatureKey | null {
-  const path = normalizePath(pathname);
+  const path = normalizeRoutePath(pathname);
   if (!path) return null;
 
   for (const feature of FEATURE_KEYS) {
     for (const prefix of FEATURE_PATHS[feature]) {
-      if (path === prefix || path.startsWith(`${prefix}/`)) return feature;
+      if (pathHasPrefix(path, prefix)) return feature;
     }
   }
   return null;
@@ -112,11 +114,4 @@ export function featureForModule(moduleKey: ModuleKey): FeatureKey | null {
 export function parseFeatureKey(value: string | null | undefined): FeatureKey | null {
   if (!value) return null;
   return (FEATURE_KEYS as readonly string[]).includes(value) ? (value as FeatureKey) : null;
-}
-
-function normalizePath(pathname: string): string {
-  const withoutQuery = pathname.split(/[?#]/)[0] ?? '';
-  const trimmed = withoutQuery.trim();
-  if (trimmed.length > 1 && trimmed.endsWith('/')) return trimmed.slice(0, -1);
-  return trimmed;
 }

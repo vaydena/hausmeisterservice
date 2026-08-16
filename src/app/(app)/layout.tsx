@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getTenantContext } from '@/lib/tenant/current';
 import { getResidentContext } from '@/lib/portal/current';
 import { getAvailableModules } from '@/lib/modules/enabled';
+import { moduleForPath } from '@/lib/modules/module-map';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { evaluateSubscriptionAccess, isPathAllowedWhenBlocked } from '@/lib/tenant/subscription-guard';
 import { hasFeature } from '@/lib/tenant/features';
@@ -48,6 +49,25 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     getAvailableModules(ctx.tenantId),
     getEffectivePermissions(ctx.userId, ctx.tenantId),
   ]);
+
+  // Sprint 117: Modul-Gate auf Routen-Ebene. Die Registry sagt seit dem
+  // ersten Tag "routes return 404, not 403" — bis hierher galt nur die
+  // halbe Zusage: der Menuepunkt verschwand, die Route blieb offen.
+  //
+  // 404 und nicht 403, weil das die ehrlichere Auskunft ist: fuer diesen
+  // Mandanten gibt es diese Seite nicht. Ein 403 wuerde bestaetigen, dass
+  // es sie gibt, und nach einer Berechtigung klingen, die niemand vergeben
+  // kann — abschalten war eine Entscheidung des Inhabers, keine Rechtefrage.
+  //
+  // Bewusst NACH dem Tarif-Gate: ein tarifgesperrtes Modul soll die
+  // erklaerende Seite zeigen ("dafuer braucht es Tarif X"), nicht ein 404,
+  // das wie ein Fehler aussieht. Geprueft wird gegen getAvailableModules —
+  // faellt ein Pfad kuenftig durch die FEATURE_PATHS-Tabelle, sperrt dieses
+  // Gate ihn trotzdem, statt ihn durchzulassen.
+  const requiredModule = moduleForPath(pathname);
+  if (requiredModule && !enabledModules.has(requiredModule)) {
+    notFound();
+  }
 
   const navGroups = filterNavGroups(NAV_GROUPS, enabledModules, permissions);
   const mobileItems = filterNavItems(MOBILE_NAV_ITEMS, enabledModules, permissions);

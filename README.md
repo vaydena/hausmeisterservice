@@ -66,6 +66,18 @@ Ein Sync-Skript schreibt alle Einträge aus `src/lib/permissions/registry.ts` in
 
 Sidebar + Mobile-Bottom-Nav gemäß `PLAN.md` §2.6. Menüpunkte werden dynamisch aus der Modul-Registry + `tenant_modules` gerendert. Deaktivierte Module = kein Menüpunkt, Route liefert 404.
 
+**Drei Gates im `(app)`-Layout, in dieser Reihenfolge** (`src/app/(app)/layout.tsx`) — die Reihenfolge entscheidet, welche Meldung der Nutzer sieht, und wird in `tests/module-map.test.ts` festgehalten:
+
+| # | Gate | Tabelle | Antwort |
+|---|------|---------|---------|
+| 1 | Abo (Testphase abgelaufen, Zahlung offen) | `subscription-guard.ts` | Redirect `/zahlung-erforderlich` |
+| 2 | Tarif-Feature (Sprint 114) | `src/lib/tenant/feature-map.ts` | Redirect `/tarif-erforderlich?feature=…` |
+| 3 | Modul-Schalter (Sprint 117) | `src/lib/modules/module-map.ts` | `notFound()` → 404 |
+
+Warum 404 und nicht 403: abschalten war eine Entscheidung des Inhabers, keine Rechtefrage — für diesen Mandanten *gibt* es die Seite nicht. Ein 403 würde bestätigen, dass sie existiert, und nach einer Berechtigung klingen, die niemand vergeben kann.
+
+`MODULE_PATHS` ist bewusst eine eigene Tabelle und nicht aus `MODULES[].menuPath` abgeleitet: ein Modul hat mehr Routen als Menüpunkte (`/time-corrections` gehört zur Zeiterfassung, `/checklist-runs` zu den Checklisten, `/qr` hat gar keinen Eintrag). Wer eine neue Seite unter `src/app/(app)` anlegt, muss ihren Präfix entweder in `MODULE_PATHS` eintragen oder in `UNGATED_PREFIXES` in `tests/module-map.test.ts` — der Test kennt sonst keine dritte Möglichkeit und schlägt fehl.
+
 ### 3.f Dashboards
 
 Rollenspezifisch: Admin (KPIs, §56), Mitarbeiter (§55), Bewohner (§54), Eigentümer (§25). Erst Skeletons mit echten Daten-Slots, keine Fake-Zahlen.
