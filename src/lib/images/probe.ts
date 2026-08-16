@@ -55,6 +55,21 @@ import { join } from 'node:path';
  * geht raus, sondern ihr Befund, und der stammt aus einer geschlossenen
  * Liste. Damit beantwortet der naechste Live-Abruf die Frage, fuer die bisher
  * der Betreiber ins Hoster-Log steigen musste.
+ *
+ * SPRINT 130 — DIE GROESSE IST DAS INDIZ. Sprint 128 lieferte
+ * SHARED_LIBRARY_MISSING, Sprint 129 zeigte, WELCHE fehlt: die von libvips
+ * selbst. Gemessen wurde danach am Paket, und dabei kam etwas heraus, das die
+ * Ursache eingrenzt, ohne dass jemand auf den Server muss:
+ * `@img/sharp-libvips-linux-x64` hat SECHS Dateien, KEIN Install-Script und
+ * 18,2 MB entpackt — die `.so` liegt im Tarball, sie wird nicht nachgeladen.
+ * Sie kann also nur beim Auspacken oder beim Ausliefern verlorengehen.
+ *
+ * Daraus wird eine Messung: neben der 18-MB-Datei liegt eine wenige hundert
+ * Byte grosse JS-Datei im selben Verzeichnis. Fehlt nur die grosse, hat etwas
+ * nach GROESSE aussortiert — Deploy-Pipeline, Kontingent, abgebrochene
+ * Uebertragung, alles Sache des Hosters. Fehlen beide, wurde das Paket als
+ * Huelle ausgepackt, und ein sauberer Installationslauf behebt es. Wieder
+ * nach Handlung geschnitten, nicht nach Neugier.
  */
 
 export type ImagePipelineProbe = {
@@ -202,6 +217,26 @@ export type SharpBinaryReport = {
      * dieser Block jetzt zum zweiten Mal umgebaut werden musste.
      */
     binary: boolean | null;
+    /**
+     * Eine kleine Datei aus demselben Verzeichnis (`lib/index.js`, ein paar
+     * hundert Byte gegen 18 MB bei der `.so`).
+     *
+     * SPRINT 130 — DER GROESSENVERGLEICH TRENNT DIE ADRESSATEN. Das Paket
+     * hat sechs Dateien und KEIN Install-Script; die `.so` liegt im Tarball
+     * und muss nur ausgepackt werden. Wenn sie fehlt, gibt es zwei Faelle,
+     * und sie gehen an zwei verschiedene Stellen:
+     *
+     * - `lib: true`, `binary: false` — die kleinen Dateien sind da, die
+     *   grosse nicht. Etwas hat nach Groesse aussortiert: Deploy-Pipeline,
+     *   Plattenkontingent, abgebrochene Uebertragung. Sache des Hosters.
+     * - `lib: false`, `binary: false` — das Verzeichnis ist leer, das Paket
+     *   wurde als Huelle ausgepackt. Sache des Installationslaufs, ein
+     *   sauberes Neuinstallieren behebt es.
+     *
+     * `null` wie ueberall hier: die Frage stellt sich nicht (kein `./lib`
+     * in der exports-Map, oder sharp war nicht auffindbar).
+     */
+    lib: boolean | null;
   } | null;
   /**
    * Die C-Bibliothek des Servers.
@@ -598,6 +633,10 @@ export function reportSharpBinary(): SharpBinaryReport {
             // sie als './binary' aus. Der Paketname allein hat die Frage nie
             // beantwortet — siehe die Begruendung am Typ.
             binary: req === null ? null : resolvesFileFrom(req, `${libvipsName}/binary`),
+            // Die kleine Datei aus demselben Verzeichnis. Fehlt nur die
+            // grosse daneben, hat jemand nach Groesse aussortiert; fehlen
+            // beide, ist das Paket eine Huelle. Zwei Adressaten, ein Wert.
+            lib: req === null ? null : resolvesFileFrom(req, `${libvipsName}/lib`),
           },
     libc: reportLibc(),
     runtime: reportRuntime(),

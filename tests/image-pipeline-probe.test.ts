@@ -193,7 +193,7 @@ describe('reportSharpBinary misst wirklich etwas', () => {
       // auf dieser Maschine nicht, und die uebrigen Tests waeren rot. Und die
       // Bibliothek selbst genauso: `present` allein hat diese Frage nie
       // beantwortet, siehe die Suite unten.
-      expect(report.libvips).toEqual({ expected: name, present: true, binary: true });
+      expect(report.libvips).toEqual({ expected: name, present: true, binary: true, lib: true });
     }
   });
 });
@@ -221,8 +221,13 @@ describe('Die libvips-Messung fragt nach der Datei, nicht nach dem Paket', () =>
       name: 'fake-libvips',
       version: '1.0.0',
       // Exakt die Struktur von @img/sharp-libvips-*: kein "." und die
-      // Bibliothek unter "./binary".
-      exports: { './binary': './lib/libvips-cpp.so.8.18.3', './package': './package.json' },
+      // Bibliothek unter "./binary". "./lib" ist die kleine Datei daneben,
+      // an der Sprint 130 die Groesse ablas.
+      exports: {
+        './binary': './lib/libvips-cpp.so.8.18.3',
+        './lib': './lib/index.js',
+        './package': './package.json',
+      },
     }),
   );
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'host', version: '1.0.0' }));
@@ -246,6 +251,20 @@ describe('Die libvips-Messung fragt nach der Datei, nicht nach dem Paket', () =>
   it('meldet die fehlende Bibliothek als fehlend', () => {
     // MODULE_NOT_FOUND, nicht ERR_PACKAGE_PATH_NOT_EXPORTED — der Unterschied
     // ist es, der aus dem Feld ueberhaupt einen Messwert macht.
+    expect(resolve('fake-libvips/binary')).toBe('MODULE_NOT_FOUND');
+  });
+
+  it('trennt "nur die grosse Datei fehlt" von "das Verzeichnis ist leer"', () => {
+    // Sprint 130. Bis hierher ist lib/ komplett leer — der Fall
+    // "Paket als Huelle ausgepackt", Sache des Installationslaufs.
+    expect(resolve('fake-libvips/lib')).toBe('MODULE_NOT_FOUND');
+
+    // Jetzt liegt die kleine Datei da, die grosse nicht. Genau daran
+    // haengt der Unterschied im Adressaten: hier hat etwas nach GROESSE
+    // aussortiert, und das ist Sache des Hosters.
+    writeFileSync(join(pkgDir, 'lib', 'index.js'), 'module.exports = {};');
+
+    expect(resolve('fake-libvips/lib')).toBe('OK');
     expect(resolve('fake-libvips/binary')).toBe('MODULE_NOT_FOUND');
   });
 

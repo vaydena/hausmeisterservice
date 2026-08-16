@@ -236,7 +236,8 @@ Zuerst auf `variant` schauen — das Feld sagt, auf welchem Weg sharp arbeitet:
 | `ok: true`, `variant: "wasm"` | Uploads laufen, aber über den WASM-Rückfall: das native Binary war nicht brauchbar. Rund 2,4× langsamer (gemessen: 12-MP-Foto 148 ms statt 61 ms) — für Uploads unkritisch. | **Kein Notfall, aber auch nicht erledigt.** Der `binary`-Block sagt jetzt, woran das native lag; die Zeilen unten gelten unverändert. Ohne diesen Eintrag hätte niemand je erfahren, dass der Server den Umweg nimmt. |
 | `stage: "load"`, `sharpPresent: false` | Nicht einmal `sharp` selbst liegt im `node_modules` des Servers. | Der Deploy hat die Abhängigkeiten nicht (vollständig) installiert. Install-Schritt prüfen. |
 | `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
-| **`libvips.binary: false`** | Das libvips-Paket ist erreichbar, die Bibliothek darin (`lib/libvips-cpp.so.…`) fehlt. | `libvips.expected` neu installieren lassen. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
+| **`libvips.binary: false`, `libvips.lib: true`** | Die kleinen Dateien des Pakets liegen da, die 18-MB-Bibliothek daneben nicht. | **Hoster.** Etwas hat nach *Größe* aussortiert: Deploy-Pipeline, Plattenkontingent, abgebrochene Übertragung. Das Paket hat kein Install-Script — die Datei liegt im Tarball und kann nur beim Auspacken oder Ausliefern verlorengehen. |
+| **`libvips.binary: false`, `libvips.lib: false`** | Das `lib/`-Verzeichnis ist leer, das Paket wurde als Hülle ausgepackt. | **Install-Lauf.** `node_modules` auf dem Server leeren lassen und sauber neu installieren. |
 | `libvips.present: false` | Nicht einmal das Paketverzeichnis ist erreichbar. | Wie oben, eine Stufe gröber. |
 | alles `true`, `runtime.node` < v20.9.0 | Node auf dem Server ist zu alt für das native Paket. | **Selbst behebbar:** im Hostinger-Panel eine neuere Node-Version wählen (das Projekt verlangt ohnehin `>=22`), dann neu deployen. Kein Support nötig. |
 | `present: true`, **`x64v2: false`** | Die CPU des Servers beherrscht die Mikroarchitektur **x86-64-v2** nicht. sharp verwirft sein eigenes, einwandfrei geladenes Linux-Binary deshalb wieder. | **Nicht behebbar und nicht nötig:** genau dafür liegt der WASM-Rückfall bei. Wer den nativen Weg zurück will, braucht einen Server mit neuerer CPU — ein Tarifwechsel, kein Bugfix. |
@@ -249,7 +250,7 @@ Steht seit Sprint 128 in der Antwort. Der Grund steht im Klartext in der Fehlerm
 
 | `reason` | Bedeutung | Wer handeln muss |
 | --- | --- | --- |
-| `SHARED_LIBRARY_MISSING` | Eine `.so`, an der das Binary hängt, fehlt — fast immer libvips. | **Install-Lauf.** Erst `libvips.binary` lesen: `false` heißt, die Bibliothek selbst fehlt; `true` heißt, sie ist da und es fehlt eine **System**bibliothek darunter — dann ist es doch der Hoster. Neu deployen; hilft das nicht, `node_modules` auf dem Server leeren lassen. |
+| `SHARED_LIBRARY_MISSING` | Eine `.so`, an der das Binary hängt, fehlt — fast immer libvips. | Erst `libvips.binary` lesen, dann `libvips.lib`: die beiden zusammen sagen, wer handeln muss (Tabelle oben). Ist `binary: true`, fehlt eine **System**bibliothek darunter — dann Hoster. |
 | `EXEC_NOT_PERMITTED` | Der Kernel verweigert das Ausführen: `noexec`-Mount, SELinux, fehlendes Ausführrecht. | **Hoster.** Das kann niemand von außen ändern. Support-Anfrage mit genau diesem Wort. |
 | `GLIBC_TOO_OLD` | Die glibc des Servers ist älter als die, gegen die gebaut wurde. | **Hoster.** `binary.libc.version` mitschicken. |
 | `OUT_OF_MEMORY` | Kein Speicher zum Laden. | **Tarif.** Das Speicherlimit des Hosting-Pakets. |
@@ -277,7 +278,15 @@ Warum die eigentliche Fehlermeldung nur im Log steht und nicht in der Antwort: s
 
 Damit sind ausgeschlossen — **durch Messung, nicht durch Vermutung**: `noexec`/SELinux (wäre `EXEC_NOT_PERMITTED`), die glibc-Version (`GLIBC_TOO_OLD`), die Node-Version (`ABI_MISMATCH`), ein Speicherlimit (`OUT_OF_MEMORY`) und die CPU-Mikroarchitektur — letztere, weil `x64v2` als `null` zurückkam und nicht als `false`: auf Linux-x64 stellt sich die Frage sehr wohl, sie blieb also unbeantwortet, weil das Laden schon vorher scheiterte.
 
-Es fehlt eine `.so`. **`libvips.binary` sagt ab dem nächsten Deploy, welche** — die von libvips selbst (dann: Install-Lauf) oder eine System­bibliothek darunter (dann doch: Hoster).
+Es fehlt eine `.so`, und seit Sprint 129 ist gemessen, welche:
+
+```json
+"libvips": { "expected": "@img/sharp-libvips-linux-x64", "present": true, "binary": false }
+```
+
+**Die Bibliothek von libvips selbst fehlt** — nicht eine Systembibliothek darunter. Das Paketverzeichnis ist erreichbar (Node hat dessen `package.json` gelesen), aber die Datei, die das Paket in seiner eigenen exports-Map als `./binary` ausweist, liegt nicht auf der Platte.
+
+Dazu gemessen (`npm view @img/sharp-libvips-linux-x64@1.3.2`): **sechs Dateien, kein Install-Script, 18,2 MB entpackt.** Die `.so` wird nicht nachgeladen, sie liegt im Tarball. Sie kann also nur beim Auspacken oder beim Ausliefern verlorengehen — und daneben liegt eine wenige hundert Byte große JS-Datei im selben Verzeichnis. **`libvips.lib` sagt ab Sprint 130, ob nur die große Datei fehlt (⟹ Hoster) oder das ganze Verzeichnis (⟹ Install-Lauf).**
 
 > **Korrektur zum bisherigen Stand.** Bis Sprint 129 stand hier und im Runbook, ein fehlendes `@img/sharp-libvips-linux-x64` sei „durch Messung ausgeschlossen". Das war es nicht. Die libvips-Pakete haben keinen `"."`-Eintrag in ihrer exports-Map, `require.resolve` auf den blanken Paketnamen endet deshalb immer in `ERR_PACKAGE_PATH_NOT_EXPORTED`, und das zählt die Probe absichtlich als „gefunden". **`libvips.present` konnte nie `false` werden**, auch bei leerem `lib/`-Verzeichnis nicht. Ein Messwert, der nur ein Ergebnis kennt, schließt nichts aus. Deshalb misst `libvips.binary` jetzt die Datei statt das Paket.
 
