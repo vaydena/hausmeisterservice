@@ -4,6 +4,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { isModuleAvailable } from '@/lib/modules/enabled';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -88,6 +89,9 @@ export default async function KeysPage({
   const propertyById = new Map(props.map((p) => [p.id, p]));
 
   const canCreate = permissions.has('keys.create');
+  // Sprint 117: /qr steht unter dem Modul-Gate — ohne diese Pruefung waere
+  // der Sammel-Druck ein Link ins 404.
+  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
 
   const tally = tallyCustody(
     items.map((k) => ({ label: k.label, custody: custodyById.get(k.id) ?? EMPTY_CUSTODY })),
@@ -107,7 +111,7 @@ export default async function KeysPage({
         }
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {items.length > 0 && (
+            {qrAvailable && items.length > 0 && (
               <Link
                 href={`/qr/print?type=key&ids=${items.slice(0, 60).map((k) => k.id).join(',')}`}
                 target="_blank"

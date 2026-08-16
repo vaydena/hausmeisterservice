@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows } from '@/lib/supabase/unwrap';
 import { parseReading } from '@/lib/meters/consumption';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { isModuleAvailable } from '@/lib/modules/enabled';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -87,6 +88,9 @@ export default async function MetersPage({
   const propertyById = new Map(props.map((p) => [p.id, p]));
 
   const canCreate = permissions.has('meters.create');
+  // Sprint 117: /qr steht unter dem Modul-Gate — ohne diese Pruefung waere
+  // der Sammel-Druck ein Link ins 404.
+  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -95,7 +99,7 @@ export default async function MetersPage({
         description="Zählerstamm und Ablesungshistorie pro Objekt."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {items.length > 0 && (
+            {qrAvailable && items.length > 0 && (
               <Link
                 href={`/qr/print?type=meter&ids=${items.slice(0, 60).map((m) => m.id).join(',')}`}
                 target="_blank"

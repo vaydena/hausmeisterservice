@@ -29,17 +29,6 @@ export const getEnabledModules = cache(async (tenantId: string): Promise<Set<Mod
   return enabled;
 });
 
-/*
- * Sprint 117: Hier stand `isModuleEnabled(tenantId, moduleKey)`. Die Funktion
- * hatte seit ihrer Entstehung keinen einzigen Aufrufer und sah trotzdem so
- * aus, als gaebe es irgendwo eine Modul-Pruefung — die gab es nicht.
- *
- * Das Gate sitzt jetzt im Layout unter `src/app/(app)/layout.tsx` und prueft
- * gegen das Set aus `getAvailableModules()`, das dort ohnehin fuer die
- * Navigation geladen wird. Ein zweiter Einzelabruf daneben waere nur eine
- * weitere Stelle, an der jemand vergessen kann, ihn aufzurufen.
- */
-
 /**
  * Sprint 114: Module, die der Mandant aktiviert hat UND die sein Tarif
  * abdeckt. Das ist die Menge, aus der Navigation und Dashboard gebaut werden.
@@ -61,3 +50,24 @@ export const getAvailableModules = cache(async (tenantId: string): Promise<Set<M
   for (const key of enabled) if (!locked.has(key)) available.add(key);
   return available;
 });
+
+/**
+ * Sprint 117: Einzelabfrage fuer Stellen, die auf ein bestimmtes Modul
+ * verlinken, ohne selbst dazuzugehoeren — die QR-Buttons auf Objekten,
+ * Schluesseln und Zaehlern zum Beispiel.
+ *
+ * Vorgaenger war `isModuleEnabled()`, das den rohen Schalterzustand las und
+ * keinen einzigen Aufrufer hatte. Der Unterschied ist nicht kosmetisch: das
+ * Routen-Gate im Layout prueft gegen `getAvailableModules()`. Wer hier den
+ * rohen Zustand liest, zeigt einen Button, der ins 404 fuehrt, sobald der
+ * Tarif das Modul sperrt.
+ *
+ * `getAvailableModules` ist `cache`d — der Aufruf kostet innerhalb eines
+ * Requests nichts, das Layout hat die Menge ohnehin schon geladen.
+ */
+export async function isModuleAvailable(
+  tenantId: string,
+  moduleKey: ModuleKey,
+): Promise<boolean> {
+  return (await getAvailableModules(tenantId)).has(moduleKey);
+}

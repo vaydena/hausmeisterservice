@@ -5,6 +5,7 @@ import { requireTenantContext } from '@/lib/tenant/current';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
+import { isModuleAvailable } from '@/lib/modules/enabled';
 import { PageHeader } from '@/components/ui/page-header';
 import { LinkButton } from '@/components/ui/button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +57,9 @@ export default async function KeyDetailPage({
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
   const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
+  // Sprint 117: Seit /qr unter dem Modul-Gate steht, fuehrt dieser Button
+  // ins 404, wenn der Mandant QR-Codes abgeschaltet hat.
+  const qrAvailable = await isModuleAvailable(ctx.tenantId, 'qr_codes');
 
   const key = unwrapMaybeRow(
     await supabase
@@ -163,9 +167,11 @@ export default async function KeyDetailPage({
         description={key.code ?? undefined}
         action={
           <div className="flex gap-2">
-            <LinkButton variant="outline" href={`/qr/key/${key.id}`}>
-              QR-Code
-            </LinkButton>
+            {qrAvailable && (
+              <LinkButton variant="outline" href={`/qr/key/${key.id}`}>
+                QR-Code
+              </LinkButton>
+            )}
             {canEdit && !key.deleted_at && (
               <LinkButton variant="outline" href={`/keys/${key.id}/edit`}>
                 Bearbeiten
