@@ -193,15 +193,27 @@ Aktuell abgedeckt:
   `enabledModules.has(module)` false wird) und tote Sidebar-Links (User
   klickt → 404). Neue Sidebar-Route? Nav-Eintrag + `menuPath` im passenden
   Modul + echte `page.tsx`.
-  **`unbuilt: true` ist die einzige Quelle für „Seite noch nicht gebaut"**
+  **`unbuilt: true` ist die einzige Quelle für „Modul noch nicht gebaut"**
   (Sprint 131, vorher zwei Listen: `KNOWN_MISSING_PAGES` hier und
   `NOT_ENABLED_ON_SIGNUP` in der Registry). Vier Stellen lesen das Flag:
   Navigation (`nav-config.ts`), Signup-Vorauswahl
   (`SIGNUP_DEFAULT_MODULE_KEYS`), die Schalterliste unter
-  Einstellungen → Mandant und `toggleModuleAction`. Der Test hält die
-  Markierung auch in der Gegenrichtung ehrlich: existiert die `page.tsx`,
-  schlägt er fehl, bis das Flag entfernt ist — sonst bleibt ein fertiges
-  Modul unsichtbar, ohne dass irgendetwas kaputt aussieht.
+  Einstellungen → Mandant und `toggleModuleAction`.
+  **Sprint 133 · „Jedes Modul führt irgendwohin — oder heißt unbuilt".**
+  Alle bisherigen Prüfungen fingen bei einem *Link* an (Nav-Eintrag,
+  `menuPath`) und gingen deshalb an Modulen vorbei, die gar keinen hatten:
+  `shifts`, `photos`, `work_reports` und `owner_portal` standen als Schalter
+  unter Einstellungen → Mandant, waren bei jedem neuen Mandanten an und hatten
+  keine Zeile Code dahinter — kein 404, einfach nichts. Die Prüfung fängt
+  jetzt beim Modul an und stellt beide Richtungen derselben Frage: gebaut →
+  es muss mindestens eine `page.tsx` unter den deklarierten Pfaden geben
+  (`menuPath` + `MODULE_PATHS`, rekursiv — die QR-Codes haben unter `/qr`
+  keine Indexseite, aber `/qr/print`); `unbuilt` → es darf keine geben.
+  Ein Prädikat, zwei Vorzeichen: was die eine Richtung durchlässt, fängt die
+  andere. Module außerhalb der `(app)`-Route-Group (heute nur das
+  Bewohnerportal) stehen in `MODULES_OUTSIDE_APP_ROUTE_GROUP` — die Ausnahme
+  nennt ein Verzeichnis, und der Test schaut nach, ob dort wirklich Seiten
+  liegen.
 - `tests/storage-bucket-policy-coverage.test.ts` — jeder in einer Migration
   per `insert into storage.buckets` deklarierte Bucket muss `public=false`
   sein und mindestens eine SELECT- und INSERT-Policy auf `storage.objects`

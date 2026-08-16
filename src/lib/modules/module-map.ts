@@ -35,8 +35,16 @@ import { normalizeRoutePath, pathHasPrefix } from '@/lib/routing/path-prefix';
  * einschaltet).
  *
  * Module ohne eigene Staff-Route fehlen bewusst:
- *   resident_portal / owner_portal — eigene Route-Group mit eigenem Gate
- *   work_reports / photos / shifts — noch nicht gebaut
+ *   resident_portal — eigene Route-Group, siehe MODULES_OUTSIDE_APP_ROUTE_GROUP
+ *   work_reports / photos / shifts / owner_portal / gps — noch nicht gebaut,
+ *     siehe `unbuilt` in registry.ts
+ *
+ * Sprint 133 · Die zweite Zeile stand hier vorher als blosse Behauptung
+ * ("noch nicht gebaut") und war damit wertlos: ein Kommentar schaltet nichts
+ * ab. Die vier Module waren abschaltbar, standen als Schalter unter
+ * Einstellungen -> Mandant und wurden jedem neuen Mandanten eingeschaltet.
+ * Jetzt steht die Tatsache als `unbuilt: true` am Modul, wo alle Verbraucher
+ * sie lesen — dieser Kommentar verweist nur noch darauf.
  */
 export const MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
   properties: ['/properties'],
@@ -139,6 +147,37 @@ export function apiPathsForModule(moduleKey: ModuleKey): readonly string[] {
 /** Alle Routen-Praefixe, die dieses Modul abdeckt. */
 export function pathsForModule(moduleKey: ModuleKey): readonly string[] {
   return MODULE_PATHS[moduleKey] ?? [];
+}
+
+/**
+ * Sprint 133 · Module, deren Seiten NICHT unter `src/app/(app)` liegen.
+ *
+ * Das Bewohnerportal ist eine eigene Route-Group mit eigenem Login, eigenem
+ * Layout und eigener Zielgruppe — es taucht deshalb weder in `menuPath` noch
+ * in `MODULE_PATHS` auf. Ohne diesen Eintrag saehe die Erreichbarkeitspruefung
+ * ein Modul ohne jeden Weg und wuerde `unbuilt: true` verlangen. Das waere
+ * falsch: das Portal ist gebaut und laeuft.
+ *
+ * Der Wert ist ein Verzeichnis und keine Route, weil genau das geprueft wird —
+ * die Ausnahme behauptet "hier liegen Seiten", und der Test schaut nach. Eine
+ * Ausnahme, die niemand nachmisst, ueberlebt das, was sie entschuldigt.
+ */
+export const MODULES_OUTSIDE_APP_ROUTE_GROUP: Partial<Record<ModuleKey, string>> = {
+  resident_portal: 'src/app/(portal)/portal',
+};
+
+/**
+ * Alle Wege, auf denen ein Mensch in dieses Modul kommt: Menuepunkt plus
+ * Seiten-Praefixe. API-Praefixe zaehlen bewusst nicht mit — ein Route-Handler
+ * ist kein Einstieg, sondern etwas, das eine Seite benutzt.
+ *
+ * Sprint 133 · Grundlage der Erreichbarkeitspruefung in
+ * tests/nav-module-coverage.test.ts. Sie steht hier und nicht im Test, damit
+ * der Test die Regel nicht nachbaut, sondern dieselbe Antwort liest.
+ */
+export function pagePathsForModule(moduleKey: ModuleKey): readonly string[] {
+  const menuPath = MODULES_BY_KEY[moduleKey]?.menuPath;
+  return [...new Set([...(menuPath ? [menuPath] : []), ...(MODULE_PATHS[moduleKey] ?? [])])];
 }
 
 /**

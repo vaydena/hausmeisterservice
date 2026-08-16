@@ -63,7 +63,22 @@ export interface ModuleDefinition {
   menuPath?: string;
   description: string;
   /**
-   * Die Seite zu `menuPath` ist noch nicht gebaut.
+   * Das Modul ist noch nicht gebaut — es gibt nichts, wohin es fuehren
+   * koennte.
+   *
+   * SPRINT 133 — DER MENUPATH IST OPTIONAL. Anfangs hiess das hier "die
+   * Seite zu `menuPath` fehlt", weil `gps` der einzige Fall war und einen
+   * menuPath hatte. Damit ging die schlimmere Sorte durch die Maschen:
+   * `shifts`, `photos`, `work_reports` und `owner_portal` hatten nie einen
+   * menuPath, nie eine Route, nie eine Seite — und standen trotzdem als
+   * Schalter unter Einstellungen -> Mandant, eingeschaltet bei jedem neuen
+   * Mandanten. Wer "Schichten" umlegte, bekam keine Fehlerseite, sondern
+   * gar nichts: kein neuer Menuepunkt, keine Meldung, keine Wirkung. Ein
+   * 404 ist ein schlechtes Ergebnis, aber es ist wenigstens eine Antwort.
+   *
+   * Das Wissen war da — als Kommentar in module-map.ts stand woertlich
+   * "work_reports / photos / shifts — noch nicht gebaut". Ein Kommentar
+   * schaltet nichts ab.
    *
    * SPRINT 131 — WARUM DAS HIER STEHT UND NICHT IN EINER TESTDATEI. Bis
    * hierher lebte diese Information in `KNOWN_MISSING_PAGES` in
@@ -103,15 +118,15 @@ export const MODULES: readonly ModuleDefinition[] = [
   { key: 'residents', labelDe: 'Bewohner', domain: 'people', core: false, menuPath: '/people/residents', description: 'Bewohnerverwaltung.' },
   { key: 'owners', labelDe: 'Eigentümer', domain: 'people', core: false, menuPath: '/people/owners', description: 'Eigentümer und Hausverwaltungen.' },
   { key: 'resident_portal', labelDe: 'Bewohnerportal', domain: 'communication', core: false, description: 'Eigenständiges Portal für Bewohner.' },
-  { key: 'owner_portal', labelDe: 'Eigentümerportal', domain: 'communication', core: false, description: 'Eigenständiges Portal für Eigentümer.' },
+  { key: 'owner_portal', labelDe: 'Eigentümerportal', domain: 'communication', core: false, description: 'Eigenständiges Portal für Eigentümer.', unbuilt: true },
   { key: 'maintenance', labelDe: 'Wartungen', domain: 'tasks', core: false, menuPath: '/maintenance', description: 'Wiederkehrende Wartungs- und Prüfpläne.' },
   { key: 'checklists', labelDe: 'Checklisten', domain: 'tasks', core: false, menuPath: '/checklists', description: 'Checklisten-Builder und Ausführung.' },
-  { key: 'work_reports', labelDe: 'Arbeitsberichte', domain: 'tasks', core: false, description: 'PDF-Arbeitsberichte mit Unterschrift.' },
+  { key: 'work_reports', labelDe: 'Arbeitsberichte', domain: 'tasks', core: false, description: 'PDF-Arbeitsberichte mit Unterschrift.', unbuilt: true },
   { key: 'documents', labelDe: 'Dokumente', domain: 'resources', core: false, menuPath: '/documents', description: 'Dokumentenverwaltung mit Versionierung.' },
-  { key: 'photos', labelDe: 'Fotos', domain: 'resources', core: false, description: 'Vorher/Nachher-Dokumentation.' },
+  { key: 'photos', labelDe: 'Fotos', domain: 'resources', core: false, description: 'Vorher/Nachher-Dokumentation.', unbuilt: true },
   { key: 'time_tracking', labelDe: 'Zeiterfassung', domain: 'field', core: false, menuPath: '/time-tracking', description: 'Arbeits-, Pausen-, Fahrzeiten.' },
   { key: 'scheduling', labelDe: 'Mitarbeiterplanung', domain: 'field', core: false, menuPath: '/schedule', description: 'Kalenderbasierte Einsatzplanung.' },
-  { key: 'shifts', labelDe: 'Schichten', domain: 'field', core: false, description: 'Schichtmodelle.' },
+  { key: 'shifts', labelDe: 'Schichten', domain: 'field', core: false, description: 'Schichtmodelle.', unbuilt: true },
   { key: 'tours', labelDe: 'Touren', domain: 'field', core: false, menuPath: '/tours', description: 'Multi-Stopp-Tourenplanung mit Optimierung.' },
   { key: 'gps', labelDe: 'GPS & Karte', domain: 'field', core: false, menuPath: '/map', description: 'Opt-in-GPS mit 90-Tage-Retention.', unbuilt: true },
   { key: 'keys', labelDe: 'Schlüssel', domain: 'resources', core: false, menuPath: '/keys', description: 'Schlüsselverwaltung mit Ausgabe-/Rückgabelogik.' },

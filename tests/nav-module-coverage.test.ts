@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   MODULES,
   SIGNUP_DEFAULT_MODULE_KEYS,
   UNBUILT_MODULE_KEYS,
+  type ModuleDefinition,
   type ModuleKey,
 } from '../src/lib/modules/registry';
+import {
+  MODULES_OUTSIDE_APP_ROUTE_GROUP,
+  pagePathsForModule,
+} from '../src/lib/modules/module-map';
 import type { PermissionKey } from '../src/lib/permissions/registry';
 import {
   NAV_GROUPS,
@@ -29,6 +34,46 @@ function urlToPageFile(href: string): string {
   const clean = href.replace(/[?#].*$/, '');
   const segments = clean.split('/').filter(Boolean);
   return join(APP_DIR, ...segments, 'page.tsx');
+}
+
+/** Liegt irgendwo unter diesem Verzeichnis eine page.tsx? */
+function containsPage(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (containsPage(join(dir, entry.name))) return true;
+    } else if (entry.name === 'page.tsx') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Sprint 133 · Die eine Frage, aus der beide Richtungen unten folgen:
+ * WELCHE gebauten Seiten hat dieses Modul?
+ *
+ * Rekursiv, nicht nur `<prefix>/page.tsx` — die QR-Codes haben unter `/qr`
+ * keine eigene Indexseite, aber `/qr/print` und `/qr/[type]/[id]`. Wer nur
+ * die Wurzel prueft, haelt ein gebautes Modul faelschlich fuer leer.
+ *
+ * Die Pfade kommen aus `pagePathsForModule` (menuPath + MODULE_PATHS), die
+ * Ausnahme fuer Route-Groups ausserhalb von `(app)` aus
+ * `MODULES_OUTSIDE_APP_ROUTE_GROUP`. Beides steht in module-map.ts — dieser
+ * Test baut die Regel nicht nach, er liest sie und schaut auf der Platte nach.
+ */
+function builtPagesFor(mod: ModuleDefinition): string[] {
+  const hits: string[] = [];
+
+  const outside = MODULES_OUTSIDE_APP_ROUTE_GROUP[mod.key];
+  if (outside && containsPage(join(process.cwd(), outside))) hits.push(outside);
+
+  for (const prefix of pagePathsForModule(mod.key)) {
+    const dir = join(APP_DIR, ...prefix.split('/').filter(Boolean));
+    if (containsPage(dir)) hits.push(prefix);
+  }
+
+  return hits;
 }
 
 /**
@@ -89,24 +134,58 @@ describe('Nav-config <-> module-registry consistency', () => {
   });
 
   /**
-   * Die Gegenrichtung, und die eigentlich wichtige: eine Ausnahme, die
-   * niemand zurueckzieht, ist auf Dauer schlimmer als keine. Ein Modul, das
-   * `unbuilt` heisst, obwohl die Seite laengst existiert, ist unsichtbar —
-   * kein Kunde kann es einschalten, und niemand merkt es, weil nichts kaputt
-   * aussieht.
+   * SPRINT 133 — DIE PRUEFUNG, DIE VIER MODULE ZU LANGE VERFEHLT HAT.
+   *
+   * Ein abschaltbares Modul ist ein Versprechen an den Kunden: unter
+   * Einstellungen -> Mandant steht sein Name mit einem Schalter daneben, und
+   * beim Signup ist er eingeschaltet. `shifts`, `photos`, `work_reports` und
+   * `owner_portal` hielten dieses Versprechen nie ein — keine Seite, keine
+   * Route, kein Menuepunkt. Wer "Schichten" einschaltete, bekam nicht einmal
+   * eine Fehlerseite: es passierte schlicht nichts.
+   *
+   * Alle bisherigen Pruefungen gingen daran vorbei, weil sie samt und sonders
+   * bei einem Link anfingen — Nav-Eintrag, menuPath, Signup-Vorauswahl mit
+   * menuPath. Ein Modul ohne jeden Link hatte nichts, woran sie sich haetten
+   * festhalten koennen. Der teuerste Fehlertyp in diesem Projekt ist der
+   * Wachposten, der genau an einer der Stellen steht, an denen er gebraucht
+   * wird; der zweitteuerste ist der, dessen Bedingung nie zutrifft.
+   *
+   * Deshalb faengt diese Pruefung beim Modul an, nicht beim Link, und stellt
+   * beide Richtungen derselben Frage:
+   *
+   *   gebaut  -> es muss mindestens eine Seite geben
+   *   unbuilt -> es darf keine geben
+   *
+   * Ein Praedikat, zwei Vorzeichen. Was die eine Richtung durchlaesst, faengt
+   * die andere: ein fertig gebautes Modul, dem jemand das Flag zu entfernen
+   * vergisst, bleibt sonst fuer alle Kunden unsichtbar — und das sieht von
+   * aussen nicht nach einem Fehler aus, sondern nach einer Entscheidung.
    */
-  describe('"unbuilt" bleibt ehrlich', () => {
+  describe('Jedes Modul fuehrt irgendwohin — oder heisst unbuilt', () => {
+    it('sanity: die Platte wird wirklich gelesen', () => {
+      // Ohne diese Zeile wuerde ein containsPage(), das immer false liefert,
+      // die erste Gruppe unten stumm durchwinken.
+      const properties = MODULES.find((m) => m.key === 'properties')!;
+      expect(builtPagesFor(properties)).toContain('/properties');
+    });
+
+    for (const mod of MODULES.filter((m) => !m.core && !m.unbuilt)) {
+      it(`Modul "${mod.labelDe}" (${mod.key}) hat mindestens eine gebaute Seite`, () => {
+        expect(
+          builtPagesFor(mod),
+          `Das Modul "${mod.labelDe}" laesst sich unter Einstellungen -> Mandant einschalten und ist bei jedem neuen Mandanten an — aber es gibt keine einzige Seite dazu. Der Schalter tut nichts, und der Kunde erfaehrt nicht, warum.\n` +
+            `Geprueft wurden: ${pagePathsForModule(mod.key).join(', ') || '(keine Pfade deklariert)'}\n` +
+            `Entweder die Seiten bauen und den Pfad in MODULE_PATHS eintragen (src/lib/modules/module-map.ts), oder "${mod.key}" in src/lib/modules/registry.ts mit "unbuilt: true" markieren — dann verschwindet der Schalter, statt zu luegen.`,
+        ).not.toEqual([]);
+      });
+    }
+
     for (const mod of MODULES.filter((m) => m.unbuilt)) {
-      it(`Modul "${mod.key}" ist als unbuilt markiert und hat wirklich keine Seite`, () => {
+      it(`Modul "${mod.labelDe}" (${mod.key}) traegt unbuilt und hat wirklich keine Seite`, () => {
         expect(
-          mod.menuPath,
-          `Modul "${mod.key}" ist "unbuilt: true", deklariert aber keinen menuPath. Dann ist die Markierung wirkungslos — sie beschreibt eine Seite, die niemand verlinkt. Entweder menuPath ergaenzen oder das Flag entfernen.`,
-        ).toBeTruthy();
-        const file = urlToPageFile(mod.menuPath!);
-        expect(
-          existsSync(file),
-          `Modul "${mod.key}" traegt "unbuilt: true", aber ${file} existiert. Das Flag versteckt das Modul vor Navigation, Signup-Vorauswahl und Schaltern — die Seite ist also gebaut und trotzdem fuer niemanden erreichbar. Flag in src/lib/modules/registry.ts entfernen.`,
-        ).toBe(false);
+          builtPagesFor(mod),
+          `Modul "${mod.key}" traegt "unbuilt: true", aber unter diesen Pfaden liegen Seiten. Das Flag versteckt das Modul vor Navigation, Signup-Vorauswahl und Schaltern — gebaut und trotzdem fuer keinen Kunden erreichbar. Flag in src/lib/modules/registry.ts entfernen.`,
+        ).toEqual([]);
       });
     }
   });
