@@ -196,8 +196,8 @@ Aktuell abgedeckt:
   **`unbuilt: true` ist die einzige Quelle für „Modul noch nicht gebaut"**
   (Sprint 131, vorher zwei Listen: `KNOWN_MISSING_PAGES` hier und
   `NOT_ENABLED_ON_SIGNUP` in der Registry). Vier Stellen lesen das Flag:
-  Navigation (`nav-config.ts`), Signup-Vorauswahl
-  (`SIGNUP_DEFAULT_MODULE_KEYS`), die Schalterliste unter
+  Navigation (`nav-config.ts`), der Grundzustand
+  (`DEFAULT_ON_MODULE_KEYS`), die Schalterliste unter
   Einstellungen → Mandant und `toggleModuleAction`.
   **Sprint 133 · „Jedes Modul führt irgendwohin — oder heißt unbuilt".**
   Alle bisherigen Prüfungen fingen bei einem *Link* an (Nav-Eintrag,
@@ -214,6 +214,22 @@ Aktuell abgedeckt:
   Bewohnerportal) stehen in `MODULES_OUTSIDE_APP_ROUTE_GROUP` — die Ausnahme
   nennt ein Verzeichnis, und der Test schaut nach, ob dort wirklich Seiten
   liegen.
+  **Sprint 136 · „keine Zeile" heißt nicht „aus".** `getEnabledModules` las
+  eine fehlende `tenant_modules`-Zeile als AUS und zog damit zwei
+  verschiedene Sachverhalte zusammen: „der Kunde hat abgeschaltet" und
+  „hier wurde nie etwas eingetragen". Gemessen in der Produktiv-DB am
+  16.08.2026: kein einziger Mandant hatte je eine `false`-Zeile, aber dem
+  ältesten fehlten vier Zeilen zu **gebauten** Modulen — `resident_portal`,
+  `qr_codes`, `reporting`, `automations`. Er sah sie deshalb nicht, obwohl
+  er das Bewohnerportal nachweislich benutzt. Da `toggleModuleAction` nie
+  löscht, sondern `false` schreibt, ist „keine Zeile" beweisbar „nie
+  eingerichtet". Die Regel lautet jetzt **an, außer es steht ausdrücklich
+  `false` da** und liegt als `isModuleEnabledByRows` in der Registry — reine
+  Logik, damit auch der öffentliche Melde-Link (`report-links/resolve.ts`)
+  sie benutzen kann, ohne einen Supabase-Server-Client mitzuziehen. Vorher
+  stand dieselbe Regel dort ein zweites Mal in eigenen Worten.
+  Kern-Module bleiben auch bei einer `false`-Zeile an; ungebaute Module
+  brauchen weiterhin eine ausdrückliche `true`-Zeile.
 - `tests/storage-bucket-policy-coverage.test.ts` — jeder in einer Migration
   per `insert into storage.buckets` deklarierte Bucket muss `public=false`
   sein und mindestens eine SELECT- und INSERT-Policy auf `storage.objects`

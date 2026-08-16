@@ -2,6 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { isModuleEnabledByRows } from '@/lib/modules/registry';
 import { isValidReportToken } from './token';
 
 export interface ReportLinkContext {
@@ -146,10 +147,18 @@ export const resolveReportLink = cache(
       return { ok: false, reason: 'unavailable' };
     }
 
-    // Fehlende Zeile ist ein AUS (siehe getEnabledModules) — die gleiche
-    // Regel wie ueberall sonst, damit der oeffentliche Pfad nicht mehr
-    // erlaubt als die App selbst.
-    if (!modules.data?.enabled) return { ok: false, reason: 'unknown' };
+    // Sprint 136: dieselbe Regel wie in der App, und zwar buchstaeblich
+    // dieselbe Funktion — der oeffentliche Pfad darf weder mehr noch
+    // weniger erlauben als `getEnabledModules`. Vorher stand die Regel hier
+    // ein zweites Mal in eigenen Worten ("fehlende Zeile ist ein AUS"), und
+    // eine zweite Formulierung ist eine zweite Regel, sobald sich eine von
+    // beiden aendert.
+    //
+    // `maybeSingle` liefert 0 oder 1 Zeile; die leere Liste ist genau der
+    // Fall "hier wurde nie etwas eingetragen".
+    if (!isModuleEnabledByRows('defect_reports', modules.data ? [{ module_key: 'defect_reports', enabled: modules.data.enabled }] : [])) {
+      return { ok: false, reason: 'unknown' };
+    }
 
     return {
       ok: true,

@@ -2,13 +2,20 @@ import 'server-only';
 import { cache } from 'react';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { unwrapRows } from '@/lib/supabase/unwrap';
-import { CORE_MODULE_KEYS, type ModuleKey } from '@/lib/modules/registry';
+import {
+  CORE_MODULE_KEYS,
+  DEFAULT_ON_MODULE_KEYS,
+  isModuleEnabledByRows,
+  type ModuleKey,
+  type ModuleToggleRow,
+} from '@/lib/modules/registry';
 import { getEnabledFeatures } from '@/lib/tenant/features';
 import { lockedModules } from '@/lib/tenant/feature-map';
 
 /**
  * Effektive Modul-Aktivierung für den aktuellen Tenant.
- * Core-Module sind immer aktiv; alles andere kommt aus `public.tenant_modules`.
+ * Core-Module sind immer aktiv; alles andere entscheidet
+ * `isModuleEnabledByRows` aus `public.tenant_modules`.
  *
  * Sprint 104: Bei einem Query-Fehler blieb frueher nur die Core-Liste uebrig.
  * Das Ergebnis ist kein Fehler, sondern eine plausible Behauptung — "dieser
@@ -20,12 +27,22 @@ export const getEnabledModules = cache(async (tenantId: string): Promise<Set<Mod
   const rows = unwrapRows(
     await supabase.from('tenant_modules').select('module_key, enabled').eq('tenant_id', tenantId),
     'Aktive Module des Mandanten',
-  );
+  ) as ModuleToggleRow[];
 
   const enabled = new Set<ModuleKey>(CORE_MODULE_KEYS);
+
+  for (const key of DEFAULT_ON_MODULE_KEYS) {
+    if (isModuleEnabledByRows(key, rows)) enabled.add(key);
+  }
+
+  // Ungebaute Module stehen nicht im Default, koennen aber eine aktive
+  // Zeile aus der Zeit vor dem Signup-Riegel haben (Sprint 131). Die bleibt
+  // hier sichtbar, damit Einstellungen → Mandant sie weiterhin ausweisen
+  // kann; `getAvailableModules` und die Navigation filtern sie ohnehin.
   for (const row of rows) {
     if (row.enabled) enabled.add(row.module_key as ModuleKey);
   }
+
   return enabled;
 });
 

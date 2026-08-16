@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   MODULES,
-  SIGNUP_DEFAULT_MODULE_KEYS,
+  DEFAULT_ON_MODULE_KEYS,
   UNBUILT_MODULE_KEYS,
   type ModuleDefinition,
   type ModuleKey,
@@ -253,15 +253,22 @@ describe('Nav-config <-> module-registry consistency', () => {
   });
 
   /**
-   * Sprint 123: `SIGNUP_DEFAULT_MODULE_KEYS` ist die Menge, die ein neuer
-   * Kunde beim Signup eingeschaltet bekommt. Sie ist bewusst "alles ausser
-   * den Ausnahmen" formuliert, damit ein neu registriertes Modul
-   * automatisch beim Kunden ankommt statt vergessen zu werden.
+   * Sprint 123: `DEFAULT_ON_MODULE_KEYS` (damals SIGNUP_DEFAULT_MODULE_KEYS)
+   * ist die Menge, die ein Kunde ohne eigenes Zutun eingeschaltet bekommt.
+   * Sie ist bewusst "alles ausser den Ausnahmen" formuliert, damit ein neu
+   * registriertes Modul automatisch beim Kunden ankommt statt vergessen zu
+   * werden.
    *
    * Genau diese Bequemlichkeit ist die Gefahr: ein halbfertiges Modul waere
-   * ab dem Tag seines Registry-Eintrags im Menue jedes neuen Kunden — mit
-   * einem Link ins 404. Der erste Eindruck des Produkts waere eine
-   * Fehlerseite.
+   * ab dem Tag seines Registry-Eintrags im Menue jedes Kunden — mit einem
+   * Link ins 404. Der erste Eindruck des Produkts waere eine Fehlerseite.
+   *
+   * Sprint 136 · die Menge wiegt jetzt schwerer als vorher. Bis hierher
+   * betraf sie nur Mandanten, die nach Sprint 123 entstanden sind; seit
+   * `getEnabledModules` eine fehlende Zeile als AN liest, gilt sie fuer
+   * jeden Mandanten, der zu einem Modul nie etwas hinterlegt hat. Ein
+   * versehentlich gebautes-aber-nicht-fertiges Modul erreicht damit auch
+   * den Bestand.
    *
    * Sprint 131 · zwei Pruefungen sind hier ersatzlos entfallen: "kein
    * Kernmodul in der Standardauswahl" und "kein ungebautes Modul in der
@@ -270,8 +277,8 @@ describe('Nav-config <-> module-registry consistency', () => {
    * Test, der nicht fehlschlagen kann, misst nichts; er beruhigt nur.
    * Was bleibt, ist die Frage an die Platte.
    */
-  describe('Signup-Standardmodule zeigen auf gebaute Seiten', () => {
-    const defaults = new Set<string>(SIGNUP_DEFAULT_MODULE_KEYS);
+  describe('Standardmodule zeigen auf gebaute Seiten', () => {
+    const defaults = new Set<string>(DEFAULT_ON_MODULE_KEYS);
 
     it('sanity: die Standardauswahl ist nicht leer', () => {
       expect(defaults.size).toBeGreaterThan(0);
@@ -281,7 +288,7 @@ describe('Nav-config <-> module-registry consistency', () => {
       it(`Standardmodul "${mod.key}" (${mod.menuPath}) hat eine gebaute Seite`, () => {
         expect(
           existsSync(urlToPageFile(mod.menuPath!)),
-          `Modul "${mod.key}" wird beim Signup automatisch aktiviert, aber ${urlToPageFile(mod.menuPath!)} existiert nicht. Jeder neue Kunde bekaeme einen Menuepunkt, der ins 404 fuehrt. Entweder die Seite bauen oder "${mod.key}" in src/lib/modules/registry.ts mit "unbuilt: true" markieren.`,
+          `Modul "${mod.key}" ist ohne gegenteilige Angabe aktiv, aber ${urlToPageFile(mod.menuPath!)} existiert nicht. Jeder Kunde bekaeme einen Menuepunkt, der ins 404 fuehrt. Entweder die Seite bauen oder "${mod.key}" in src/lib/modules/registry.ts mit "unbuilt: true" markieren.`,
         ).toBe(true);
       });
     }

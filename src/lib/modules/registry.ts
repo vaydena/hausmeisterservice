@@ -168,27 +168,88 @@ export function isUnbuiltModule(key: ModuleKey): boolean {
 }
 
 /**
- * Sprint 123 · Module, die ein NEUER Mandant beim Signup eingeschaltet
- * bekommt: alles Nicht-Kern, was gebaut ist.
+ * Module, die ohne gegenteilige Angabe AN sind: alles Nicht-Kern, was
+ * gebaut ist.
  *
- * Warum das ueberhaupt noetig ist: `getEnabledModules` startet bei
- * `CORE_MODULE_KEYS` und ergaenzt ausschliesslich `tenant_modules`-Zeilen
- * mit `enabled = true`. Eine fehlende Zeile ist also ein AUS.
- * `provision_signup_tenant` legte keine einzige Zeile an — ein frisch
- * registrierter Hausmeisterbetrieb sah damit Dashboard, Mandant, Benutzer
- * & Rollen und Audit-Log. Keine Objekte, keine Auftraege, keine
- * Mitarbeiter. Er haette vor dem ersten Handgriff 20 Schalter unter
- * Einstellungen → Mandant finden und umlegen muessen; wer das nicht
- * erraet, haelt die Software fuer kaputt und ist weg.
+ * Sprint 123 hat diese Menge eingefuehrt, weil `provision_signup_tenant`
+ * keine einzige `tenant_modules`-Zeile anlegte und eine fehlende Zeile ein
+ * AUS war. Ein frisch registrierter Hausmeisterbetrieb sah damit Dashboard,
+ * Mandant, Benutzer & Rollen und Audit-Log. Keine Objekte, keine
+ * Auftraege, keine Mitarbeiter. Er haette vor dem ersten Handgriff 20
+ * Schalter finden und umlegen muessen; wer das nicht erraet, haelt die
+ * Software fuer kaputt und ist weg.
  *
- * Die Richtung ist bewusst "an, ausser": in der Testphase soll der Kunde
- * das Produkt sehen, das er bewertet. Abschalten kann er jederzeit selbst,
- * einschalten kann er nur, was er kennt.
+ * SPRINT 136 — DIE MENGE GILT JETZT AUCH FUER BESTANDSMANDANTEN. Sprint 123
+ * hat nur den Signup-Pfad geflickt, nicht die Regel dahinter. Gemessen in
+ * der Produktiv-Datenbank am 16.08.2026:
+ *
+ *   Hausmeisterservice   26 Zeilen, alle `true`
+ *                        ES FEHLEN: resident_portal, qr_codes, reporting,
+ *                        automations — vier gebaute Module, lautlos aus.
+ *   Textfirma            27 Zeilen, alle `true`
+ *   Firma ABC            28 Zeilen, alle `true`
+ *
+ * Kein einziger Mandant hatte je eine Zeile mit `enabled = false`. Und der
+ * Schalter unter Einstellungen → Mandant loescht nie, er schreibt `false`
+ * (siehe toggleModuleAction). "Keine Zeile" heisst in dieser Datenbank
+ * also beweisbar "nie eingerichtet" — nie "abgeschaltet". Die alte Regel
+ * hat beides gleich behandelt und dem aeltesten Mandanten dabei vier
+ * fertige Module vorenthalten, darunter das Bewohnerportal, das er
+ * nachweislich benutzt.
+ *
+ * Deshalb ist die Richtung jetzt ueberall "an, ausser" und nicht mehr nur
+ * beim Signup: `getEnabledModules` startet bei dieser Menge und entfernt,
+ * was explizit auf `false` steht. Abschalten kann der Kunde jederzeit
+ * selbst; einschalten kann er nur, was er ueberhaupt zu sehen bekommt.
  *
  * Kern-Module stehen bewusst NICHT drin — sie sind ohnehin immer an, und
  * eine zusaetzliche `tenant_modules`-Zeile darauf saehe wie ein wirksamer
  * Ausschalter aus, der nichts bewirkt.
+ *
+ * Ungebaute Module stehen ebenfalls nicht drin. Sie brauchen weiterhin eine
+ * ausdrueckliche `true`-Zeile — das haelt den Bestand von "Firma ABC"
+ * unveraendert, der seit dem 16.08.2026 eine aktive `gps`-Zeile aus der
+ * Zeit vor dem Signup-Riegel hat.
  */
-export const SIGNUP_DEFAULT_MODULE_KEYS: readonly ModuleKey[] = MODULES.filter(
+export const DEFAULT_ON_MODULE_KEYS: readonly ModuleKey[] = MODULES.filter(
   (m) => !m.core && !m.unbuilt,
 ).map((m) => m.key);
+
+/** Eine `tenant_modules`-Zeile, so weit sie fuer die Entscheidung zaehlt. */
+export type ModuleToggleRow = { module_key: string; enabled: boolean };
+
+/**
+ * SPRINT 136 — DIE REGEL, NACH DER EIN MODUL AN IST.
+ *
+ * Bis hierher lautete sie "aus, ausser es steht eine `true`-Zeile da". Das
+ * hat "der Kunde hat abgeschaltet" und "hier wurde nie etwas eingetragen"
+ * zur selben Antwort zusammengezogen — und der aelteste Mandant der
+ * Produktiv-Datenbank hat dadurch vier fertige Module nicht gesehen, das
+ * Bewohnerportal eingeschlossen (Messung siehe DEFAULT_ON_MODULE_KEYS).
+ *
+ * Jetzt: an, ausser jemand hat ausdruecklich `false` hinterlegt.
+ *
+ * Als eigene Funktion und nicht inline in `getEnabledModules`, weil der
+ * oeffentliche Melde-Link dieselbe Frage stellt
+ * (`report-links/resolve.ts`), aber mit dem Service-Client und einer
+ * Einzelzeile statt der ganzen Menge. Zwei Formulierungen derselben Regel
+ * sind zwei Regeln, sobald sich eine von beiden aendert.
+ *
+ * Sie steht hier in der Registry und nicht in `enabled.ts`, weil sie reine
+ * Logik ist: so muss der oeffentliche Pfad, der ohne Sitzung laeuft, keinen
+ * Supabase-Server-Client mitziehen, nur um eine Zeile zu bewerten.
+ *
+ * Kern-Module bleiben an, auch wenn eine `false`-Zeile existiert: sie sind
+ * per Definition nicht abschaltbar, und `toggleModuleAction` weist den
+ * Versuch bereits ab. Eine solche Zeile kaeme nur von Hand in die
+ * Datenbank und waere ein Irrtum, kein Wunsch.
+ */
+export function isModuleEnabledByRows(
+  moduleKey: ModuleKey,
+  rows: readonly ModuleToggleRow[],
+): boolean {
+  if (isCoreModule(moduleKey)) return true;
+  const row = rows.find((r) => r.module_key === moduleKey);
+  if (row) return row.enabled;
+  return DEFAULT_ON_MODULE_KEYS.includes(moduleKey);
+}

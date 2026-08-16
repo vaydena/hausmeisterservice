@@ -87,6 +87,7 @@ vi.mock('@/lib/supabase/platform', () => ({
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { getTenantContext } from '@/lib/tenant/current';
 import { getEnabledModules } from '@/lib/modules/enabled';
+import { CORE_MODULE_KEYS, DEFAULT_ON_MODULE_KEYS } from '@/lib/modules/registry';
 import { evaluateSubscriptionAccess } from '@/lib/tenant/subscription-guard';
 import { getEnabledFeatures } from '@/lib/tenant/features';
 import { ensureTenantForUser } from '@/lib/auth/ensure-tenant';
@@ -172,9 +173,23 @@ describe('getEnabledModules', () => {
     await expect(getEnabledModules('t1')).rejects.toBeInstanceOf(SupabaseQueryError);
   });
 
-  it('liefert die Core-Module, wenn der Mandant wirklich keine Zusatzmodule hat', async () => {
+  // Sprint 136: eine leere Antwort heisst "hier wurde nie etwas
+  // hinterlegt", nicht "alles aus". Der Unterschied zum Fehlerfall darueber
+  // ist genau der Punkt: leer ist eine Auskunft, ein Fehler ist keine.
+  it('liefert Core- UND Standardmodule, wenn zum Mandanten keine Zeile existiert', async () => {
     serverClient.mockReturnValue(makeClient([{ data: [], error: null }]));
     const mods = await getEnabledModules('t1');
+    for (const key of DEFAULT_ON_MODULE_KEYS) expect(mods.has(key)).toBe(true);
+    for (const key of CORE_MODULE_KEYS) expect(mods.has(key)).toBe(true);
+  });
+
+  it('entfernt, was ausdruecklich auf false steht', async () => {
+    const first = DEFAULT_ON_MODULE_KEYS[0]!;
+    serverClient.mockReturnValue(
+      makeClient([{ data: [{ module_key: first, enabled: false }], error: null }]),
+    );
+    const mods = await getEnabledModules('t1');
+    expect(mods.has(first)).toBe(false);
     expect(mods.size).toBeGreaterThan(0);
   });
 });
