@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ensureTenantForUser } from '@/lib/auth/ensure-tenant';
+import { isPlatformAdmin } from '@/lib/platform/is-platform-admin';
 import { logLoginEvent } from '@/lib/auth/log-login-event';
 import { getClientIp } from '@/lib/security/client-ip';
 import {
@@ -16,7 +17,13 @@ import {
 const loginSchema = z.object({
   email: z.string().email('Bitte geben Sie eine gültige E-Mail-Adresse ein.'),
   password: z.string().min(1, 'Bitte geben Sie Ihr Passwort ein.'),
-  next: z.string().startsWith('/').default('/dashboard'),
+  // Sprint 137: bewusst OHNE .default('/dashboard'). Mit dem Default war
+  // "der Nutzer wollte ausdruecklich ins Dashboard" nicht mehr von "es war
+  // gar kein Ziel angegeben" zu unterscheiden — und weil das Login-Formular
+  // das Feld immer mitschickt, landete auch der Plattform-Betreiber
+  // zwangslaeufig in der Mandanten-Anwendung statt in seiner eigenen
+  // Verwaltung. Undefined heisst jetzt: Ziel unten aus der Rolle bestimmen.
+  next: z.string().startsWith('/').optional(),
 });
 
 export type LoginState = { error?: string };
@@ -36,7 +43,10 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   const parsed = loginSchema.safeParse({
     email: formData.get('email'),
     password: formData.get('password'),
-    next: formData.get('next') ?? '/dashboard',
+    // Leerer String = das Formular hat kein Ziel mitbekommen. Das ist der
+    // Normalfall beim Aufruf von /login ohne ?next= und muss "kein Ziel"
+    // heissen, nicht "ungueltiges Ziel".
+    next: formData.get('next')?.toString() || undefined,
   });
 
   if (!parsed.success) {
@@ -68,6 +78,23 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
     endpoint: 'staff-login',
   });
 
+  // Sprint 137: Wohin nach dem Login? Der Plattform-Betreiber gehoert in
+  // seine eigene Verwaltung, nicht in die Mandanten-Anwendung — er
+  // verwaltet Kunden, er fuehrt keine Auftraege aus. Bis hierher landete
+  // er in /dashboard und musste den Umweg ueber das Benutzermenue nehmen.
+  //
+  // Ein ausdrueckliches `next` (Deep-Link, Session-Timeout auf einer
+  // bestimmten Seite) gewinnt immer: der Nutzer wollte irgendwo hin, und
+  // eine Rollenregel darf ihn nicht woanders hinschicken.
+  //
+  // `isPlatformAdmin` statt `getPlatformAdminContext`: die Frage ist hier
+  // eine Anzeigefrage, keine Zugangsentscheidung. Ist das platform-Schema
+  // gestoert, meldet der Helper das an Sentry und liefert false — der
+  // Betreiber landet dann im Dashboard statt auf einer Fehlerseite, und
+  // ueber /platform kommt er trotzdem hin.
+  const platformAdmin = await isPlatformAdmin(signInData.user.id);
+  const landing = parsed.data.next ?? (platformAdmin ? '/platform' : '/dashboard');
+
   // MFA-Gate (Sprint 25): Wenn der User verified TOTP-Faktoren hat, hebt
   // Supabase das AAL-Ziel auf aal2 an. Wir schicken ihn dann durch den
   // TOTP-Verify-Schritt, BEVOR er ins Dashboard oder Portal kommt. Der
@@ -77,7 +104,7 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (aal?.currentLevel === 'aal1' && aal.nextLevel === 'aal2') {
     const mfaUrl = new URL('/login/mfa', 'http://placeholder');
-    mfaUrl.searchParams.set('next', parsed.data.next);
+    mfaUrl.searchParams.set('next', landing);
     redirect(`${mfaUrl.pathname}${mfaUrl.search}`);
   }
 
@@ -115,7 +142,16 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
   }
 
   if (membership) {
-    redirect(parsed.data.next);
+    redirect(landing);
+  }
+
+  // Sprint 137: Ein Plattform-Betreiber muss kein Mitarbeiter einer Agentur
+  // sein. Ohne diesen Zweig faellt er durch bis /no-access — ausgesperrt aus
+  // der Plattform, die ihm gehoert. Heute faellt das nicht auf, weil
+  // karbic@web.de zufaellig auch Inhaber eines Mandanten ist; ein zweiter
+  // Betreiber-Zugang ohne eigene Agentur haette es sofort getroffen.
+  if (platformAdmin) {
+    redirect(landing);
   }
 
   const { data: resident } = await supabase

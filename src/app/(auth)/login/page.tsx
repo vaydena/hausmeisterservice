@@ -41,7 +41,13 @@ async function LoginContent({ searchParams }: { searchParams: Promise<LoginSearc
           {params.error}
         </p>
       )}
-      <LoginForm nextPath={params.next ?? '/dashboard'} />
+      {/*
+        Sprint 137: Kein '/dashboard'-Default mehr. Der Default hier war der
+        Grund, warum die Server-Action nie erfahren hat, ob ein Ziel
+        gewuenscht war — sie bekam in jedem Fall eins geschickt. Leer heisst
+        jetzt: die Action bestimmt das Ziel aus der Rolle des Anmeldenden.
+      */}
+      <LoginForm nextPath={params.next ?? ''} />
     </div>
   );
 }

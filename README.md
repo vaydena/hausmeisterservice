@@ -1196,6 +1196,63 @@ Sicherheit:
   Supabase-Passwort-Policy inkl. HaveIBeenPwned-Toggle (siehe
   `docs/PRODUCTION_LAUNCH.md` §3).
 
+## Plattform-Betreiber (`/platform`)
+
+Der eigene Bereich des Betreibers — getrennt von der Mandanten-Anwendung, weil
+er ein anderes Geschäft führt: er verwaltet Kunden, er wickelt keine Aufträge
+ab. Zugang über `platform.admins`, geprüft von `requirePlatformAdmin()`.
+
+Vier Seiten, alle vier gebaut (`tests/platform-nav-coverage.test.ts` erzwingt
+beide Richtungen: kein Menüpunkt ohne Seite, keine Seite ohne Menüpunkt):
+
+| Route | Inhalt |
+| --- | --- |
+| `/platform` | **Warteschlange eingehender Registrierungen** + Freischaltung |
+| `/platform/tenants` | Kundenbestand mit Kennzahlen (MRR, Trials, Rückstände) |
+| `/platform/payments` | Rechnungen, die der Kunde selbst angefordert hat |
+| `/platform/invoices` | Alle Plattform-Rechnungen inkl. der Freischalt-Belege |
+
+### Freischalten nach Zahlungseingang
+
+Bezahlt wird ausschließlich per Überweisung; einen automatischen Abgleich gibt
+es nicht. `activateTenantPlanAction` (`src/app/platform/actions.ts`) ist deshalb
+der einzige Weg von „hat überwiesen“ zu „darf arbeiten“:
+
+1. Tarif (Starter / Business / Enterprise) und Zahlungsweise wählen, optional
+   die Bankreferenz eintragen.
+2. Es entsteht **zuerst** eine bereits bezahlte Zeile in `platform.invoices` als
+   Beleg (Nummer, Zeitraum, Betrag, Referenz) — erst danach wird der Mandant auf
+   `active` gesetzt. Ein Beleg ohne Freischaltung ist in `/platform/invoices`
+   sichtbar und reparierbar, eine Freischaltung ohne Beleg wäre es nicht.
+3. Der bezahlte Zeitraum schließt an die Testphase an, nicht an den heutigen Tag
+   (`computeNextBillingPeriod`) — wer früh zahlt, verschenkt keine Resttage.
+
+Die Warteschlange sortiert nach Frist, nicht nach Eingang: abgelaufene
+Testphasen zuerst, denn diese Kunden sind vom Proxy-Gate bereits ausgesperrt.
+
+**Der gewünschte Tarif wird aus zwei Quellen gelesen** — `tenants.subscription_plan_id`
+*und* `signup_plan_code` aus dem `user_metadata` des Inhabers. Grund:
+`ensure-tenant.ts` schreibt die Signup-Tarifwahl nur beim ersten Provisionieren
+und bewusst ohne throw. Schlägt der Tarif-Lookup fehl, geht die Wahl still
+verloren (Meldung an Sentry) — am 16.08.2026 in der Produktiv-DB nachgewiesen:
+„Firma ABC“ hatte `starter/monthly` gewählt, der Mandant hatte keinen Tarif.
+
+### `platform`-Schema und PostgREST
+
+`platform` muss für PostgREST sichtbar sein, sonst antwortet **jede** Abfrage
+mit `PGRST106 Invalid schema` und `/platform` ist für den Betreiber komplett
+eine Fehlerseite. Steht als Migration im Repo
+(`20260816170000_expose_platform_schema_to_postgrest.sql`) statt als Klick unter
+„Exposed schemas“ im Supabase-Dashboard — ein Klick hinterlässt keine Spur.
+
+Zwei Caches, beide müssen angestoßen werden:
+
+```sql
+alter role authenticator set pgrst.db_schemas = 'public, graphql_public, platform';
+notify pgrst, 'reload config';   -- macht das Schema bekannt  (sonst PGRST106)
+notify pgrst, 'reload schema';   -- macht seine Tabellen sichtbar (sonst PGRST205)
+```
+
 ## Deployment
 
 Ziel: `https://hausmeisterservice.vaydena.de` — Subdomain unter dem bestehenden vaydena-Hostinger-Paket.

@@ -1,16 +1,23 @@
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/platform/require-admin';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatEUR } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
 import { unwrapRows } from '@/lib/supabase/unwrap';
+import { getPlatformStats } from '@/lib/platform/stats';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformTenantsPage() {
   await requirePlatformAdmin();
   const service = createSupabaseServiceClient();
+
+  // Sprint 137: Die Kennzahlen standen bis hierher auf dem Dashboard und
+  // haben es besetzt gehalten. Sie gehoeren zum Kundenbestand, nicht zur
+  // Warteschlange — sie beantworten "wie steht das Geschaeft da", nicht
+  // "wer wartet gerade auf mich".
+  const stats = await getPlatformStats();
 
   // Sprint 116: "Noch keine Agenturen angemeldet." ist der Leerzustand
   // dieser Tabelle — und war bei einem Query-Fehler nicht davon zu
@@ -38,6 +45,26 @@ export default async function PlatformTenantsPage() {
           Alle Hausmeister-Agenturen (Tenants), die auf der Plattform angemeldet sind.
         </p>
       </header>
+
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5 shadow-sm sm:col-span-2">
+          <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+            Monatlicher Umsatz (MRR)
+          </div>
+          <div className="mt-1 text-3xl font-semibold tracking-tight">
+            {formatEUR(stats.mrrCents)}
+          </div>
+          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+            Jahresabos werden auf den Monat umgerechnet (÷12). Mandanten in der Testphase zählen nicht.
+          </p>
+        </div>
+        <StatTile label="Agenturen gesamt" value={stats.tenants.total} />
+        <StatTile label="Aktive Abos" value={stats.tenants.active} />
+        <StatTile label="In Testphase" value={stats.tenants.trial} />
+        <StatTile label="Trial läuft ≤ 7 Tage" value={stats.trialEndingSoon} />
+        <StatTile label="Zahlungsrückstand" value={stats.tenants.past_due} />
+        <StatTile label="Suspendiert" value={stats.tenants.suspended} />
+      </section>
 
       <div className="overflow-x-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] shadow-sm">
         <table className="w-full text-sm">
@@ -112,6 +139,17 @@ export default async function PlatformTenantsPage() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5 shadow-sm">
+      <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-semibold">{value}</div>
     </div>
   );
 }

@@ -33,7 +33,13 @@ export async function confirmBankTransferAction(formData: FormData) {
     .single();
   if (invErr) throw invErr;
 
-  await service
+  // Sprint 137: Dieser Fehler wurde bis hierher nicht geprueft. Schlug das
+  // Update fehl, war die Rechnung trotzdem auf "bezahlt" gesetzt — der
+  // Betreiber sah den Zahlungseingang als erledigt, waehrend der Mandant
+  // weiter in 'trial' stand und nach Fristablauf ausgesperrt wurde, obwohl
+  // er bezahlt hat. Genau die Verwechslung, gegen die Sprint 116 diese
+  // Seite abgesichert hat, nur eine Zeile weiter unten.
+  const { error: activateErr } = await service
     .from('tenants')
     .update({
       subscription_status: 'active',
@@ -43,6 +49,7 @@ export async function confirmBankTransferAction(formData: FormData) {
       current_period_end: invoice.period_end,
     })
     .eq('id', invoice.tenant_id);
+  if (activateErr) throw activateErr;
 
   revalidatePath('/platform/payments');
   revalidatePath(`/platform/tenants/${invoice.tenant_id}`);

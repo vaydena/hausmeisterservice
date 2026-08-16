@@ -178,6 +178,17 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   deleteTenantAction erzwingt zusaetzlich einen Text-Vergleich mit dem
   //   Tenant-Namen als "sind Sie sicher"-Bestaetigung.
   'src/app/platform/tenants/actions.ts',
+  // src/app/platform/actions.ts:
+  //   Sprint 137. activateTenantPlanAction — der einzige Weg von "hat
+  //   ueberwiesen" zu "darf arbeiten". Schreibt platform.invoices (INSERT
+  //   des Belegs) und public.tenants (Status, Tarif, Abrechnungszeitraum)
+  //   eines FREMDEN Mandanten; genau das kann der RLS-basierte
+  //   Server-Client per Design nicht, und platform.invoices erlaubt seit
+  //   Sprint 116 ohnehin keinen Client-INSERT mehr. Gegated durch
+  //   requirePlatformAdmin als erste Anweisung, vor jedem Service-Client-
+  //   Aufruf; tenantId und planId kommen aus einer uuid-Zod-Pruefung und
+  //   werden beide vor dem Schreiben gegen die Datenbank aufgeloest.
+  'src/app/platform/actions.ts',
   // src/app/(app)/settings/account/actions.ts:
   //   Sprint 26 + Sprint 31. Enthaelt (a) generateMfaRecoveryCodesAction,
   //   die die drei Recovery-Codes-Functions (generate/consume/count)

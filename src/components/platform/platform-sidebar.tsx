@@ -1,15 +1,13 @@
 import Link from 'next/link';
-import { Building2, CreditCard, LayoutDashboard, Receipt, Settings, ShieldCheck, Tags } from 'lucide-react';
+import { Building2, CreditCard, Inbox, Receipt } from 'lucide-react';
+import { PLATFORM_NAV_ITEMS, type PlatformNavIconKey } from './platform-nav';
 
-const NAV_ITEMS = [
-  { href: '/platform',           label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/platform/tenants',   label: 'Agenturen',   icon: Building2 },
-  { href: '/platform/payments',  label: 'Zahlungen',   icon: CreditCard },
-  { href: '/platform/invoices',  label: 'Rechnungen',  icon: Receipt },
-  { href: '/platform/plans',     label: 'Preispläne',  icon: Tags },
-  { href: '/platform/admins',    label: 'Admins',      icon: ShieldCheck },
-  { href: '/platform/settings',  label: 'Einstellungen', icon: Settings },
-];
+const ICONS: Record<PlatformNavIconKey, typeof Inbox> = {
+  inbox: Inbox,
+  building: Building2,
+  card: CreditCard,
+  receipt: Receipt,
+};
 
 export function PlatformSidebar({ appName }: { appName: string }) {
   return (
@@ -23,16 +21,19 @@ export function PlatformSidebar({ appName }: { appName: string }) {
         </Link>
       </div>
       <nav className="flex-1 space-y-1 px-2 py-4">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--color-foreground)] hover:bg-[var(--color-muted)]"
-          >
-            <Icon className="size-4" aria-hidden />
-            <span>{label}</span>
-          </Link>
-        ))}
+        {PLATFORM_NAV_ITEMS.map(({ href, label, icon }) => {
+          const Icon = ICONS[icon];
+          return (
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-[var(--color-foreground)] hover:bg-[var(--color-muted)]"
+            >
+              <Icon className="size-4" aria-hidden />
+              <span>{label}</span>
+            </Link>
+          );
+        })}
       </nav>
       <div className="border-t border-[var(--color-border)] px-4 py-3">
         <Link
