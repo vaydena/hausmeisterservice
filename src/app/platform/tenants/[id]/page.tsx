@@ -6,6 +6,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';
 import { Button } from '@/components/ui/button';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapRows, unwrapMaybeRow } from '@/lib/supabase/unwrap';
 import {
   extendTrialAction,
   setTenantStatusAction,
@@ -25,34 +26,44 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
 
   const service = createSupabaseServiceClient();
 
-  const [{ data: tenant }, { data: memberships }, { data: plans }, { data: invoices }] =
-    await Promise.all([
-      service.from('tenants').select('*').eq('id', id).maybeSingle(),
-      service
-        .from('memberships')
-        .select('id, is_owner, status, user_id, created_at')
-        .eq('tenant_id', id)
-        .order('created_at', { ascending: true }),
-      createPlatformServiceClient().from('subscription_plans').select('*').order('sort_order'),
-      createPlatformServiceClient()
-        .from('invoices')
-        .select('id, invoice_number, total_cents, status, paid_at, issued_at, period_start, period_end')
-        .eq('tenant_id', id)
-        .order('issued_at', { ascending: false })
-        .limit(20),
-    ]);
+  // Sprint 116: Die Akte eines einzelnen Kunden — und jede der vier Queries
+  // hatte ihre eigene Luege parat. `!tenant` fuehrt zu notFound(): der
+  // Betreiber sucht eine Agentur, die es sehr wohl gibt, und bekommt "nicht
+  // gefunden". Ohne memberships steht "kein Owner" da (der Kunde hat einen),
+  // ohne plans ist der gebuchte Tarif nicht aufloesbar, und eine leere
+  // Rechnungsliste sieht aus wie "diesem Kunden wurde nie etwas berechnet".
+  const [tenantResult, membershipsResult, plansResult, invoicesResult] = await Promise.all([
+    service.from('tenants').select('*').eq('id', id).maybeSingle(),
+    service
+      .from('memberships')
+      .select('id, is_owner, status, user_id, created_at')
+      .eq('tenant_id', id)
+      .order('created_at', { ascending: true }),
+    createPlatformServiceClient().from('subscription_plans').select('*').order('sort_order'),
+    createPlatformServiceClient()
+      .from('invoices')
+      .select('id, invoice_number, total_cents, status, paid_at, issued_at, period_start, period_end')
+      .eq('tenant_id', id)
+      .order('issued_at', { ascending: false })
+      .limit(20),
+  ]);
+
+  const tenant = unwrapMaybeRow(tenantResult, 'Plattform-Agentur: Stammdaten');
+  const memberships = unwrapRows(membershipsResult, 'Plattform-Agentur: Mitgliedschaften');
+  const plans = unwrapRows(plansResult, 'Plattform-Agentur: Tarife');
+  const invoices = unwrapRows(invoicesResult, 'Plattform-Agentur: Rechnungen');
 
   if (!tenant) notFound();
 
   // Owner-Email nachladen
-  const ownerId = memberships?.find((m) => m.is_owner)?.user_id;
+  const ownerId = memberships.find((m) => m.is_owner)?.user_id;
   let ownerEmail: string | null = null;
   if (ownerId) {
     const { data: authUser } = await service.auth.admin.getUserById(ownerId);
     ownerEmail = authUser?.user?.email ?? null;
   }
 
-  const currentPlan = plans?.find((p) => p.id === tenant.subscription_plan_id);
+  const currentPlan = plans.find((p) => p.id === tenant.subscription_plan_id);
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -153,7 +164,7 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
                 className="rounded-md border border-[var(--color-border)] px-2 py-1 text-sm"
               >
                 <option value="" disabled>— Plan wählen —</option>
-                {plans?.map((p) => (
+                {plans.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
@@ -175,7 +186,7 @@ export default async function PlatformTenantDetailPage({ params }: Props) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted-foreground)]">
           Letzte Rechnungen
         </h2>
-        {invoices && invoices.length > 0 ? (
+        {invoices.length > 0 ? (
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-xs uppercase text-[var(--color-muted-foreground)]">
               <tr>

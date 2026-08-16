@@ -4,6 +4,7 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { formatDate } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,12 @@ export default async function PlatformTenantsPage() {
   await requirePlatformAdmin();
   const service = createSupabaseServiceClient();
 
-  const [{ data: tenants }, { data: plans }] = await Promise.all([
+  // Sprint 116: "Noch keine Agenturen angemeldet." ist der Leerzustand
+  // dieser Tabelle — und war bei einem Query-Fehler nicht davon zu
+  // unterscheiden, dass die Kundenliste des Betreibers gerade nicht
+  // ladbar ist. Fuer den einzigen Menschen, der diese Seite sieht, ist
+  // das die Aussage "wir haben keine Kunden".
+  const [tenantsResult, plansResult] = await Promise.all([
     service
       .from('tenants')
       .select('id, name, slug, status, subscription_status, subscription_plan_id, subscription_interval, trial_ends_at, current_period_end, created_at')
@@ -19,7 +25,10 @@ export default async function PlatformTenantsPage() {
     createPlatformServiceClient().from('subscription_plans').select('id, name'),
   ]);
 
-  const planName = new Map((plans ?? []).map((p) => [p.id, p.name]));
+  const tenants = unwrapRows(tenantsResult, 'Plattform: Agenturen');
+  const plans = unwrapRows(plansResult, 'Plattform: Tarife');
+
+  const planName = new Map(plans.map((p) => [p.id, p.name]));
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -43,7 +52,7 @@ export default async function PlatformTenantsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {(tenants ?? []).map((t) => {
+            {tenants.map((t) => {
               const bindingDate =
                 t.subscription_status === 'trial'
                   ? t.trial_ends_at
@@ -93,7 +102,7 @@ export default async function PlatformTenantsPage() {
                 </tr>
               );
             })}
-            {(!tenants || tenants.length === 0) && (
+            {tenants.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-muted-foreground)]">
                   Noch keine Agenturen angemeldet.

@@ -1,6 +1,7 @@
 import 'server-only';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export type PlanInterval = 'monthly' | 'yearly';
 
@@ -53,24 +54,37 @@ export async function getTenantBillingContext(
   tenantId: string,
 ): Promise<TenantBillingContext | null> {
   const service = createSupabaseServiceClient();
-  const { data: tenant } = await service
-    .from('tenants')
-    .select(
-      'id, name, slug, subscription_plan_id, subscription_interval, subscription_status, trial_ends_at, current_period_end, payment_method, address',
-    )
-    .eq('id', tenantId)
-    .maybeSingle();
+  // Sprint 116: `null` heisst hier "diesen Mandanten gibt es nicht" und
+  // fuehrt an den Call-Sites zu notFound(). Ein verschluckter Query-Fehler
+  // wurde damit zu einer 404 auf einen existierenden Mandanten — die
+  // Abo-Seite behauptete, das eigene Konto sei verschwunden.
+  const tenant = unwrapMaybeRow(
+    await service
+      .from('tenants')
+      .select(
+        'id, name, slug, subscription_plan_id, subscription_interval, subscription_status, trial_ends_at, current_period_end, payment_method, address',
+      )
+      .eq('id', tenantId)
+      .maybeSingle(),
+    'Abrechnungskontext: Mandant',
+  );
   if (!tenant) return null;
 
   let planName: string | null = null;
   let planMonthlyCents: number | null = null;
   let planYearlyCents: number | null = null;
   if (tenant.subscription_plan_id) {
-    const { data: plan } = await createPlatformServiceClient()
-      .from('subscription_plans')
-      .select('name, monthly_price_cents, yearly_price_cents')
-      .eq('id', tenant.subscription_plan_id)
-      .maybeSingle();
+    // Der Preis des gebuchten Tarifs. Fiel diese Query aus, blieben Name und
+    // Betraege null — die Rechnung wurde dann ueber 0,00 EUR gestellt bzw.
+    // die Abo-Seite zeigte einen gebuchten Tarif ohne Preis an.
+    const plan = unwrapMaybeRow(
+      await createPlatformServiceClient()
+        .from('subscription_plans')
+        .select('name, monthly_price_cents, yearly_price_cents')
+        .eq('id', tenant.subscription_plan_id)
+        .maybeSingle(),
+      'Abrechnungskontext: Tarif',
+    );
     if (plan) {
       planName = plan.name;
       planMonthlyCents = plan.monthly_price_cents;

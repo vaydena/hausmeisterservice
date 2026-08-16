@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import * as Sentry from '@sentry/nextjs';
 import { clientEnv } from '@/lib/env';
+import { legalConfig } from '@/lib/legal/config';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
 import { FEATURE_KEYS, FEATURE_LABEL } from '@/lib/tenant/feature-map';
 
@@ -22,11 +24,34 @@ export const revalidate = 300;
  */
 
 export default async function PreisePage() {
-  const { data: plans } = await createPlatformServiceClient()
+  const { data: plans, error: plansError } = await createPlatformServiceClient()
     .from('subscription_plans')
     .select('*')
     .eq('is_public', true)
     .order('sort_order');
+
+  // Sprint 116: Bis hierher stand hier `const { data: plans }` — die
+  // Fehlerhaelfte fiel weg, `(plans ?? [])` machte daraus eine leere Liste,
+  // und die Seite rendert ihren voellig normalen Leerzustand. Genau so ist
+  // monatelang niemandem aufgefallen, dass das Schema `platform` in
+  // PostgREST nie exponiert war (PGRST106): die oeffentliche Preisseite
+  // zeigte keinen einzigen Tarif und keinen Signup-Button, und nichts hat
+  // Alarm geschlagen.
+  //
+  // Anders als in der uebrigen Guard-Schicht wird hier NICHT geworfen. Das
+  // ist die Verkaufsseite: eine Fehlerseite nimmt dem Interessenten auch
+  // noch FAQ, Impressum und den Weg zum Login, waehrend der Rest der Seite
+  // ohne die Tarife problemlos steht. Sichtbar muss die Stoerung trotzdem
+  // werden — fuer den Besucher als ehrlicher Hinweis statt eines
+  // vorgetaeuschten "kein Angebot", und fuer den Betreiber ueber Sentry.
+  if (plansError) {
+    Sentry.captureException(
+      new Error(
+        `Preisseite: Tarife konnten nicht geladen werden${plansError.code ? ` [${plansError.code}]` : ''}: ${plansError.message}`,
+      ),
+      { extra: { details: plansError.details, hint: plansError.hint } },
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
@@ -40,6 +65,37 @@ export default async function PreisePage() {
         </p>
       </header>
 
+      {plansError ? (
+        <section className="mt-10 rounded-2xl border border-amber-300 bg-amber-50 p-6 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <h2 className="text-base font-semibold">Die Tarife lassen sich gerade nicht laden</h2>
+          <p className="mt-2">
+            Das liegt an uns, nicht an dir. Versuch es in ein paar Minuten noch einmal — oder
+            schreib uns an{' '}
+            <a href={`mailto:${legalConfig.contact.email}`} className="underline">
+              {legalConfig.contact.email}
+            </a>
+            , dann nennen wir dir die Konditionen direkt.
+          </p>
+          <p className="mt-2">
+            Die kostenlose Testphase kannst du unabhängig davon starten — der Tarif lässt sich
+            später unter <em>Abo &amp; Rechnungen</em> wählen.
+          </p>
+          <Link
+            href="/signup"
+            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)] transition hover:opacity-90"
+          >
+            14 Tage kostenlos testen
+          </Link>
+        </section>
+      ) : (plans ?? []).length === 0 ? (
+        <section className="mt-10 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-6 text-sm text-[var(--color-muted-foreground)]">
+          Zurzeit ist kein Tarif öffentlich buchbar. Melde dich bei{' '}
+          <a href={`mailto:${legalConfig.contact.email}`} className="underline">
+            {legalConfig.contact.email}
+          </a>
+          , wir finden ein passendes Paket für dich.
+        </section>
+      ) : (
       <section className="mt-10 grid gap-4 md:grid-cols-3">
         {(plans ?? []).map((plan) => {
           const features = (plan.features as Record<string, boolean> | null) ?? {};
@@ -81,6 +137,7 @@ export default async function PreisePage() {
           );
         })}
       </section>
+      )}
 
       <section className="mt-16 rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-8">
         <h2 className="text-lg font-semibold">Häufige Fragen</h2>

@@ -77,6 +77,48 @@ den deutschen Betreff/Text auf die Marke anpassen, z. B. „Ihr Konto bei
 Hausmeisterservice bestätigen". Der `{{ .ConfirmationURL }}`-Platzhalter im
 Template bleibt unverändert.
 
+## 3.6 Supabase: Schema `platform` über die API freigeben
+
+**Ohne diesen Schritt ist der halbe Betrieb tot** — und zwar lautlos.
+
+Die Plattform-Ebene (Tarife, Plattform-Rechnungen, Plattform-Admins) liegt im
+Postgres-Schema `platform`. PostgREST — die REST-Schicht, über die
+`supabase-js` **jede** Abfrage schickt — bedient aber nur Schemas, die
+ausdrücklich freigegeben sind. Ab Werk sind das `public` und
+`graphql_public`. Jede Abfrage gegen `platform` scheitert deshalb mit:
+
+```
+PGRST106 — Invalid schema: platform
+Only the following schemas are exposed: public, graphql_public
+```
+
+Das gilt auch für den Service-Role-Key: der umgeht RLS, nicht die
+Schema-Freigabe. Betroffen sind `/preise` (zeigt dann keinen einzigen
+Tarif und keinen Signup-Button), der komplette `/platform`-Bereich,
+Einstellungen→Abo, der Plattform-Rechnungs-PDF und die Feature-Gates.
+
+Im Supabase-Dashboard des Projekts `hausmeisterservice`:
+
+**Project Settings → API → Exposed schemas**
+
+- `platform` zur Liste hinzufügen.
+- `public` bleibt an **erster** Stelle: die Reihenfolge bestimmt das
+  Default-Profile. `public.invoices` (Kundenrechnungen der Agentur) und
+  `platform.invoices` (Plattform-Rechnungen an die Agentur) heißen gleich —
+  steht `platform` vorn, greifen bestehende Abfragen ins falsche Schema.
+
+**Prüfung**: `/preise` im Browser öffnen — es müssen drei Tarifkarten mit
+Preisen und je einem „14 Tage kostenlos testen"-Button stehen. Ein curl
+reicht hier nicht: Hostinger antwortet auf HTML-Routen mit einer
+Bot-Prüfseite, ein HTTP 200 sagt also nichts über den Inhalt.
+
+Sicherheitslage nach der Freigabe (Stand Sprint 116): RLS ist auf allen drei
+Tabellen aktiv. `anon` darf ausschließlich öffentliche Tarife lesen,
+`authenticated` zusätzlich die eigene Admin-Zeile und die Rechnungen des
+eigenen Mandanten. Schreibrechte hat kein Client — der letzte verbliebene
+Schreibpfad (`INSERT` auf `platform.invoices`) wurde in Migration
+`20260816090000_platform_invoices_revoke_client_insert.sql` entzogen.
+
 ## 4. Sentry einrichten (Runtime-Error-Tracking)
 
 Sentry fängt unbehandelte Fehler auf Client, Server und Edge ein.

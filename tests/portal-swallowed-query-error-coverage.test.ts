@@ -38,6 +38,7 @@ const SCANNED_DIRS = [
   join(process.cwd(), 'src', 'app', '(portal)'), // Sprint 103
   join(process.cwd(), 'src', 'lib', 'portal'), //   Sprint 103
   join(process.cwd(), 'src', 'app', '(app)'), //    Sprint 112 — der ganze Staff-Bereich
+  join(process.cwd(), 'src', 'app', 'platform'), // Sprint 116 — der Betreiber-Bereich
 ];
 
 /**
@@ -107,6 +108,38 @@ const EXPORT_ROUTES = [
 const LIB_FILES = ['src/lib/automations/engine.ts', 'src/lib/pdf/loader.ts'];
 
 /**
+ * Der Plattform-Layer (Sprint 116).
+ *
+ * Anlass ist ein Befund, den dieser Test haette liefern muessen und nicht
+ * geliefert hat: das Schema `platform` war in PostgREST nie exponiert, jede
+ * Query ueber createPlatformServiceClient() scheiterte live mit PGRST106 —
+ * und die oeffentliche Preisseite zeigte daraufhin einfach keine Tarife.
+ * Kein Fehler, kein Alarm, nur eine Verkaufsseite ohne Angebot. Der Scan
+ * endete bis hier an den Route-Gruppen `(app)` und `(portal)`; /preise,
+ * /platform und der Plattform-Rechnungs-PDF liegen ausserhalb und waren
+ * damit nie abgedeckt.
+ *
+ * Warum es hier besonders zaehlt: der Plattform-Layer ist die einzige
+ * Schicht, die BEIDE Seiten des Geschaefts traegt. Verschluckt der
+ * Betreiber-Bereich einen Fehler, sieht /platform/payments wie "keine
+ * offene Ueberweisung" aus und eine eingegangene Zahlung wird nie
+ * bestaetigt; verschluckt die Preisseite einen, sieht das Produkt fuer
+ * jeden Besucher aus, als gaebe es nichts zu kaufen.
+ *
+ * `src/lib/platform` steht einzeln statt als Verzeichnis: fuenf Dateien
+ * liegen unter der Sanity-Schwelle des Verzeichnis-Scans (>5), und ein
+ * Scan, der wegen zu weniger Dateien rot wird, hilft niemandem.
+ */
+const PLATFORM_FILES = [
+  'src/app/preise/page.tsx', //                            oeffentliche Preisseite
+  'src/app/api/platform/invoices/[id]/pdf/route.tsx', //    Beleg an den Mandanten
+  'src/lib/platform/stats.ts',
+  'src/lib/platform/billing.ts',
+  'src/lib/platform/invoice-sender.ts',
+  'src/lib/platform/bank-transfer.ts',
+];
+
+/**
  * Die Folge-Klassen, die der Bogen 103–112 im (app)-Bereich nachgewiesen hat.
  * Bis Sprint 111 stand jede davon als eigene Dateiliste in dieser Datei; seit
  * 112 deckt der Verzeichnis-Scan sie alle ab. Die Begruendungen bleiben, weil
@@ -141,7 +174,7 @@ const LIB_FILES = ['src/lib/automations/engine.ts', 'src/lib/pdf/loader.ts'];
  * (109, 111). Beide bleiben gruen, wenn man nur das Fehler-Handling
  * repariert.
  */
-const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES, ...LIB_FILES];
+const LISTED_FILES = [...GUARD_FILES, ...EXPORT_ROUTES, ...LIB_FILES, ...PLATFORM_FILES];
 
 function walk(dir: string): string[] {
   if (!existsSync(dir)) return [];

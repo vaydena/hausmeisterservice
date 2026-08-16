@@ -1,6 +1,7 @@
 import 'server-only';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export interface PlatformStats {
   tenants: {
@@ -21,21 +22,37 @@ const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export async function getPlatformStats(): Promise<PlatformStats> {
   const service = createSupabaseServiceClient();
 
-  const { data: tenants } = await service
-    .from('tenants')
-    .select('subscription_status, subscription_interval, subscription_plan_id, trial_ends_at');
+  // Sprint 116: Das Betreiber-Dashboard ist die einzige Stelle, an der die
+  // Zahlen des Geschaefts stehen — und niemand kann sie gegenpruefen, weil
+  // es keine zweite Ansicht davon gibt. Ein verschluckter Fehler machte
+  // daraus lauter glaubhafte Nullen: 0 Mandanten, 0 EUR MRR, keine offene
+  // Rechnung. "Keine offene Ueberweisung" heisst fuer den Betreiber, dass
+  // er nichts zu tun hat; eine eingegangene Zahlung bliebe unbestaetigt
+  // und der Mandant wuerde nach Fristablauf gesperrt, obwohl er gezahlt hat.
+  const tenants = unwrapRows(
+    await service
+      .from('tenants')
+      .select('subscription_status, subscription_interval, subscription_plan_id, trial_ends_at'),
+    'Plattform-Kennzahlen: Mandanten',
+  );
 
-  const { data: plans } = await createPlatformServiceClient()
-    .from('subscription_plans')
-    .select('id, monthly_price_cents, yearly_price_cents');
+  const plans = unwrapRows(
+    await createPlatformServiceClient()
+      .from('subscription_plans')
+      .select('id, monthly_price_cents, yearly_price_cents'),
+    'Plattform-Kennzahlen: Tarife',
+  );
 
-  const { data: openInv } = await createPlatformServiceClient()
-    .from('invoices')
-    .select('total_cents')
-    .is('paid_at', null)
-    .neq('status', 'canceled');
+  const openInv = unwrapRows(
+    await createPlatformServiceClient()
+      .from('invoices')
+      .select('total_cents')
+      .is('paid_at', null)
+      .neq('status', 'canceled'),
+    'Plattform-Kennzahlen: offene Rechnungen',
+  );
 
-  const planById = new Map((plans ?? []).map((p) => [p.id, p]));
+  const planById = new Map(plans.map((p) => [p.id, p]));
   const stats: PlatformStats = {
     tenants: { total: 0, trial: 0, active: 0, past_due: 0, suspended: 0, canceled: 0 },
     mrrCents: 0,
@@ -45,7 +62,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
 
   const oneWeekOut = Date.now() + ONE_WEEK_MS;
 
-  for (const t of tenants ?? []) {
+  for (const t of tenants) {
     stats.tenants.total += 1;
     const status = (t.subscription_status ?? 'trial') as keyof PlatformStats['tenants'];
     if (status in stats.tenants && status !== 'total') {
@@ -67,7 +84,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
     }
   }
 
-  for (const inv of openInv ?? []) {
+  for (const inv of openInv) {
     stats.openInvoices.count += 1;
     stats.openInvoices.totalCents += inv.total_cents ?? 0;
   }

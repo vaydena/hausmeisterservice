@@ -5,6 +5,7 @@ import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { getBankDetails } from '@/lib/platform/bank-transfer';
 import { PlatformInvoiceDocument, type PlatformInvoiceData } from '@/lib/pdf/PlatformInvoiceDocument';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapMaybeRow } from '@/lib/supabase/unwrap';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,44 +19,61 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
   const service = createSupabaseServiceClient();
-  const { data: invoice, error: iErr } = await createPlatformServiceClient()
-    .from('invoices')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
-  if (iErr || !invoice) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // Sprint 116: `iErr || !invoice` warf Stoerung und "gibt es nicht" in
+  // denselben Topf und antwortete beides mit 404. Der Mandant klickte auf
+  // seine Rechnung und bekam gesagt, sie existiere nicht. unwrapMaybeRow
+  // trennt beides: nur der echte Leerfall wird zur 404.
+  const invoice = unwrapMaybeRow(
+    await createPlatformServiceClient().from('invoices').select('*').eq('id', id).maybeSingle(),
+    'Plattform-Rechnung: Beleg',
+  );
+  if (!invoice) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  // Access: Platform-Admin oder Tenant-Owner der zugehörigen Agentur
-  const { data: adminRow } = await createPlatformServiceClient()
-    .from('admins')
-    .select('user_id')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  // Access: Platform-Admin oder Tenant-Owner der zugehörigen Agentur.
+  // Beide Abfragen entscheiden fail-closed: ein verschluckter Fehler wurde
+  // zu einem 403 und damit zu der Aussage "Sie duerfen Ihre eigene Rechnung
+  // nicht sehen" — eine Rechtebegruendung fuer eine Stoerung.
+  const adminRow = unwrapMaybeRow(
+    await createPlatformServiceClient()
+      .from('admins')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    'Plattform-Rechnung: Admin-Pruefung',
+  );
 
   let allowed = !!adminRow;
   if (!allowed) {
-    const { data: ownership } = await service
-      .from('memberships')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('tenant_id', invoice.tenant_id)
-      .eq('is_owner', true)
-      .eq('status', 'active')
-      .maybeSingle();
+    const ownership = unwrapMaybeRow(
+      await service
+        .from('memberships')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('tenant_id', invoice.tenant_id)
+        .eq('is_owner', true)
+        .eq('status', 'active')
+        .maybeSingle(),
+      'Plattform-Rechnung: Inhaber-Pruefung',
+    );
     allowed = !!ownership;
   }
   if (!allowed) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
-  const { data: tenant } = await service
-    .from('tenants')
-    .select('name, address')
-    .eq('id', invoice.tenant_id)
-    .maybeSingle();
-  const { data: plan } = await createPlatformServiceClient()
-    .from('subscription_plans')
-    .select('name')
-    .eq('id', invoice.plan_id)
-    .maybeSingle();
+  // Empfaenger und Tarifname stehen auf dem Beleg. Fielen sie aus, ging die
+  // Rechnung mit "—" als Rechnungsempfaenger und "Abo" statt des gebuchten
+  // Tarifs raus — ein Dokument, das wie eine gueltige Rechnung aussieht.
+  const tenant = unwrapMaybeRow(
+    await service.from('tenants').select('name, address').eq('id', invoice.tenant_id).maybeSingle(),
+    'Plattform-Rechnung: Rechnungsempfaenger',
+  );
+  const plan = unwrapMaybeRow(
+    await createPlatformServiceClient()
+      .from('subscription_plans')
+      .select('name')
+      .eq('id', invoice.plan_id)
+      .maybeSingle(),
+    'Plattform-Rechnung: Tarifname',
+  );
 
   const addressStr = formatAddress(invoice.billing_address ?? tenant?.address);
 

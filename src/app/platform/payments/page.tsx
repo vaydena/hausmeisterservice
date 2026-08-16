@@ -5,6 +5,7 @@ import { formatDate, formatEUR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { confirmBankTransferAction } from './actions';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { unwrapRows } from '@/lib/supabase/unwrap';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,25 +13,34 @@ export default async function PlatformPaymentsPage() {
   await requirePlatformAdmin();
   const service = createSupabaseServiceClient();
 
-  const { data: openInvoices } = await createPlatformServiceClient()
-    .from('invoices')
-    .select('id, invoice_number, tenant_id, total_cents, issued_at, due_at, period_start, period_end, payment_method')
-    .is('paid_at', null)
-    .eq('status', 'open')
-    .eq('payment_method', 'bank_transfer')
-    .order('issued_at', { ascending: true });
+  // Sprint 116: Die teuerste Verwechslung im Betreiber-Bereich. "Keine
+  // offenen Zahlungen." ist hier eine Handlungsanweisung — der Betreiber
+  // schliesst daraus, dass nichts zu bestaetigen ist. Bei einem
+  // verschluckten Query-Fehler stand derselbe Satz da, waehrend Rechnungen
+  // offen und faellig waren: der Zahlungseingang wird nie bestaetigt, der
+  // Mandant laeuft in 'past_due' und wird ausgesperrt, obwohl er bezahlt hat.
+  const openInvoices = unwrapRows(
+    await createPlatformServiceClient()
+      .from('invoices')
+      .select('id, invoice_number, tenant_id, total_cents, issued_at, due_at, period_start, period_end, payment_method')
+      .is('paid_at', null)
+      .eq('status', 'open')
+      .eq('payment_method', 'bank_transfer')
+      .order('issued_at', { ascending: true }),
+    'Plattform: offene Ueberweisungen',
+  );
 
-  const tenantIds = Array.from(new Set((openInvoices ?? []).map((i) => i.tenant_id)));
+  const tenantIds = Array.from(new Set(openInvoices.map((i) => i.tenant_id)));
   const tenantsMap = new Map<string, { name: string; slug: string }>();
   if (tenantIds.length > 0) {
-    const { data: tenants } = await service
-      .from('tenants')
-      .select('id, name, slug')
-      .in('id', tenantIds);
-    for (const t of tenants ?? []) tenantsMap.set(t.id, { name: t.name, slug: t.slug });
+    const tenants = unwrapRows(
+      await service.from('tenants').select('id, name, slug').in('id', tenantIds),
+      'Plattform: Agenturen zu offenen Rechnungen',
+    );
+    for (const t of tenants) tenantsMap.set(t.id, { name: t.name, slug: t.slug });
   }
 
-  const totalOpen = (openInvoices ?? []).reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
+  const totalOpen = openInvoices.reduce((sum, i) => sum + (i.total_cents ?? 0), 0);
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -46,7 +56,7 @@ export default async function PlatformPaymentsPage() {
           <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
             Offene Rechnungen
           </div>
-          <div className="mt-2 text-2xl font-semibold">{openInvoices?.length ?? 0}</div>
+          <div className="mt-2 text-2xl font-semibold">{openInvoices.length}</div>
         </div>
         <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5 shadow-sm">
           <div className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
@@ -69,7 +79,7 @@ export default async function PlatformPaymentsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
-            {(openInvoices ?? []).map((inv) => {
+            {openInvoices.map((inv) => {
               const tenant = tenantsMap.get(inv.tenant_id);
               return (
                 <tr key={inv.id} className="hover:bg-[var(--color-muted)]/40">
@@ -117,7 +127,7 @@ export default async function PlatformPaymentsPage() {
                 </tr>
               );
             })}
-            {(!openInvoices || openInvoices.length === 0) && (
+            {openInvoices.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-muted-foreground)]">
                   Keine offenen Zahlungen.
