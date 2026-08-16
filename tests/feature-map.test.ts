@@ -326,7 +326,7 @@ describe('Deckung mit den Tarif-Migrationen', () => {
    * naechsten Tippfehler mit demselben Namen.
    */
   const RETIRED_FEATURE_KEYS: Record<string, string> = {
-    gps: 'Sprint 140, ersetzt durch "tours" in 20260816120000_feature_key_gps_to_tours.sql. Der Schluessel hiess nach einer Funktion, die nie gebaut wurde.',
+    gps: 'Sprint 140, ersetzt durch "tours" in 20260816180000_feature_key_gps_to_tours.sql. Der Schluessel hiess nach einer Funktion, die nie gebaut wurde.',
   };
 
   it('die Migrationen schalten kein Feature, das der Code nicht kennt', () => {

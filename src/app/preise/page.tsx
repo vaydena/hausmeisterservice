@@ -19,8 +19,12 @@ export const revalidate = 300;
  * Seite verspricht — eine eigene Kopie hiesse, dass der Kunde etwas kauft,
  * das die App ihm anschliessend verweigert (oder dass ein enthaltenes
  * Feature hier gar nicht auftaucht). Aus demselben Grund derselbe
- * Wortlaut wie auf der Sperrseite: der Kunde liest hier "GPS-Tracking &
- * Touren" und spaeter "Benoetigt GPS-Tracking & Touren".
+ * Wortlaut wie auf der Sperrseite: der Kunde liest hier "Tourenplanung"
+ * und spaeter "Benoetigt Tourenplanung".
+ *
+ * Sprint 140: dieser Absatz nannte bis dahin "GPS-Tracking & Touren" als
+ * Beispiel — ein Kommentar, der ein zurueckgezogenes Versprechen zitiert,
+ * ist die zaeheste Form, in der es ueberlebt.
  */
 
 export default async function PreisePage() {

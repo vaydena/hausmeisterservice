@@ -72,9 +72,11 @@ describe('Modul-Grundzustand', () => {
     });
 
     it('schaltet `true` ein ungebautes Modul AN', () => {
-      // Bestandsschutz: "Firma ABC" hat seit dem 16.08.2026 eine aktive
-      // gps-Zeile aus der Zeit vor dem Signup-Riegel. Die soll sichtbar
-      // bleiben, damit Einstellungen -> Mandant sie ausweisen kann.
+      // Bestandsschutz. Der Anlass war eine aktive `gps`-Zeile von
+      // "Firma ABC" aus der Zeit vor dem Signup-Riegel; sie ist mit dem Modul
+      // in Sprint 140 geloescht, aber die Regel bleibt: eine ausdrueckliche
+      // `true`-Zeile auf ein ungebautes Modul soll sichtbar bleiben, damit
+      // Einstellungen -> Mandant sie ausweisen kann statt sie zu verschweigen.
       for (const key of UNBUILT_MODULE_KEYS) {
         expect(isModuleEnabledByRows(key, on(key))).toBe(true);
       }

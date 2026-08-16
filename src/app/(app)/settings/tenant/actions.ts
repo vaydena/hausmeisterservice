@@ -33,11 +33,11 @@ export async function toggleModuleAction(formData: FormData): Promise<void> {
   // bleibt trotzdem aufrufbar.
   //
   // Nur das EINschalten wird abgewiesen. Ein Ausschalten zu verbieten haette
-  // keinen Adressaten: der Mandant "Firma ABC" hat seit dem 16.08.2026 eine
-  // aktive gps-Zeile aus der Zeit vor dem Signup-Riegel, und die ist seit
-  // dieser Aenderung wirkungslos — die Navigation zeigt das Modul nicht mehr,
-  // eine Seite dahinter gab es nie. Die Zeile darf stehenbleiben; sie wieder
-  // scharf zu schalten darf nicht gehen.
+  // keinen Adressaten: die einzige aktive Zeile auf ein ungebautes Modul war
+  // ein `gps`-Altbestand von "Firma ABC" aus der Zeit vor dem Signup-Riegel,
+  // und die ist mit dem Modul selbst in Sprint 140 geloescht. Ein Altbestand
+  // dieser Art kann jederzeit wieder entstehen — er darf stehenbleiben und
+  // ausschaltbar sein; wieder scharf zu schalten darf nicht gehen.
   if (enabled && isUnbuiltModule(key)) {
     throw new Error(`${MODULES_BY_KEY[key].labelDe} ist noch nicht verfügbar.`);
   }

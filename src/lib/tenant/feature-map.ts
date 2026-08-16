@@ -26,7 +26,8 @@
  *
  * Der Schluessel steht auch in der Datenbank (platform.subscription_plans
  * .features als jsonb). Umbenannt wurde deshalb an beiden Enden; die
- * Migration liegt in supabase/migrations/20260816_feature_key_gps_to_tours.
+ * Migration liegt in
+ * supabase/migrations/20260816180000_feature_key_gps_to_tours.sql.
  *
  * Die Umbenennung ist der Punkt: ein Schluessel, der etwas anderes heisst
  * als er tut, laedt den naechsten Sprint dazu ein, `features.gps === true`
