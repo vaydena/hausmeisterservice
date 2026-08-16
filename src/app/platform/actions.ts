@@ -6,6 +6,7 @@ import { requirePlatformAdmin } from '@/lib/platform/require-admin';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
 import { computeNextBillingPeriod, computePlanPriceCents } from '@/lib/platform/billing';
+import { activateTenantSubscription } from '@/lib/platform/activate-tenant';
 
 const activateSchema = z.object({
   tenantId: z.string().uuid(),
@@ -34,6 +35,27 @@ const activateSchema = z.object({
  * Tag (computeNextBillingPeriod nimmt den Anker nur, wenn er in der Zukunft
  * liegt). Wer frueh bezahlt, verschenkt damit keine Resttage — dieselbe
  * Rechnung wie im Selbstbedienungsweg unter Einstellungen→Abo.
+ *
+ * Sprint 138 · Warum zuerst nach einer offenen Rechnung gesucht wird:
+ *
+ * Der Kunde kann sich unter Einstellungen→Abo selbst eine Rechnung
+ * ausstellen lassen; erst dann sieht er IBAN und Verwendungszweck, kann also
+ * ueberhaupt zahlen. Diese Rechnung steht auf "offen" und traegt die
+ * Nummer, die auf seinem Ueberweisungstraeger steht.
+ *
+ * Wuerde hier bedingungslos eine zweite Rechnung angelegt, blieben beide
+ * stehen: der Kunde saehe unter Einstellungen→Abo weiterhin "Offene
+ * Rechnung — bitte ueberweisen", obwohl er laengst bezahlt hat und
+ * freigeschaltet ist, in /platform/payments haengt ein Zahlungseingang, den
+ * es nicht gibt, und /platform/invoices zaehlt den Betrag doppelt. Ein
+ * Zahlungseingang, eine Rechnung.
+ *
+ * Passt die offene Rechnung zur Auswahl des Betreibers, wird sie bezahlt
+ * gebucht — mit IHREM Zeitraum, denn das ist der Zeitraum, fuer den der
+ * Kunde bezahlt hat. Weicht die Auswahl ab (der Kunde liess sich Starter
+ * ausstellen, ueberwies aber Business), gewinnt der Betreiber: er hat den
+ * Kontoauszug vor sich. Die alte Rechnung wird dann storniert statt
+ * liegengelassen, mit Begruendung in `notes`.
  */
 export async function activateTenantPlanAction(formData: FormData) {
   await requirePlatformAdmin();
@@ -68,48 +90,89 @@ export async function activateTenantPlanAction(formData: FormData) {
   if (planErr) throw planErr;
   if (!plan) throw new Error('Freischaltung: Dieser Tarif existiert nicht (mehr).');
 
-  const priceCents = computePlanPriceCents(
-    plan.monthly_price_cents,
-    plan.yearly_price_cents,
-    interval,
-  );
-  const anchor = tenant.current_period_end ?? tenant.trial_ends_at;
-  const period = computeNextBillingPeriod(interval, anchor ? new Date(anchor) : null);
   const paidAt = new Date();
 
-  const { error: invoiceErr } = await platform.from('invoices').insert({
-    tenant_id: tenantId,
-    plan_id: planId,
-    plan_interval: interval,
-    period_start: period.start.toISOString(),
-    period_end: period.end.toISOString(),
-    subtotal_cents: priceCents,
-    total_cents: priceCents,
-    currency: 'EUR',
-    status: 'paid',
-    payment_method: 'bank_transfer',
-    paid_at: paidAt.toISOString(),
-    payment_reference: paymentReference ?? null,
-    issued_at: paidAt.toISOString(),
-    due_at: paidAt.toISOString(),
-    billing_address: tenant.address ?? null,
-    notes: `Freischaltung durch den Plattform-Betreiber nach Zahlungseingang (${plan.name}).`,
-  });
-  if (invoiceErr) throw invoiceErr;
+  const { data: openInvoices, error: openErr } = await platform
+    .from('invoices')
+    .select('id, invoice_number, plan_id, plan_interval, period_start, period_end')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'open')
+    .order('issued_at', { ascending: false });
+  if (openErr) throw openErr;
 
-  const { error: activateErr } = await service
-    .from('tenants')
-    .update({
-      subscription_status: 'active',
-      subscription_plan_id: planId,
-      subscription_interval: interval,
-      current_period_start: period.start.toISOString(),
-      current_period_end: period.end.toISOString(),
-    })
-    .eq('id', tenantId);
-  if (activateErr) throw activateErr;
+  const settle = (openInvoices ?? []).find(
+    (i) => i.plan_id === planId && i.plan_interval === interval,
+  );
+  const stale = (openInvoices ?? []).filter((i) => i.id !== settle?.id);
+
+  let periodStart: string;
+  let periodEnd: string;
+
+  if (settle) {
+    periodStart = settle.period_start;
+    periodEnd = settle.period_end;
+    const { error: settleErr } = await platform
+      .from('invoices')
+      .update({
+        status: 'paid',
+        paid_at: paidAt.toISOString(),
+        payment_reference: paymentReference ?? null,
+      })
+      .eq('id', settle.id);
+    if (settleErr) throw settleErr;
+  } else {
+    const priceCents = computePlanPriceCents(
+      plan.monthly_price_cents,
+      plan.yearly_price_cents,
+      interval,
+    );
+    const anchor = tenant.current_period_end ?? tenant.trial_ends_at;
+    const period = computeNextBillingPeriod(interval, anchor ? new Date(anchor) : null);
+    periodStart = period.start.toISOString();
+    periodEnd = period.end.toISOString();
+
+    const { error: invoiceErr } = await platform.from('invoices').insert({
+      tenant_id: tenantId,
+      plan_id: planId,
+      plan_interval: interval,
+      period_start: periodStart,
+      period_end: periodEnd,
+      subtotal_cents: priceCents,
+      total_cents: priceCents,
+      currency: 'EUR',
+      status: 'paid',
+      payment_method: 'bank_transfer',
+      paid_at: paidAt.toISOString(),
+      payment_reference: paymentReference ?? null,
+      issued_at: paidAt.toISOString(),
+      due_at: paidAt.toISOString(),
+      billing_address: tenant.address ?? null,
+      notes: `Freischaltung durch den Plattform-Betreiber nach Zahlungseingang (${plan.name}).`,
+    });
+    if (invoiceErr) throw invoiceErr;
+  }
+
+  // Was jetzt noch offen steht, gehoert zu einem Tarif, den der Betreiber
+  // gerade NICHT freigeschaltet hat. Stehenlassen hiesse: der Kunde wird
+  // weiter zur Zahlung aufgefordert, obwohl er bezahlt hat.
+  if (stale.length > 0) {
+    const { error: cancelErr } = await platform
+      .from('invoices')
+      .update({
+        status: 'canceled',
+        notes: `Storniert bei der Freischaltung auf ${plan.name} (${interval === 'yearly' ? 'jährlich' : 'monatlich'}) am ${paidAt.toISOString().slice(0, 10)}.`,
+      })
+      .in(
+        'id',
+        stale.map((i) => i.id),
+      );
+    if (cancelErr) throw cancelErr;
+  }
+
+  await activateTenantSubscription({ tenantId, planId, interval, periodStart, periodEnd });
 
   revalidatePath('/platform');
+  revalidatePath('/platform/payments');
   revalidatePath('/platform/invoices');
   revalidatePath('/platform/tenants');
   revalidatePath(`/platform/tenants/${tenantId}`);

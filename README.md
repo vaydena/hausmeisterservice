@@ -1220,22 +1220,60 @@ der einzige Weg von „hat überwiesen“ zu „darf arbeiten“:
 
 1. Tarif (Starter / Business / Enterprise) und Zahlungsweise wählen, optional
    die Bankreferenz eintragen.
-2. Es entsteht **zuerst** eine bereits bezahlte Zeile in `platform.invoices` als
-   Beleg (Nummer, Zeitraum, Betrag, Referenz) — erst danach wird der Mandant auf
-   `active` gesetzt. Ein Beleg ohne Freischaltung ist in `/platform/invoices`
-   sichtbar und reparierbar, eine Freischaltung ohne Beleg wäre es nicht.
+2. Der Beleg entsteht **vor** der Freischaltung — erst danach wird der Mandant
+   auf `active` gesetzt. Ein Beleg ohne Freischaltung ist in
+   `/platform/invoices` sichtbar und reparierbar, eine Freischaltung ohne Beleg
+   wäre es nicht.
 3. Der bezahlte Zeitraum schließt an die Testphase an, nicht an den heutigen Tag
    (`computeNextBillingPeriod`) — wer früh zahlt, verschenkt keine Resttage.
 
 Die Warteschlange sortiert nach Frist, nicht nach Eingang: abgelaufene
 Testphasen zuerst, denn diese Kunden sind vom Proxy-Gate bereits ausgesperrt.
 
-**Der gewünschte Tarif wird aus zwei Quellen gelesen** — `tenants.subscription_plan_id`
-*und* `signup_plan_code` aus dem `user_metadata` des Inhabers. Grund:
-`ensure-tenant.ts` schreibt die Signup-Tarifwahl nur beim ersten Provisionieren
-und bewusst ohne throw. Schlägt der Tarif-Lookup fehl, geht die Wahl still
-verloren (Meldung an Sentry) — am 16.08.2026 in der Produktiv-DB nachgewiesen:
-„Firma ABC“ hatte `starter/monthly` gewählt, der Mandant hatte keinen Tarif.
+### Ein Zahlungseingang, eine Rechnung
+
+Der Kunde kann sich unter Einstellungen→Abo selbst eine Rechnung ausstellen
+lassen — erst dann sieht er IBAN und Verwendungszweck, kann also überhaupt
+zahlen. Diese Rechnung steht auf `open` und trägt die Nummer, die auf seinem
+Überweisungsträger steht. Beim Freischalten gilt deshalb:
+
+| Lage | Was passiert |
+| --- | --- |
+| offene Rechnung, **gleicher** Tarif + Intervall | wird bezahlt gebucht, mit **ihrem** Zeitraum |
+| offene Rechnung, **abweichender** Tarif | wird storniert (Grund in `notes`), neue bezahlte Rechnung |
+| keine offene Rechnung | neue bezahlte Rechnung als Beleg |
+
+Ohne diese Fallunterscheidung blieben beide stehen: der Kunde sähe nach der
+Freischaltung weiterhin „Offene Rechnung — bitte überweisen“, in
+`/platform/payments` hinge ein Zahlungseingang, den es nicht gibt, und
+`/platform/invoices` zählte den Betrag doppelt.
+
+Die Karte in der Warteschlange zeigt die offene Rechnung samt Verwendungszweck,
+und dieser Verwendungszweck kommt aus demselben `paymentReferenceForInvoice`,
+das ihn dem Kunden anzeigt — sonst sucht der Betreiber im Kontoauszug nach einem
+Text, den es nie gab.
+
+### Welcher Tarif steht vorausgewählt?
+
+`pickPlanSelection` (`src/lib/platform/registration-queue.ts`, getestet in
+`tests/platform-registration-queue.test.ts`) geht von der konkretesten
+Willensäußerung zur vagesten:
+
+1. **offene Rechnung** — dafür wurde ein Beleg angefordert und überwiesen
+2. **`tenants.subscription_plan_id`** — aktueller Stand aus Einstellungen→Abo
+3. **`signup_plan_code`** im `user_metadata` des Inhabers — ältester Wert,
+   verliert gegen einen späteren Wechsel
+4. erster Tarif, damit das Formular nicht leer startet
+
+Jeder Kandidat wird gegen die Tarifliste geprüft: ein Tarif, den es nicht mehr
+gibt, würde als `defaultValue` eines `<select>` stillschweigend zur ersten
+Option — der Betreiber sähe „Starter“ und schaltete „Business“ frei.
+
+Quelle 3 steht überhaupt in der Liste, weil `ensure-tenant.ts` die
+Signup-Tarifwahl nur beim ersten Provisionieren schreibt und bewusst ohne throw.
+Schlägt der Tarif-Lookup fehl, geht die Wahl still verloren (Meldung an Sentry)
+— am 16.08.2026 in der Produktiv-DB nachgewiesen: „Firma ABC“ hatte
+`starter/monthly` gewählt, der Mandant hatte keinen Tarif.
 
 ### `platform`-Schema und PostgREST
 

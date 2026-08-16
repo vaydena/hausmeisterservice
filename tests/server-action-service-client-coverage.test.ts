@@ -159,15 +159,21 @@ const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   //   gescopt, und Cross-Tenant-Zugriffe sind unmoeglich, weil ctx.tenantId
   //   die einzige tenantId-Quelle in der Action ist.
   'src/app/(app)/settings/subscription/actions.ts',
-  // src/app/platform/payments/actions.ts:
-  //   Plattform-Admin bestaetigt eingegangene Banküberweisungen und aktiviert
-  //   den Ziel-Mandanten. Muss zwangslaeufig cross-tenant arbeiten (bearbeitet
-  //   fremde public.tenants und Betreiber-eigene platform.invoices), was der
-  //   RLS-basierte Server-Client per Design nicht kann. Gegated durch
-  //   requirePlatformAdmin VOR dem Service-Client-Aufruf; die admin-Membership
-  //   wird in platform.admins gefuehrt, ist kein normaler Membership-Typ und
-  //   kann per Signup nicht erlangt werden.
-  'src/app/platform/payments/actions.ts',
+  // src/app/platform/payments/actions.ts stand hier bis Sprint 138. Die
+  // Mandanten-Aktivierung ist seither in @/lib/platform/activate-tenant
+  // gekapselt, die Datei nennt createSupabaseServiceClient nicht mehr — und
+  // dieser Test verlangt dann zu Recht, den Eintrag zu loeschen.
+  //
+  // Achtung, damit das niemand als "ist jetzt ungefaehrlich" liest: die
+  // Aktion schreibt weiterhin fremde public.tenants mit Service-Rolle, nur
+  // eine Aufrufebene tiefer. Dieser Scanner sieht ausschliesslich DIREKTE
+  // Importe; gemessen am 16.08.2026 erreichen 9 Server-Action-Dateien die
+  // Service-Rolle indirekt ueber @/lib (rate-limit, ensure-tenant,
+  // log-login-event, tenant/features, demo-data, platform/*). Acht davon
+  // schon vor Sprint 138. Ob der Scanner eine Ebene tief folgen soll, ist
+  // eine eigene Entscheidung — eine gekapselte, selbst gegatete Helferin ist
+  // strukturell besser als ein inline aufgemachter Service-Client, ein
+  // pauschales Transitiv-Verbot wuerde also die bessere Bauweise bestrafen.
   // src/app/platform/tenants/actions.ts:
   //   Plattform-Admin-Werkzeuge: Tenant-Status setzen, Trial verlaengern,
   //   Plan wechseln, Tenant loeschen inkl. Storage-Cascade. Muss zwangslaeufig

@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requirePlatformAdmin } from '@/lib/platform/require-admin';
-import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { createPlatformServiceClient } from '@/lib/supabase/platform';
+import { activateTenantSubscription } from '@/lib/platform/activate-tenant';
+import { normalizePlanInterval } from '@/lib/platform/registration-queue';
 
 const confirmSchema = z.object({
   invoiceId: z.string().uuid(),
@@ -18,7 +19,6 @@ export async function confirmBankTransferAction(formData: FormData) {
     paymentReference: formData.get('paymentReference')?.toString() || undefined,
   });
   if (!parsed.success) throw new Error('Ungültige Rechnungs-ID.');
-  const service = createSupabaseServiceClient();
 
   const paidAt = new Date();
   const { data: invoice, error: invErr } = await createPlatformServiceClient()
@@ -33,23 +33,24 @@ export async function confirmBankTransferAction(formData: FormData) {
     .single();
   if (invErr) throw invErr;
 
-  // Sprint 137: Dieser Fehler wurde bis hierher nicht geprueft. Schlug das
-  // Update fehl, war die Rechnung trotzdem auf "bezahlt" gesetzt — der
+  // Sprint 137: Der Fehler dieses Updates wurde bis dahin nicht geprueft.
+  // Schlug es fehl, war die Rechnung trotzdem auf "bezahlt" gesetzt — der
   // Betreiber sah den Zahlungseingang als erledigt, waehrend der Mandant
   // weiter in 'trial' stand und nach Fristablauf ausgesperrt wurde, obwohl
-  // er bezahlt hat. Genau die Verwechslung, gegen die Sprint 116 diese
-  // Seite abgesichert hat, nur eine Zeile weiter unten.
-  const { error: activateErr } = await service
-    .from('tenants')
-    .update({
-      subscription_status: 'active',
-      subscription_plan_id: invoice.plan_id,
-      subscription_interval: invoice.plan_interval,
-      current_period_start: invoice.period_start,
-      current_period_end: invoice.period_end,
-    })
-    .eq('id', invoice.tenant_id);
-  if (activateErr) throw activateErr;
+  // er bezahlt hat. Sprint 138 zieht die Freischaltung in einen gemeinsamen
+  // Helper, damit beide Wege denselben Zustand herstellen.
+  if (!invoice.plan_id) {
+    throw new Error(
+      `Rechnung ${parsed.data.invoiceId} hat keinen Tarif — ohne Tarif laesst sich der Mandant nicht freischalten.`,
+    );
+  }
+  await activateTenantSubscription({
+    tenantId: invoice.tenant_id,
+    planId: invoice.plan_id,
+    interval: normalizePlanInterval(invoice.plan_interval) ?? 'monthly',
+    periodStart: invoice.period_start,
+    periodEnd: invoice.period_end,
+  });
 
   revalidatePath('/platform/payments');
   revalidatePath(`/platform/tenants/${invoice.tenant_id}`);

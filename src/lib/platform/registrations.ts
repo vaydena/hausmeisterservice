@@ -6,11 +6,12 @@ import {
   computeTrialDaysLeft,
   normalizePlanInterval,
   sortRegistrationQueue,
+  type OpenInvoice,
   type PlatformPlanOption,
   type TenantRegistration,
 } from '@/lib/platform/registration-queue';
 
-export type { PlatformPlanOption, TenantRegistration };
+export type { OpenInvoice, PlatformPlanOption, TenantRegistration };
 
 export interface PlatformRegistrationsView {
   plans: PlatformPlanOption[];
@@ -72,6 +73,35 @@ export async function loadPlatformRegistrations(): Promise<PlatformRegistrations
     'Registrierungen: Inhaber',
   );
 
+  // Sprint 138: Wer selbst eine Rechnung angefordert hat, hat sie auch als
+  // Verwendungszweck auf die Ueberweisung geschrieben. Ohne diese Zeile
+  // sieht der Betreiber die Rechnungsnummer nicht, auf die er die Zahlung
+  // bucht — und legt beim Freischalten eine zweite daneben.
+  const openInvoiceRows = unwrapRows(
+    await createPlatformServiceClient()
+      .from('invoices')
+      .select('id, tenant_id, invoice_number, total_cents, plan_id, plan_interval, issued_at, due_at')
+      .eq('status', 'open')
+      .order('issued_at', { ascending: false }),
+    'Registrierungen: offene Rechnungen',
+  );
+
+  // Absteigend sortiert, also gewinnt der erste Treffer je Mandant — die
+  // juengste offene Rechnung ist die, auf die zuletzt ueberwiesen wurde.
+  const openInvoiceByTenant = new Map<string, OpenInvoice>();
+  for (const row of openInvoiceRows) {
+    if (openInvoiceByTenant.has(row.tenant_id)) continue;
+    openInvoiceByTenant.set(row.tenant_id, {
+      id: row.id,
+      invoiceNumber: row.invoice_number,
+      totalCents: row.total_cents,
+      planId: row.plan_id ?? null,
+      interval: normalizePlanInterval(row.plan_interval),
+      issuedAt: row.issued_at,
+      dueAt: row.due_at ?? null,
+    });
+  }
+
   // Ein Aufruf statt einer getUserById-Runde pro Mandant. perPage deckt die
   // absehbare Kundenzahl; waechst sie darueber hinaus, fehlen E-Mail und
   // Tarifwunsch der hinteren Seiten — dann muss hier paginiert werden.
@@ -109,6 +139,7 @@ export async function loadPlatformRegistrations(): Promise<PlatformRegistrations
       currentPeriodEnd: t.current_period_end ?? null,
       assignedPlanId: t.subscription_plan_id ?? null,
       assignedInterval: normalizePlanInterval(t.subscription_interval),
+      openInvoice: openInvoiceByTenant.get(t.id) ?? null,
       requestedPlanCode:
         typeof meta.signup_plan_code === 'string' ? meta.signup_plan_code : null,
       requestedInterval: normalizePlanInterval(meta.signup_plan_interval),

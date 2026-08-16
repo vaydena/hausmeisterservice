@@ -5,6 +5,8 @@ import {
   type PlatformPlanOption,
   type TenantRegistration,
 } from '@/lib/platform/registrations';
+import { pickPlanSelection } from '@/lib/platform/registration-queue';
+import { paymentReferenceForInvoice } from '@/lib/platform/bank-transfer';
 import { formatDate, formatEUR } from '@/lib/format';
 import { StatusBadge } from '@/components/platform/status-badge';
 import { Button } from '@/components/ui/button';
@@ -132,18 +134,20 @@ function RegistrationCard({
   registration: TenantRegistration;
   plans: PlatformPlanOption[];
 }) {
-  // Vorauswahl in dieser Reihenfolge: der im Signup gewaehlte Tarif, dann
-  // der am Mandanten hinterlegte, sonst der guenstigste. Der Kundenwunsch
-  // steht bewusst vorn — er ist die Bestellung, alles andere ist Ableitung.
+  // Rangfolge der Vorauswahl steht in `pickPlanSelection` — dort ist sie
+  // getestet, und dort steht auch, warum die offene Rechnung gewinnt.
+  const selection = pickPlanSelection(registration, plans);
   const requestedPlan = registration.requestedPlanCode
     ? plans.find((p) => p.code === registration.requestedPlanCode)
     : undefined;
-  const defaultPlanId =
-    requestedPlan?.id ?? registration.assignedPlanId ?? plans[0]?.id ?? '';
-  const defaultInterval =
-    registration.requestedInterval ?? registration.assignedInterval ?? 'monthly';
 
   const urgent = registration.trialExpired || registration.subscriptionStatus === 'past_due';
+  const open = registration.openInvoice;
+  // Derselbe Helper, der dem Kunden den Verwendungszweck anzeigt — sonst
+  // sucht der Betreiber im Kontoauszug nach einem Text, den es nie gab.
+  const openReference = open
+    ? paymentReferenceForInvoice(open.invoiceNumber, registration.slug)
+    : '';
 
   return (
     <article
@@ -192,6 +196,24 @@ function RegistrationCard({
         )}
       </p>
 
+      {open && (
+        <div className="mt-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-muted)]/40 p-3 text-sm">
+          <div className="font-medium">
+            Der Kunde hat eine Rechnung angefordert: {open.invoiceNumber} ·{' '}
+            {formatEUR(open.totalCents)}
+          </div>
+          <div className="mt-0.5 text-xs text-[var(--color-muted-foreground)]">
+            Ausgestellt am {formatDate(open.issuedAt)}
+            {open.dueAt && ` · fällig ${formatDate(open.dueAt)}`} · Verwendungszweck auf der
+            Überweisung: <span className="font-mono">{openReference}</span>
+          </div>
+          <div className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+            Beim Freischalten auf denselben Tarif wird genau diese Rechnung bezahlt gebucht —
+            es entsteht keine zweite.
+          </div>
+        </div>
+      )}
+
       <form
         action={activateTenantPlanAction}
         className="mt-4 flex flex-wrap items-end gap-2 border-t border-[var(--color-border)] pt-4"
@@ -202,7 +224,7 @@ function RegistrationCard({
           <span className="font-medium">Bezahlter Tarif</span>
           <select
             name="planId"
-            defaultValue={defaultPlanId}
+            defaultValue={selection.planId}
             required
             className="rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm"
           >
@@ -218,7 +240,7 @@ function RegistrationCard({
           <span className="font-medium">Zahlungsweise</span>
           <select
             name="interval"
-            defaultValue={defaultInterval}
+            defaultValue={selection.interval}
             className="rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm"
           >
             <option value="monthly">Monatlich</option>
@@ -232,6 +254,7 @@ function RegistrationCard({
             type="text"
             name="paymentReference"
             maxLength={140}
+            defaultValue={openReference}
             placeholder="z. B. Verwendungszweck"
             className="w-52 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-sm"
           />
@@ -243,8 +266,9 @@ function RegistrationCard({
       </form>
 
       <p className="mt-2 text-xs text-[var(--color-muted-foreground)]">
-        Die Freischaltung legt eine bezahlte Rechnung als Beleg an und setzt den Abrechnungs­zeitraum
-        im Anschluss an die Testphase.
+        {open
+          ? 'Bei gleichem Tarif wird die offene Rechnung bezahlt gebucht. Bei abweichendem Tarif wird sie storniert und eine neue als Beleg angelegt.'
+          : 'Die Freischaltung legt eine bezahlte Rechnung als Beleg an und setzt den Abrechnungszeitraum im Anschluss an die Testphase.'}
       </p>
     </article>
   );
