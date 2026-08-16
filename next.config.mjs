@@ -87,6 +87,17 @@ function buildCsp({ isDev, sentryEnabled }) {
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // sharp ist ein natives Modul (libvips) und darf nicht mitgebundelt
+  // werden. Gebundelt sucht es seine .node-Binaries an Pfaden, die es im
+  // Build-Output nicht gibt; auf dem Server wirft dann bereits der Import.
+  // Lokal faellt das nicht auf, weil dort dieselben node_modules auf der
+  // Platte liegen, gegen die gebaut wurde.
+  //
+  // Betrifft alle drei Upload-Pfade, die EXIF-Daten per Re-Encode
+  // entfernen: Dokumente (src/lib/documents/actions.ts), Portal-Fotos
+  // (src/app/(portal)/portal/defects/actions.ts) und die oeffentliche
+  // Meldestrecke (src/app/melden/[token]/actions.ts).
+  serverExternalPackages: ['sharp'],
   // Kompiliert die beiden Marker-Werte fest ins Bundle. Next.js ersetzt
   // dabei nur die woertliche Property-Schreibweise `process.env.APP_BUILD_*`
   // — siehe die Warnung in src/lib/build-info.ts.

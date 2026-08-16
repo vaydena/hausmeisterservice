@@ -1,7 +1,6 @@
 'use server';
 
 import { headers } from 'next/headers';
-import sharp from 'sharp';
 import * as Sentry from '@sentry/nextjs';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 import { getClientIp } from '@/lib/security/client-ip';
@@ -207,6 +206,21 @@ async function storePublicAttachment(params: {
   if (!isImageMime(file.type)) {
     throw new Error(`Unerwarteter MIME-Typ im oeffentlichen Upload: ${file.type}`);
   }
+
+  // sharp erst hier laden, nicht als Modul-Import oben.
+  //
+  // sharp ist ein natives Modul. Steht das passende Binary auf dem Server
+  // nicht bereit, wirft schon der Import — und zwar beim Laden DIESER Datei,
+  // also bevor irgendeine Zeile der Meldelogik laeuft. Als Top-Level-Import
+  // haette damit das optionale Foto die pflichtige Meldung mit ins Grab
+  // gezogen: auch wer gar kein Bild anhaengt, haette nur einen 500er
+  // gesehen. Genau das ist beim ersten Live-Durchlauf passiert.
+  //
+  // Als dynamischer Import faellt ein kaputtes sharp in den try/catch des
+  // Aufrufers und wird zu `attachmentFailed` — die Meldung ist dann da, nur
+  // das Bild fehlt. Das ist die richtige Rangfolge: der Mangel ist die
+  // Nachricht, das Foto ist Beiwerk.
+  const { default: sharp } = await import('sharp');
 
   const source = Buffer.from(await file.arrayBuffer());
   const img = sharp(source, { failOn: 'none' }).rotate();
