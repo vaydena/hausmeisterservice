@@ -95,6 +95,16 @@ export type SharpBinaryReport = {
    * laesst ein Installationslauf aus, ohne mit einem Fehler abzubrechen.
    */
   libvips: { expected: string; present: boolean } | null;
+  /**
+   * Die C-Bibliothek des Servers.
+   *
+   * Kommt dazu, weil der Live-Lauf alle Pakete als vorhanden gemeldet hat und
+   * das Laden trotzdem scheiterte. Wenn nichts fehlt, ist das Naechstliegende
+   * eine Binary, die zur Umgebung nicht passt — und dafuer ist die
+   * glibc-Version die Zahl, an der es haengt. Eine Versionsnummer ist kein
+   * Pfad und keine Fehlermeldung; sie faellt unter dieselbe Linie wie `code`.
+   */
+  libc: { flavour: 'glibc' | 'musl'; version: string | null };
 };
 
 /**
@@ -134,11 +144,31 @@ const PLATFORMS_WITH_SEPARATE_LIBVIPS = new Set(['linux', 'darwin']);
  * wird nur erzeugt, wenn ohnehin schon etwas kaputt ist — er ist nicht
  * billig, und auf dem gruenen Pfad hat er nichts zu suchen.
  */
+function readGlibcVersion(): string | null {
+  const report = process.report?.getReport?.() as
+    | { header?: { glibcVersionRuntime?: unknown } }
+    | undefined;
+  const raw = report?.header?.glibcVersionRuntime;
+  // Nur eine Versionsnummer geht raus, nichts anderes — dieselbe Schranke
+  // wie bei `code` und beim Paketnamen.
+  return typeof raw === 'string' && /^\d+(\.\d+){0,2}$/.test(raw) ? raw : null;
+}
+
 function detectLinuxLibc(): 'glibc' | 'musl' {
   const report = process.report?.getReport?.() as
     | { header?: { glibcVersionRuntime?: unknown } }
     | undefined;
   return typeof report?.header?.glibcVersionRuntime === 'string' ? 'glibc' : 'musl';
+}
+
+/** Exportiert, weil hier eine Schranke gegen Freitext sitzt — die gehoert getestet. */
+export function reportLibc(platform: string = process.platform): {
+  flavour: 'glibc' | 'musl';
+  version: string | null;
+} {
+  if (platform !== 'linux') return { flavour: 'glibc', version: null };
+  const flavour = detectLinuxLibc();
+  return { flavour, version: flavour === 'glibc' ? readGlibcVersion() : null };
 }
 
 /**
@@ -228,7 +258,35 @@ export function reportSharpBinary(): SharpBinaryReport {
       libvipsName === null
         ? null
         : { expected: libvipsName, present: req !== null && resolvesFrom(req, libvipsName) },
+    libc: reportLibc(),
   };
+}
+
+/**
+ * Einmal pro Prozess — nicht bei jedem Monitor-Aufruf.
+ *
+ * Die Ursache aendert sich zwischen zwei Aufrufen nicht; im Minutentakt
+ * dasselbe zu protokollieren macht das Log unlesbar und verdeckt die
+ * Meldung, auf die es ankommt.
+ */
+let loadFailureLogged = false;
+
+/**
+ * Sharps eigene Fehlermeldung ins SERVERLOG — und nur dorthin.
+ *
+ * Sie nennt den wirklichen Grund im Klartext ("... GLIBC_2.29 not found",
+ * "... cannot open shared object file"), und sie ist damit das eine
+ * Beweisstueck, das der Betreiber dem Hoster vorlegen kann. Sie enthaelt
+ * aber Serverpfade, und deshalb geht sie NICHT in die HTTP-Antwort: der
+ * Endpunkt ist unauthentifiziert, das Log ist es nicht.
+ *
+ * Genau diese Trennung ist der Punkt — die Auskunft verschweigen wollten wir
+ * nie, nur nicht ins offene Netz stellen.
+ */
+function logLoadFailure(err: unknown): void {
+  if (loadFailureLogged) return;
+  loadFailureLogged = true;
+  console.error('[image-pipeline] sharp laesst sich nicht laden:', err);
 }
 
 /**
@@ -243,6 +301,7 @@ export async function probeImagePipeline(): Promise<ImagePipelineProbe> {
   try {
     ({ default: sharp } = await import('sharp'));
   } catch (err) {
+    logLoadFailure(err);
     return { ok: false, stage: 'load', code: sanitizeCode(err), binary: reportSharpBinary() };
   }
 

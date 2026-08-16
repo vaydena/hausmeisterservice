@@ -7,6 +7,7 @@ import {
   expectedSharpBinary,
   expectedLibvipsPackage,
   reportSharpBinary,
+  reportLibc,
 } from '@/lib/images/probe';
 
 describe('sanitizeCode', () => {
@@ -85,6 +86,22 @@ describe('expectedLibvipsPackage', () => {
     // fehlt. Genau diese Art Falschmeldung hat den Block schon einmal
     // unbrauchbar gemacht.
     expect(expectedLibvipsPackage('win32', 'x64')).toBeNull();
+  });
+});
+
+describe('reportLibc', () => {
+  it('gibt ausserhalb von Linux keine Version aus', () => {
+    expect(reportLibc('win32')).toEqual({ flavour: 'glibc', version: null });
+    expect(reportLibc('darwin')).toEqual({ flavour: 'glibc', version: null });
+  });
+
+  it('liefert entweder eine reine Versionsnummer oder null', () => {
+    // Der Endpunkt ist unauthentifiziert: was hier rausgeht, muss eine Zahl
+    // sein und darf kein Freitext werden. Dieselbe Schranke wie bei `code`.
+    const { version } = reportLibc();
+    if (version !== null) {
+      expect(version).toMatch(/^\d+(\.\d+){0,2}$/);
+    }
   });
 });
 

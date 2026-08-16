@@ -234,10 +234,12 @@ Antwort im Fehlerfall lesen:
 | `stage: "load"`, `sharpPresent: false` | Nicht einmal `sharp` selbst liegt im `node_modules` des Servers. | Der Deploy hat die Abhängigkeiten nicht (vollständig) installiert. Install-Schritt prüfen. |
 | `stage: "load"`, `present: false` | `sharp` ist da, das native Paket aus `binary.expected` fehlt daneben. | Genau dieses Paket nachinstallieren lassen — es ist eine *optionale* Abhängigkeit von sharp und wird von manchen Install-Läufen übersprungen. |
 | `stage: "load"`, `libvips.present: false` | Wrapper da, die eigentliche Bildbibliothek fehlt. | `libvips.expected` nachinstallieren. Das ist eine optionale Abhängigkeit **einer optionalen Abhängigkeit** — der häufigste Grund, warum ein Install „durchläuft" und sharp trotzdem nicht startet. |
-| `stage: "load"`, alles `true` | Alle Pakete liegen da, das Laden scheitert trotzdem — meist fehlende Systembibliotheken oder eine unpassende glibc-Version. | Hostinger-Support mit `binary.expected` und `code` anfragen. |
+| `stage: "load"`, alles `true` | Alle Pakete liegen da, das Laden scheitert trotzdem — die Binary passt nicht zur Umgebung (meist zu alte glibc oder fehlende Systembibliothek). | **Serverlog öffnen.** Dort steht einmal pro Serverstart `[image-pipeline] sharp laesst sich nicht laden:` mit sharps eigener Fehlermeldung im Klartext — das ist der Text für die Support-Anfrage. `binary.libc.version` mitschicken. |
 | `stage: "encode"` | Modul lädt, das Kodieren scheitert — Format-Backend fehlt. | Wie oben, mit dem Hinweis, dass libvips unvollständig gebaut ist. |
 
 `libvips: null` heißt **nicht** „fehlt", sondern „gibt es auf dieser Plattform nicht einzeln" — unter Windows steckt libvips im Plattform-Paket.
+
+Warum die eigentliche Fehlermeldung nur im Log steht und nicht in der Antwort: sie enthält Serverpfade, und der Endpunkt ist unauthentifiziert. Das Log ist es nicht. Sie wird bewusst nur **einmal pro Serverstart** geschrieben — die Ursache ändert sich zwischen zwei Aufrufen nicht, und ein Monitor im Minutentakt würde sonst alles andere im Log zudecken.
 
 `code: "UNKNOWN"` ist kein Fehler des Endpunkts: findet sharp kein passendes Binary, wirft es einen eigenen Fehler ohne maschinenlesbaren Code. Genau dafür gibt es den `binary`-Block.
 
