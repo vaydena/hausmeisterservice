@@ -32,8 +32,10 @@ export async function updatePasswordAfterResetAction(
   }
   // Sprint 39: Portal-Flag steuert den Redirect nach erfolgreichem
   // Update. Vom hidden Input in update-form.tsx gesetzt, sobald der
-  // Reset ueber /portal/reset-password angestossen wurde.
+  // Reset ueber /portal/reset-password angestossen wurde. owner=1 ist die
+  // Eigentuemer-Variante und hat Vorrang.
   const isPortal = formData.get('portal') === '1';
+  const isOwner = formData.get('owner') === '1';
 
   const supabase = await createSupabaseServerClient();
 
@@ -72,5 +74,7 @@ export async function updatePasswordAfterResetAction(
   const successMsg = encodeURIComponent(
     'Passwort aktualisiert. Bitte melden Sie sich mit dem neuen Passwort an.',
   );
-  redirect(`${isPortal ? '/portal/login' : '/login'}?info=${successMsg}`);
+  redirect(
+    `${isOwner ? '/owner/login' : isPortal ? '/portal/login' : '/login'}?info=${successMsg}`,
+  );
 }

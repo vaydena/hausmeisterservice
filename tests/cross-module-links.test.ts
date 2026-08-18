@@ -145,11 +145,13 @@ const COMPUTED_HREF_GUARD: Record<string, string> = {
   'properties/property-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
   'schedule/entry-form.tsx': 'onCancelHref — zurueck zur eigenen Liste',
   'settings/users/roles/role-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
+  'shifts/shift-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
   'time-tracking/entry-form.tsx': 'onCancelHref — zurueck zur eigenen Liste',
   'time-tracking/[id]/correction/correction-form.tsx': 'onCancelHref — zurueck zur eigenen Liste',
   'tours/tour-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
   'vehicles/vehicle-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
   'work-orders/work-order-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
+  'work-reports/work-report-form.tsx': 'cancelHref — zurueck zur eigenen Liste',
 
   'documents/page.tsx':
     'pageHref() — Blaetterlinks auf /documents selbst. Der Rueckweg zum Vorgang ' +

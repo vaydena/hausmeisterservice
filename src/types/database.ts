@@ -2129,11 +2129,15 @@ export type Database = {
           last_name: string | null
           notes: string | null
           phone: string | null
+          portal_activated_at: string | null
+          portal_invited_at: string | null
+          portal_onboarding_completed_at: string | null
           postal_code: string | null
           street: string | null
           tenant_id: string
           updated_at: string
           updated_by: string | null
+          user_id: string | null
         }
         Insert: {
           city?: string | null
@@ -2150,11 +2154,15 @@ export type Database = {
           last_name?: string | null
           notes?: string | null
           phone?: string | null
+          portal_activated_at?: string | null
+          portal_invited_at?: string | null
+          portal_onboarding_completed_at?: string | null
           postal_code?: string | null
           street?: string | null
           tenant_id: string
           updated_at?: string
           updated_by?: string | null
+          user_id?: string | null
         }
         Update: {
           city?: string | null
@@ -2171,11 +2179,15 @@ export type Database = {
           last_name?: string | null
           notes?: string | null
           phone?: string | null
+          portal_activated_at?: string | null
+          portal_invited_at?: string | null
+          portal_onboarding_completed_at?: string | null
           postal_code?: string | null
           street?: string | null
           tenant_id?: string
           updated_at?: string
           updated_by?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -2216,6 +2228,70 @@ export type Database = {
           scopable?: boolean
         }
         Relationships: []
+      }
+      photos: {
+        Row: {
+          byte_size: number
+          caption: string | null
+          created_at: string
+          id: string
+          mime_type: string
+          phase: string
+          property_id: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          byte_size: number
+          caption?: string | null
+          created_at?: string
+          id?: string
+          mime_type: string
+          phase?: string
+          property_id: string
+          storage_path: string
+          tenant_id: string
+          uploaded_by?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          byte_size?: number
+          caption?: string | null
+          created_at?: string
+          id?: string
+          mime_type?: string
+          phase?: string
+          property_id?: string
+          storage_path?: string
+          tenant_id?: string
+          uploaded_by?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photos_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photos_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "photos_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       properties: {
         Row: {
@@ -2770,6 +2846,71 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "sent_emails_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shifts: {
+        Row: {
+          active: boolean
+          break_minutes: number
+          color: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          end_time: string
+          id: string
+          name: string
+          notes: string | null
+          short_code: string | null
+          sort_order: number
+          start_time: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          break_minutes?: number
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          end_time: string
+          id?: string
+          name: string
+          notes?: string | null
+          short_code?: string | null
+          sort_order?: number
+          start_time: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          break_minutes?: number
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          end_time?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          short_code?: string | null
+          sort_order?: number
+          start_time?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shifts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3865,6 +4006,100 @@ export type Database = {
             columns: ["unit_id"]
             isOneToOne: false
             referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_reports: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          code: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string
+          id: string
+          material_used: string | null
+          minutes_worked: number | null
+          performed_on: string
+          property_id: string
+          signature_data: string | null
+          signed_at: string | null
+          signer_name: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description: string
+          id?: string
+          material_used?: string | null
+          minutes_worked?: number | null
+          performed_on?: string
+          property_id: string
+          signature_data?: string | null
+          signed_at?: string | null
+          signer_name?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          code?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string
+          id?: string
+          material_used?: string | null
+          minutes_worked?: number | null
+          performed_on?: string
+          property_id?: string
+          signature_data?: string | null
+          signed_at?: string | null
+          signer_name?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_reports_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_reports_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]

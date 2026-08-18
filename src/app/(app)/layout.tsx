@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { getTenantContext } from '@/lib/tenant/current';
 import { getResidentContext } from '@/lib/portal/current';
+import { getOwnerContext } from '@/lib/owner-portal/current';
 import { getAvailableModules } from '@/lib/modules/enabled';
 import { moduleForPath } from '@/lib/modules/module-map';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
@@ -22,13 +23,15 @@ import { clientEnv } from '@/lib/env';
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await getTenantContext();
   if (!ctx) {
-    // Ein Bewohner ohne Staff-Membership landet hier — weiter ins Portal.
-    // Ein User ganz ohne Zugriff (keine Membership + kein Resident) darf
-    // NICHT zu /login: der Proxy schickt eingeloggte Sessions von /login
-    // sofort wieder auf /dashboard → ERR_TOO_MANY_REDIRECTS. /no-access
-    // bricht den Loop.
+    // Ein Bewohner oder Eigentümer ohne Staff-Membership landet hier —
+    // weiter ins jeweilige Portal. Ein User ganz ohne Zugriff (keine
+    // Membership, kein Resident, kein Owner) darf NICHT zu /login: der Proxy
+    // schickt eingeloggte Sessions von /login sofort wieder auf /dashboard →
+    // ERR_TOO_MANY_REDIRECTS. /no-access bricht den Loop.
     const resident = await getResidentContext();
-    redirect(resident ? '/portal/dashboard' : '/no-access');
+    if (resident) redirect('/portal/dashboard');
+    const owner = await getOwnerContext();
+    redirect(owner ? '/owner/dashboard' : '/no-access');
   }
 
   // Subscription-Gate: geblockte Tenants dürfen nur /settings/subscription + Legal

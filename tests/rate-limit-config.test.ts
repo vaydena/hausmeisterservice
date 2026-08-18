@@ -8,6 +8,7 @@ describe('AUTH_RATE_LIMITS config', () => {
       'login',
       'mfa-recovery',
       'mfa-verify',
+      'owner-login',
       'password-change',
       'portal-login',
       'public-report-ip',
@@ -19,6 +20,10 @@ describe('AUTH_RATE_LIMITS config', () => {
 
   it('login and portal-login share the same policy (staff + resident auth are equivalent brute-force surfaces)', () => {
     expect(AUTH_RATE_LIMITS.login).toEqual(AUTH_RATE_LIMITS['portal-login']);
+  });
+
+  it('owner-login shares the login policy (owner auth is the same brute-force surface as staff/resident login)', () => {
+    expect(AUTH_RATE_LIMITS['owner-login']).toEqual(AUTH_RATE_LIMITS.login);
   });
 
   it('signup and reset-password share the same policy (both are e-mail enumeration vectors)', () => {

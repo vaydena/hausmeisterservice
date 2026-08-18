@@ -26,20 +26,25 @@ function walkTs(dir: string): string[] {
 const USE_SERVER_RE = /^\s*['"]use server['"];?\s*$/m;
 
 /**
- * Recognized authentication gates. All three redirect to a safe page if no
- * matching membership exists, so calling any of them in an action's body
- * proves the anonymous case cannot slip past.
+ * Recognized authentication gates. Each guarantees the anonymous case cannot
+ * slip past — the first three redirect to a safe page if no matching
+ * membership exists, the fourth throws — so calling any of them in an action's
+ * body aborts before its side effects run for an unauthenticated caller.
  *  - requireTenantContext   (src/lib/tenant/current.ts)   — app-side (staff/admin)
  *  - requireResidentContext (src/lib/portal/current.ts)   — portal-side (residents)
  *  - requirePlatformAdmin   (src/lib/platform/require-admin.ts)
  *      — /platform-side; even stricter than requireTenantContext because it
  *        additionally verifies platform.admins membership and redirects to
  *        /no-access when the current user is not a platform admin.
+ *  - requireOwnerContext    (src/lib/owner-portal/current.ts) — Eigentümerportal;
+ *        wirft NOT_OWNER, wenn kein aktiver owners-Datensatz zum Auth-User
+ *        gehoert. Der Throw bricht die Action ab, bevor ihr Body laeuft — fuer
+ *        einen anonymen Aufruf also genauso dicht wie ein Redirect.
  * Once at least one is called anywhere in the file, we consider the file
  * "auth-guarded"; the guard is a floor, not a per-function proof (see below).
  */
 const AUTH_CALL_RE =
-  /\b(requireTenantContext|requireResidentContext|requirePlatformAdmin)\s*\(/;
+  /\b(requireTenantContext|requireResidentContext|requirePlatformAdmin|requireOwnerContext)\s*\(/;
 
 interface ActionFile {
   file: string; // repo-relative, forward slashes
@@ -87,6 +92,25 @@ const INTENTIONALLY_UNAUTHENTICATED = new Set<string>([
   //   ist mit der Staff-Version geteilt, weil die Enumeration-Oberflaeche
   //   identisch ist.
   'src/app/(portal)/portal/reset-password/actions.ts',
+  // src/app/(portal)/owner/login/actions.ts:
+  //   Eigentümer-Anmeldung (Sprint · Eigentümerportal). Laeuft per Definition
+  //   pre-session — gleiche Chicken-and-egg-Semantik wie die Staff- und
+  //   Bewohner-Logins darueber: requireOwnerContext() waere hier ein Deadlock,
+  //   weil der owners-Datensatz erst NACH dem Login sichtbar wird. Die Action
+  //   prueft die Zugehoerigkeit selbst (owners-Lookup nach signInWithPassword)
+  //   und ist durch den IP-basierten Rate-Limit-Bucket 'owner-login'
+  //   (5/15min, geteilt mit login/portal-login-Policy) gegen Brute-Force
+  //   geschuetzt.
+  'src/app/(portal)/owner/login/actions.ts',
+  // src/app/(portal)/owner/reset-password/actions.ts:
+  //   Passwort-Reset-Anforderung fuer Eigentümer. Pre-Session wie die
+  //   Bewohner-Variante: der User beweist seine Identitaet spaeter ueber den
+  //   Klick auf den per E-Mail versandten Recovery-Link, deshalb waere
+  //   requireOwnerContext() hier Chicken-and-egg. Teilt sich den IP-basierten
+  //   'reset-password'-Bucket mit Staff und Portal (identische
+  //   Enumeration-Oberflaeche); haengt nur ?owner=1 an redirectTo, damit der
+  //   Rueckweg spaeter auf /owner/login zeigt.
+  'src/app/(portal)/owner/reset-password/actions.ts',
   // src/app/(auth)/signup/actions.ts:
   //   Self-Signup für neue Mandanten. Läuft per Definition pre-session:
   //   der Aufrufer hat noch keinen Account und deshalb keine Membership.

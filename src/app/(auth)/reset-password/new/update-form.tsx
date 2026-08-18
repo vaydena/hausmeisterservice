@@ -10,12 +10,19 @@ const INITIAL: UpdateState = {};
  * Update — als hidden Input mitgeschickt, damit die Server-Action ihn
  * ohne Query-String-Parsing lesen kann.
  */
-export function UpdatePasswordForm({ isPortal = false }: { isPortal?: boolean }) {
+export function UpdatePasswordForm({
+  isPortal = false,
+  isOwner = false,
+}: {
+  isPortal?: boolean;
+  isOwner?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(updatePasswordAfterResetAction, INITIAL);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
       {isPortal && <input type="hidden" name="portal" value="1" />}
+      {isOwner && <input type="hidden" name="owner" value="1" />}
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium">Neues Passwort</span>
         <input

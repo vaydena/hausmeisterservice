@@ -15,17 +15,23 @@ export const dynamic = 'force-dynamic';
 export default async function NewPasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ portal?: string }>;
+  searchParams: Promise<{ portal?: string; owner?: string }>;
 }) {
   const supabase = await createSupabaseServerClient();
   const { data } = await supabase.auth.getUser();
   // Sprint 39: Portal-Flag entscheidet Rueckweg + Neu-Anfordern-Link.
   // Der Confirm-Handler haengt ihn ans /reset-password/new dran, wenn
-  // der Reset ueber /portal/reset-password angestossen wurde.
-  const { portal } = await searchParams;
+  // der Reset ueber /portal/reset-password angestossen wurde. owner=1 ist
+  // die Eigentuemer-Variante und hat Vorrang.
+  const { portal, owner } = await searchParams;
+  const isOwner = owner === '1';
   const isPortal = portal === '1';
-  const requestPath = isPortal ? '/portal/reset-password' : '/reset-password';
-  const loginPath = isPortal ? '/portal/login' : '/login';
+  const requestPath = isOwner
+    ? '/owner/reset-password'
+    : isPortal
+      ? '/portal/reset-password'
+      : '/reset-password';
+  const loginPath = isOwner ? '/owner/login' : isPortal ? '/portal/login' : '/login';
 
   // Ohne aktive Recovery-Session (direkter Aufruf, oder Session
   // zwischenzeitlich abgelaufen): keine Formular-Anzeige. Sonst wuerde
@@ -65,7 +71,7 @@ export default async function NewPasswordPage({
           Wählen Sie ein neues Passwort für Ihr Konto.
         </p>
       </div>
-      <UpdatePasswordForm isPortal={isPortal} />
+      <UpdatePasswordForm isPortal={isPortal} isOwner={isOwner} />
     </div>
   );
 }

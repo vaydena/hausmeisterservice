@@ -19,9 +19,11 @@ export async function GET(request: NextRequest) {
   // Sprint 39: Portal-Flag entscheidet ueber den Fehler-Rueckweg. Ein
   // Bewohner, der einen abgelaufenen Reset-Link oeffnet, soll auf
   // /portal/login landen (nicht auf der Staff-Anmeldung), damit er den
-  // Link dort neu anfordern kann.
+  // Link dort neu anfordern kann. owner=1 ist die Eigentuemer-Variante und
+  // hat Vorrang — ein Eigentuemer-Reset traegt nie zusaetzlich portal=1.
   const isPortal = searchParams.get('portal') === '1';
-  const failureBase = isPortal ? '/portal/login' : '/login';
+  const isOwner = searchParams.get('owner') === '1';
+  const failureBase = isOwner ? '/owner/login' : isPortal ? '/portal/login' : '/login';
 
   if (errorDescription) {
     return NextResponse.redirect(
@@ -47,6 +49,7 @@ export async function GET(request: NextRequest) {
   }
 
   const nextUrl = new URL('/reset-password/new', appUrl);
-  if (isPortal) nextUrl.searchParams.set('portal', '1');
+  if (isOwner) nextUrl.searchParams.set('owner', '1');
+  else if (isPortal) nextUrl.searchParams.set('portal', '1');
   return NextResponse.redirect(nextUrl.toString());
 }

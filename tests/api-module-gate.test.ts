@@ -60,6 +60,27 @@ const UNGATED_API_ROUTES: Record<string, string> = {
     'Bewohner-Gegenstueck. Abmelden muss auch dann gehen, wenn das Portal abbestellt wird.',
   '/api/portal/push/vapid-key':
     'Bewohner-Gegenstueck. Oeffentlicher Schluessel, unabhaengig vom Mandanten.',
+  '/api/owner/work-reports/[id]/pdf':
+    'Eigentümerportal-Endpunkt. Autorisiert ueber getOwnerContext (Eigentümer-' +
+    'Kontext) + die RLS-Policy work_reports_select_owner, nicht ueber den ' +
+    'mandantengebundenen Modul-Gate: ein Portal-Eigentümer hat keine Membership, ' +
+    'moduleGate faende via getTenantContext nie einen Mandanten und wuerde jeden ' +
+    'Eigentümer-Download mit 404 abwuergen.',
+  '/api/owner/invoices/[id]/pdf':
+    'Eigentümerportal-Endpunkt. Autorisiert ueber getOwnerContext + ' +
+    'invoices_select_owner (in loadOwnerInvoiceData), nicht ueber den Modul-Gate ' +
+    '— derselbe Grund wie beim Arbeitsbericht-PDF: kein Mandant fuer den ' +
+    'Portal-Eigentümer, den moduleGate pruefen koennte.',
+  '/api/owner/photos/[id]':
+    'Eigentümerportal-Endpunkt. Der Owner-RLS-Read (photos_select_owner) beweist ' +
+    'den Objektzugriff, dann signiert der Service-Client die Storage-URL. ' +
+    'moduleGate ist hier falsch — der Portal-Eigentümer ist kein Staff-Nutzer ' +
+    'und hat keinen Mandanten-Kontext.',
+  '/api/owner/documents/[id]/download':
+    'Eigentümerportal-Endpunkt. Autorisiert ueber getOwnerContext + ' +
+    'documents_select_owner (nur objektgebundene Dokumente eigener Objekte), ' +
+    'danach signierter Download per Service-Client. Kein Modul-Gate, weil ein ' +
+    'Portal-Eigentümer keine Membership und damit keinen Mandanten hat.',
 };
 
 interface RouteFile {

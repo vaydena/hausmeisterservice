@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireTenantContext } from '@/lib/tenant/current';
+import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { ownerInputSchema } from '@/lib/schemas/owners';
+import { createSupabaseServiceClient } from '@/lib/supabase/service';
+import { ownerInputSchema, ownerDisplayName } from '@/lib/schemas/owners';
 
 export type OwnerFormState = {
   error?: string;
@@ -149,5 +151,110 @@ export async function detachPropertyAction(formData: FormData): Promise<void> {
 
   if (error) throw new Error(friendlyDbMessage(error.message));
 
+  revalidatePath(`/people/owners/${ownerId}`);
+}
+
+export type InvitePortalState = {
+  error?: string;
+  success?: string;
+};
+
+/**
+ * Legt (falls nötig) einen auth-User an, verlinkt owners.user_id, setzt
+ * portal_invited_at. Nutzt Service-Role — dedizierter Permission-Check vorab.
+ * Spiegel von inviteResidentToPortalAction; die owners_select_own-Policy macht
+ * den verknüpften Datensatz danach für den Eigentümer selbst sichtbar.
+ */
+export async function inviteOwnerToPortalAction(
+  _prev: InvitePortalState,
+  formData: FormData,
+): Promise<InvitePortalState> {
+  const ctx = await requireTenantContext();
+  const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
+  if (!permissions.has('owners.edit')) {
+    return { error: 'Sie haben keine Berechtigung, Eigentümer einzuladen.' };
+  }
+
+  const ownerId = String(formData.get('owner_id') ?? '');
+  if (!ownerId) return { error: 'Eigentümer-ID fehlt.' };
+
+  const supabase = await createSupabaseServerClient();
+  const { data: owner, error: fetchErr } = await supabase
+    .from('owners')
+    .select('id, tenant_id, kind, email, first_name, last_name, company_name, user_id')
+    .eq('id', ownerId)
+    .maybeSingle();
+  if (fetchErr || !owner) return { error: 'Eigentümer nicht gefunden.' };
+  if (!owner.email) return { error: 'Eigentümer hat keine hinterlegte E-Mail-Adresse.' };
+  if (owner.user_id) return { error: 'Portal-Zugang ist bereits verknüpft.' };
+
+  const admin = createSupabaseServiceClient();
+
+  let userId: string | null = null;
+
+  const invited = await admin.auth.admin.inviteUserByEmail(owner.email, {
+    data: {
+      owner_id: owner.id,
+      display_name: ownerDisplayName(owner),
+    },
+  });
+
+  if (invited.data.user) {
+    userId = invited.data.user.id;
+  } else {
+    // Bereits existierender User → über listUsers/filter nachschlagen.
+    const list = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const existing = list.data.users.find(
+      (u) => (u.email ?? '').toLowerCase() === owner.email!.toLowerCase(),
+    );
+    if (!existing) {
+      return {
+        error:
+          invited.error?.message ??
+          'Einladung fehlgeschlagen. Bitte E-Mail-Adresse prüfen und erneut versuchen.',
+      };
+    }
+    userId = existing.id;
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: updErr } = await admin
+    .from('owners')
+    .update({
+      user_id: userId,
+      portal_invited_at: nowIso,
+      updated_by: ctx.userId,
+    })
+    .eq('id', ownerId);
+  if (updErr) return { error: 'Verknüpfung mit Portal-Konto fehlgeschlagen.' };
+
+  revalidatePath('/people/owners');
+  revalidatePath(`/people/owners/${ownerId}`);
+  return { success: `Einladung an ${owner.email} wurde versendet.` };
+}
+
+export async function revokeOwnerPortalAccessAction(formData: FormData): Promise<void> {
+  const ctx = await requireTenantContext();
+  const permissions = await getEffectivePermissions(ctx.userId, ctx.tenantId);
+  if (!permissions.has('owners.edit')) {
+    throw new Error('Keine Berechtigung.');
+  }
+
+  const ownerId = String(formData.get('owner_id') ?? '');
+  if (!ownerId) throw new Error('Eigentümer-ID fehlt.');
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('owners')
+    .update({
+      user_id: null,
+      portal_invited_at: null,
+      portal_activated_at: null,
+      updated_by: ctx.userId,
+    })
+    .eq('id', ownerId);
+  if (error) throw new Error(friendlyDbMessage(error.message));
+
+  revalidatePath('/people/owners');
   revalidatePath(`/people/owners/${ownerId}`);
 }

@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 const STAFF_PUBLIC_ROUTES = ['/', '/login', '/signup', '/reset-password', '/invite', '/preise'];
-const PORTAL_PUBLIC_ROUTES = ['/portal/login', '/portal/reset-password'];
+const PORTAL_PUBLIC_ROUTES = [
+  '/portal/login',
+  '/portal/reset-password',
+  '/owner/login',
+  '/owner/reset-password',
+];
 // Rechtspflicht-Seiten: von jeder Seite erreichbar für alle Besucher —
 // dürfen weder Auth-Redirect noch Portal-Redirect auslösen.
 const LEGAL_ROUTES = ['/impressum', '/datenschutz', '/agb', '/avv'];
@@ -52,6 +57,10 @@ function isPortalPublic(pathname: string): boolean {
 
 function isPortalRoute(pathname: string): boolean {
   return pathname === '/portal' || pathname.startsWith('/portal/');
+}
+
+function isOwnerPortalRoute(pathname: string): boolean {
+  return pathname === '/owner' || pathname.startsWith('/owner/');
 }
 
 function isLegalRoute(pathname: string): boolean {
@@ -113,6 +122,15 @@ export async function proxy(request: NextRequest) {
   if (!user) {
     // Public routes (Staff + Portal) always allowed
     if (isStaffPublic(pathname) || isPortalPublic(pathname)) return response;
+
+    // Eigentümer-Portal-Requests → /owner/login (vor dem Bewohner-Zweig
+    // geprüft, weil /owner sonst nie erreicht würde).
+    if (isOwnerPortalRoute(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/owner/login';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
 
     // Portal requests → /portal/login
     if (isPortalRoute(pathname)) {

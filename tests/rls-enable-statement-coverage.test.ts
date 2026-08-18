@@ -109,14 +109,26 @@ for (const e of ALL_ENABLES) {
  *    `apply_migration` during Task #43 (Residents/Owners: DB-Migration).
  *    The table was NOT written into `supabase/migrations/`; its
  *    `create table` + `enable row level security` live only in the remote
- *    Supabase migration history. Same reasoning applies to `owners`
- *    (which is FK-referenced from `20260803001300_billing.sql` but never
- *    created in a local migration either) — but `owners` has no policies
- *    in any local migration file, so it doesn't show up as a policy-table
- *    here at all. The `residents` entry is only needed because the
+ *    Supabase migration history. The `residents` entry is needed because the
  *    resident-portal migration (`20260803001500_resident_portal.sql`)
  *    adds a SELECT policy for the portal role. See the same-shaped
  *    allowlist in `migration-table-existence.test.ts`.
+ *
+ *  - `owners`: exactly the same story as `residents` — created out-of-band via
+ *    Supabase MCP `apply_migration` (FK-referenced from
+ *    `20260803001300_billing.sql`, but never `create table`d in a local
+ *    migration). Until the Eigentümerportal it carried no LOCAL policy, so it
+ *    was not a policy-table here. `20260817160000_owner_portal_self_select.sql`
+ *    now adds `owners_select_own`, so it surfaces — hence the entry. RLS ist in
+ *    prod aktiv (am 18.08.2026 direkt gemessen: pg_class.relrowsecurity = true,
+ *    5 Policies); die Policies sind also nicht inert/fail-open.
+ *
+ *  - `maintenance_plans`: gleiche Lage — Tabelle plus `enable row level
+ *    security` und die 5 Tenant-Policies entstanden out-of-band via Supabase
+ *    MCP, nie in einer lokalen Migration. `20260817130000_owner_portal.sql`
+ *    fuegt mit `maintenance_plans_select_owner` die erste LOKALE Policy hinzu,
+ *    wodurch die Tabelle hier erstmals auftaucht. Ebenfalls am 18.08.2026
+ *    direkt gemessen: relrowsecurity = true.
  *
  * The test asserts entries stay stale-relevant: if either entry ever
  * gains a proper local ENABLE-statement, the allowlist entry becomes an
@@ -126,6 +138,8 @@ for (const e of ALL_ENABLES) {
 const INTENTIONALLY_EXTERNAL_RLS_TABLES = new Set<string>([
   'storage.objects',
   'residents',
+  'owners',
+  'maintenance_plans',
 ]);
 
 describe('RLS enable-statement coverage', () => {

@@ -32,6 +32,16 @@ const POLICY_RE = /create\s+policy\s+["']?([^"'\s]+)["']?\s+on\s+([a-zA-Z_.]+)([
  *    operator accounts — which is the point (cross-tenant admin tooling).
  *  - auth.uid(): the caller's user id — used as an ownership fallback when
  *    the row is user-scoped rather than tenant-scoped (e.g. push_subscriptions).
+ *  - app_auth.is_property_owner_of_tenant / property_owner_owns_property /
+ *    current_property_owner_id: portal-side PROPERTY-owner scoping
+ *    (Eigentümerportal, 20260817130000_owner_portal.sql). Spiegel der
+ *    resident-Helfer: is_property_owner_of_tenant prueft, dass der Aufrufer
+ *    einen aktiven owners-Datensatz im Mandanten hat; property_owner_owns_
+ *    property prueft die M:N-Verknuepfung owner_properties zu genau einem
+ *    Objekt; current_property_owner_id loest die owners.id des Aufrufers auf
+ *    (fuer invoices.owner_id). Alle drei sind SECURITY-DEFINER-Funktionen ueber
+ *    owners/owner_properties, gekeyed auf auth.uid() — also echte Auth-Scopes,
+ *    nicht "any authenticated".
  *
  * A policy that references NONE of these is effectively public — anyone with
  * a session (or in the case of `to public`, anyone at all) can hit the row.
@@ -39,7 +49,7 @@ const POLICY_RE = /create\s+policy\s+["']?([^"'\s]+)["']?\s+on\s+([a-zA-Z_.]+)([
  * to the entire authenticated surface, defeating tenant isolation.
  */
 const AUTH_FN_RE =
-  /app_auth\.current_tenant_id|app_auth\.is_tenant_member|app_auth\.has_permission|app_auth\.is_resident_of_tenant|app_auth\.is_platform_admin|is_resident_of_tenant|auth\.uid/i;
+  /app_auth\.current_tenant_id|app_auth\.is_tenant_member|app_auth\.has_permission|app_auth\.is_resident_of_tenant|app_auth\.is_platform_admin|app_auth\.is_property_owner_of_tenant|app_auth\.property_owner_owns_property|app_auth\.current_property_owner_id|is_resident_of_tenant|auth\.uid/i;
 
 interface Policy {
   file: string; // migration filename

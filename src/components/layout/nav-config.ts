@@ -32,6 +32,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/defect-reports', labelDe: 'Meldungen', icon: 'alert-circle', module: 'defect_reports', permission: 'defect_reports.view' },
       { href: '/maintenance', labelDe: 'Wartungen', icon: 'wrench', module: 'maintenance', permission: 'maintenance.view' },
       { href: '/checklists', labelDe: 'Checklisten', icon: 'list-checks', module: 'checklists', permission: 'checklists.view' },
+      { href: '/work-reports', labelDe: 'Arbeitsberichte', icon: 'file-signature', module: 'work_reports', permission: 'work_reports.view' },
     ],
   },
   {
@@ -56,6 +57,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/time-tracking', labelDe: 'Zeiterfassung', icon: 'clock', module: 'time_tracking', permission: 'time_tracking.view' },
       { href: '/time-corrections', labelDe: 'Korrekturanträge', icon: 'clipboard-list', module: 'time_tracking', permission: 'time_tracking.view' },
       { href: '/schedule', labelDe: 'Planung', icon: 'calendar-range', module: 'scheduling', permission: 'scheduling.view' },
+      { href: '/shifts', labelDe: 'Schichten', icon: 'calendar-clock', module: 'shifts', permission: 'shifts.manage' },
       { href: '/tours', labelDe: 'Touren', icon: 'route', module: 'tours', permission: 'tours.view' },
     ],
   },
@@ -65,6 +67,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { href: '/materials', labelDe: 'Material', icon: 'package', module: 'materials', permission: 'materials.view' },
       { href: '/vehicles', labelDe: 'Fahrzeuge', icon: 'car', module: 'vehicles', permission: 'vehicles.view' },
       { href: '/documents', labelDe: 'Dokumente', icon: 'file-text', module: 'documents', permission: 'documents.view' },
+      { href: '/photos', labelDe: 'Fotos', icon: 'camera', module: 'photos', permission: 'photos.view' },
       // Sprint 134: bis hierher hatte das QR-Modul keinen Menuepunkt — es war
       // nur ueber Knoepfe auf fremden Listen erreichbar. Kein eigenes
       // Leserecht: wer QR-Codes drucken darf, entscheidet die Uebersicht

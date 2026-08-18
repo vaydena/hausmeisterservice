@@ -10,6 +10,8 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { OWNER_KIND_LABEL, ownerDisplayName, type OwnerKind } from '@/lib/schemas/owners';
 import { attachPropertyAction, deleteOwnerAction, detachPropertyAction } from '../actions';
+import { OwnerPortalInviteButton, OwnerPortalRevokeButton } from './portal-access-panel';
+import { formatDate } from '@/lib/utils/format';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 
 export const metadata: Metadata = { title: 'Eigentümer' };
@@ -30,7 +32,7 @@ export default async function OwnerDetailPage({ params }: { params: Promise<{ id
     await supabase
       .from('owners')
       .select(
-        'id, kind, first_name, last_name, company_name, email, phone, street, house_number, postal_code, city, country, notes, created_at, updated_at',
+        'id, kind, first_name, last_name, company_name, email, phone, street, house_number, postal_code, city, country, notes, created_at, updated_at, user_id, portal_invited_at, portal_activated_at',
       )
       .eq('id', id)
       .is('deleted_at', null)
@@ -275,6 +277,50 @@ export default async function OwnerDetailPage({ params }: { params: Promise<{ id
           </CardHeader>
           <CardBody>
             <p className="whitespace-pre-line text-sm">{owner.notes}</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {canEdit && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Eigentümer-Portal</CardTitle>
+          </CardHeader>
+          <CardBody>
+            {owner.user_id ? (
+              <div className="flex flex-col gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Badge tone="success">Verknüpft</Badge>
+                  {owner.portal_activated_at ? (
+                    <span className="text-[var(--color-muted-foreground)]">
+                      Portal aktiviert am {formatDate(owner.portal_activated_at)}
+                    </span>
+                  ) : owner.portal_invited_at ? (
+                    <span className="text-[var(--color-muted-foreground)]">
+                      Einladung versendet am {formatDate(owner.portal_invited_at)} – noch nicht
+                      angemeldet
+                    </span>
+                  ) : null}
+                </div>
+                <OwnerPortalRevokeButton ownerId={owner.id} />
+              </div>
+            ) : owner.email ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-[var(--color-muted-foreground)]">
+                  Sendet eine Einladung an <strong>{owner.email}</strong>. Der Eigentümer setzt
+                  sich anschließend selbst ein Passwort und meldet sich unter
+                  <code className="ml-1 rounded bg-[var(--color-muted)] px-1 py-0.5 text-xs">
+                    /owner
+                  </code>{' '}
+                  an.
+                </p>
+                <OwnerPortalInviteButton ownerId={owner.id} />
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--color-muted-foreground)]">
+                Um eine Einladung zu senden, hinterlegen Sie zuerst eine E-Mail-Adresse.
+              </p>
+            )}
           </CardBody>
         </Card>
       )}

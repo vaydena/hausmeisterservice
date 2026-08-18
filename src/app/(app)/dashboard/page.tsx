@@ -5,7 +5,7 @@ import { getAvailableModules } from '@/lib/modules/enabled';
 import { getEffectivePermissions } from '@/lib/permissions/effective';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
-import { MODULES_BY_KEY, type ModuleKey } from '@/lib/modules/registry';
+import { MODULES, MODULES_BY_KEY, type ModuleDomain, type ModuleKey } from '@/lib/modules/registry';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { hrefAvailable } from '@/lib/modules/href-guard';
 import { WelcomeOverlay } from './welcome-overlay';
@@ -134,7 +134,7 @@ export default async function DashboardPage() {
       {activeToggleable.length === 0 ? (
         <EmptyModulesCard />
       ) : (
-        <ActiveModulesGrid enabled={activeToggleable} />
+        <OrderedModuleSections enabled={activeToggleable} />
       )}
 
       {showWelcome && <WelcomeOverlay tenantName={tenantName} steps={onboardingSteps} />}
@@ -188,37 +188,87 @@ function StatsGrid({
   );
 }
 
-function ActiveModulesGrid({ enabled }: { enabled: ModuleKey[] }) {
+/**
+ * Die Bereiche des Dashboards in der Reihenfolge, in der ein Betrieb sie
+ * sinnvoll abarbeitet: erst die Stammdaten (was und wer), dann das
+ * Tagesgeschaeft, dann Auswertung und System. Gruppiert wird ueber das
+ * `domain`-Feld der Registry — die bleibt die einzige Wahrheit darueber,
+ * welches Modul zu welcher Domaene gehoert; hier steht nur, wie die Domaenen
+ * fuer diese Ansicht heissen und in welcher Reihenfolge sie erscheinen.
+ *
+ * `core`, `platform` sind bewusst getrennt: Kern-Module sind ohnehin
+ * ausgefiltert (activeToggleable), `platform` ist der Abschluss "System".
+ */
+const DASHBOARD_SECTIONS: readonly { domain: ModuleDomain; title: string; purpose: string }[] = [
+  { domain: 'objects', title: 'Objekte & Anlagen', purpose: 'Der Anfang: Liegenschaften, Gebäude und technische Anlagen erfassen.' },
+  { domain: 'people', title: 'Personen', purpose: 'Wer beteiligt ist: Mitarbeiter, Bewohner und Eigentümer anlegen.' },
+  { domain: 'tasks', title: 'Aufgaben & Wartung', purpose: 'Das Tagesgeschäft: Aufträge, Meldungen, Wartungen und Checklisten.' },
+  { domain: 'field', title: 'Einsatz vor Ort', purpose: 'Arbeitszeit erfassen und Einsätze planen.' },
+  { domain: 'resources', title: 'Ressourcen', purpose: 'Schlüssel, Zähler, Material, Fahrzeuge und Dokumente verwalten.' },
+  { domain: 'communication', title: 'Kommunikation', purpose: 'Nachrichten und Ankündigungen an Team, Bewohner und Eigentümer.' },
+  { domain: 'finance', title: 'Finanzen', purpose: 'Kosten abrechnen und Kennzahlen auswerten.' },
+  { domain: 'platform', title: 'System', purpose: 'QR-Codes und Automatisierungen einrichten.' },
+];
+
+function OrderedModuleSections({ enabled }: { enabled: ModuleKey[] }) {
+  const enabledSet = new Set(enabled);
+
+  // Pro Abschnitt die aktiven Module in Registry-Reihenfolge sammeln (statt in
+  // der ungeordneten `enabled`-Menge), damit die Karten deterministisch stehen.
+  // Nur nicht-leere Abschnitte werden gerendert und fortlaufend nummeriert —
+  // ein Mandant ohne z.B. Einsatz-Module bekommt keine Luecke in der Zaehlung.
+  const sections = DASHBOARD_SECTIONS.map((section) => ({
+    ...section,
+    modules: MODULES.filter(
+      (m) => m.domain === section.domain && !m.core && enabledSet.has(m.key),
+    ),
+  })).filter((section) => section.modules.length > 0);
+
   return (
-    <section>
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
-        Aktivierte Bereiche
-      </h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {enabled.map((key) => {
-          const mod = MODULES_BY_KEY[key];
-          if (!mod) return null;
-          return (
-            <div
-              key={key}
-              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-4"
-            >
-              <div className="text-sm font-medium">{mod.labelDe}</div>
-              <div className="mt-1 text-xs text-[var(--color-muted-foreground)]">
-                {mod.description}
-              </div>
-              {mod.menuPath && (
-                <a
-                  href={mod.menuPath}
-                  className="mt-3 inline-block text-sm text-[var(--color-primary)] hover:underline"
-                >
-                  Öffnen →
-                </a>
-              )}
-            </div>
-          );
-        })}
+    <section className="flex flex-col gap-8">
+      <div>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          Ihre Bereiche
+        </h2>
+        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+          In empfohlener Reihenfolge — von der Einrichtung bis zum Tagesgeschäft.
+        </p>
       </div>
+
+      {sections.map((section, index) => (
+        <div key={section.domain}>
+          <div className="mb-3 flex items-start gap-3">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-[var(--color-primary-foreground)]">
+              {index + 1}
+            </span>
+            <div>
+              <h3 className="text-sm font-semibold leading-tight">{section.title}</h3>
+              <p className="text-xs text-[var(--color-muted-foreground)]">{section.purpose}</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 sm:pl-10 lg:grid-cols-3">
+            {section.modules.map((mod) => (
+              <div
+                key={mod.key}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-4"
+              >
+                <div className="text-sm font-medium">{mod.labelDe}</div>
+                <div className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+                  {mod.description}
+                </div>
+                {mod.menuPath && (
+                  <a
+                    href={mod.menuPath}
+                    className="mt-3 inline-block text-sm text-[var(--color-primary)] hover:underline"
+                  >
+                    Öffnen →
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </section>
   );
 }

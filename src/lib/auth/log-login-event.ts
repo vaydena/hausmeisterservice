@@ -1,7 +1,7 @@
 import 'server-only';
 import { createSupabaseServiceClient } from '@/lib/supabase/service';
 
-export type LoginEndpoint = 'staff-login' | 'portal-login';
+export type LoginEndpoint = 'staff-login' | 'portal-login' | 'owner-login';
 
 /**
  * Best-effort: schreibt einen erfolgreichen Login als Zeile in

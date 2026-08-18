@@ -163,5 +163,16 @@ export async function signInAction(_prev: LoginState, formData: FormData): Promi
     .maybeSingle();
   if (resident) redirect('/portal/dashboard');
 
+  // Reiner Portal-Eigentümer (keine Membership, kein Resident): owners_select_own
+  // (user_id = auth.uid()) macht die Zeile für ihn sichtbar → ins Owner-Portal.
+  const { data: owner } = await supabase
+    .from('owners')
+    .select('id')
+    .eq('user_id', signInData.user.id)
+    .is('deleted_at', null)
+    .limit(1)
+    .maybeSingle();
+  if (owner) redirect('/owner/dashboard');
+
   redirect('/no-access');
 }

@@ -109,6 +109,17 @@ const SERVICE_CLIENT_USERS = ALL_SERVER_ACTION_FILES.filter(
 const INTENTIONALLY_SERVICE_CLIENT_ACTIONS = new Set<string>([
   'src/app/(app)/people/employees/actions.ts',
   'src/app/(app)/people/residents/actions.ts',
+  // src/app/(app)/people/owners/actions.ts:
+  //   Eigentümer-Portal-Einladung (inviteOwnerToPortalAction). Ruft
+  //   auth.admin.inviteUserByEmail + auth.admin.listUsers — Auth-Admin-APIs,
+  //   die per Supabase-Design den Service-Role-JWT verlangen — und schreibt
+  //   danach owners.user_id/portal_invited_at. Gleiche Bauart wie die
+  //   residents-Variante darueber. Gegated durch requireTenantContext +
+  //   permissions.has('owners.edit') VOR der Konstruktion des Service-Clients
+  //   (der Client entsteht erst nach dem Permission-Check). Die zweite
+  //   exportierte Action (revokeOwnerPortalAccessAction) nutzt bewusst den
+  //   normalen anon+cookie-Client, nicht den Service-Client.
+  'src/app/(app)/people/owners/actions.ts',
   'src/app/(app)/settings/automations/actions.ts',
   // src/app/(auth)/signup/actions.ts:
   //   Self-Signup läuft pre-session (siehe INTENTIONALLY_UNAUTHENTICATED in

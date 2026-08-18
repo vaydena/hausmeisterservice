@@ -36,8 +36,7 @@ import { normalizeRoutePath, pathHasPrefix } from '@/lib/routing/path-prefix';
  *
  * Module ohne eigene Staff-Route fehlen bewusst:
  *   resident_portal — eigene Route-Group, siehe MODULES_OUTSIDE_APP_ROUTE_GROUP
- *   work_reports / photos / shifts / owner_portal — noch nicht gebaut,
- *     siehe `unbuilt` in registry.ts
+ *   owner_portal — eigene Route-Group, siehe MODULES_OUTSIDE_APP_ROUTE_GROUP
  *
  * Sprint 133 · Die zweite Zeile stand hier vorher als blosse Behauptung
  * ("noch nicht gebaut") und war damit wertlos: ein Kommentar schaltet nichts
@@ -57,10 +56,13 @@ export const MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
   // Ein Checklisten-Durchlauf ist die Ausfuehrung einer Checkliste — ohne das
   // Modul gibt es die Vorlage nicht, die er abarbeitet.
   checklists: ['/checklists', '/checklist-runs'],
+  work_reports: ['/work-reports'],
   documents: ['/documents'],
+  photos: ['/photos'],
   // Korrekturantraege sind Zeiterfassung: sie aendern Zeiteintraege.
   time_tracking: ['/time-tracking', '/time-corrections'],
   scheduling: ['/schedule'],
+  shifts: ['/shifts'],
   tours: ['/tours'],
   keys: ['/keys'],
   meters: ['/meters'],
@@ -95,6 +97,8 @@ export const API_MODULE_PATHS: Partial<Record<ModuleKey, readonly string[]>> = {
   qr_codes: ['/api/qr'],
   billing: ['/api/invoices', '/api/offers'],
   documents: ['/api/documents'],
+  photos: ['/api/photos'],
+  work_reports: ['/api/work-reports'],
 };
 
 /** Laengster Praefix gewinnt; siehe `moduleForPath`. */
@@ -163,6 +167,7 @@ export function pathsForModule(moduleKey: ModuleKey): readonly string[] {
  */
 export const MODULES_OUTSIDE_APP_ROUTE_GROUP: Partial<Record<ModuleKey, string>> = {
   resident_portal: 'src/app/(portal)/portal',
+  owner_portal: 'src/app/(portal)/owner',
 };
 
 /**

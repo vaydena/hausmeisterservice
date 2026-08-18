@@ -70,7 +70,7 @@ export async function checkAuthRateLimit(
  */
 export async function resetAuthRateLimit(
   identifier: string,
-  endpoint: Extract<AuthEndpoint, 'login' | 'portal-login'>,
+  endpoint: Extract<AuthEndpoint, 'login' | 'portal-login' | 'owner-login'>,
 ): Promise<void> {
   const service = createSupabaseServiceClient();
   const { error } = await service.rpc('reset_auth_rate_limit', {

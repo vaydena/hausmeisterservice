@@ -69,10 +69,20 @@ const ALL_ROUTE_HANDLERS: RouteHandlerFile[] = walkRouteHandlers(APP_DIR)
  *    "nicht angemeldet", "Modul abgeschaltet" und "gibt es nicht"
  *    unterscheidet: fuer eine mandantengebundene Ressource sind das
  *    dieselbe Auskunft.
+ *  - `getOwnerContext(` / `requireOwnerContext(`: das Eigentümerportal-Pendant
+ *    zu requireResidentContext (@/lib/owner-portal/current). getOwnerContext
+ *    liefert den verknuepften owners-Kontext oder null — die owner-API-Handler
+ *    (Arbeitsbericht-/Rechnungs-PDF, Foto, Dokument-Download) antworten bei
+ *    null mit 401 und beweisen danach den Objektzugriff ueber die owner-RLS-
+ *    Policy, bevor der Service-Client privilegiert signiert. requireOwnerContext
+ *    wirft NOT_OWNER. Beide stellen sicher, dass ein anonymer Aufruf nicht
+ *    durchkommt.
  */
 const AUTH_MARKERS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /\brequireTenantContext\s*\(/, name: 'requireTenantContext(' },
   { pattern: /\brequireResidentContext\s*\(/, name: 'requireResidentContext(' },
+  { pattern: /\bgetOwnerContext\s*\(/, name: 'getOwnerContext( (Eigentümer-Portal-Kontext, 401 bei null)' },
+  { pattern: /\brequireOwnerContext\s*\(/, name: 'requireOwnerContext( (wirft NOT_OWNER)' },
   { pattern: /\brequirePlatformAdmin\s*\(/, name: 'requirePlatformAdmin(' },
   { pattern: /\bloadBillingDocumentData\s*\(/, name: 'loadBillingDocumentData(' },
   { pattern: /\.auth\.signOut\s*\(/, name: '.auth.signOut(' },

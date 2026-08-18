@@ -93,6 +93,7 @@
 export const AUTH_RATE_LIMITS = {
   login: { limit: 5, windowSec: 900, blockSec: 900 },
   'portal-login': { limit: 5, windowSec: 900, blockSec: 900 },
+  'owner-login': { limit: 5, windowSec: 900, blockSec: 900 },
   signup: { limit: 3, windowSec: 3600, blockSec: 3600 },
   'reset-password': { limit: 3, windowSec: 3600, blockSec: 3600 },
   'password-change': { limit: 5, windowSec: 900, blockSec: 900 },

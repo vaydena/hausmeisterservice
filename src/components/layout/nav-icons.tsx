@@ -33,6 +33,9 @@ import {
   Lock,
   User,
   QrCode,
+  CalendarClock,
+  Camera,
+  FileSignature,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -69,6 +72,9 @@ export const NAV_ICONS = {
   lock: Lock,
   user: User,
   'qr-code': QrCode,
+  'calendar-clock': CalendarClock,
+  camera: Camera,
+  'file-signature': FileSignature,
 } as const satisfies Record<string, LucideIcon>;
 
 export type NavIconKey = keyof typeof NAV_ICONS;
