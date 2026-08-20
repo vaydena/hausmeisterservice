@@ -46,7 +46,7 @@ export interface TenantBillingContext {
   status: string;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
-  paymentMethod: 'bank_transfer' | 'stripe';
+  paymentMethod: 'bank_transfer' | 'stripe' | 'paypal';
   billingAddress: unknown;
 }
 
@@ -104,7 +104,10 @@ export async function getTenantBillingContext(
     status: tenant.subscription_status,
     trialEndsAt: tenant.trial_ends_at ?? null,
     currentPeriodEnd: tenant.current_period_end ?? null,
-    paymentMethod: (tenant.payment_method ?? 'bank_transfer') as 'bank_transfer' | 'stripe',
+    paymentMethod: (tenant.payment_method ?? 'bank_transfer') as
+      | 'bank_transfer'
+      | 'stripe'
+      | 'paypal',
     billingAddress: tenant.address,
   };
 }

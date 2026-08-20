@@ -81,6 +81,11 @@ const UNGATED_API_ROUTES: Record<string, string> = {
     'documents_select_owner (nur objektgebundene Dokumente eigener Objekte), ' +
     'danach signierter Download per Service-Client. Kein Modul-Gate, weil ein ' +
     'Portal-Eigentümer keine Membership und damit keinen Mandanten hat.',
+  '/api/paypal/return':
+    'PayPal-Rückkehr nach der Abo-Zahlung. Gesichert ueber requireTenantContext ' +
+    '(Owner-Session) + den tenant_id-Abgleich in finalizePaypalPayment, nicht ueber ' +
+    'ein Feature-Modul: die Abo-Zahlung haengt an keinem abschaltbaren Modul, und ' +
+    'ein gesperrter Mandant muss sich hierueber gerade erst freischalten koennen.',
 };
 
 interface RouteFile {

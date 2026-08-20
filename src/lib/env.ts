@@ -27,6 +27,13 @@ const serverSchema = z.object({
   PAYMENT_BANK_HOLDER: z.string().optional(),
   PAYMENT_BANK_IBAN: z.string().optional(),
   PAYMENT_BANK_BIC: z.string().optional(),
+  // PayPal-Abo-Zahlung (Orders-API v2). Sind Client-ID + Secret gesetzt, kann
+  // der Mandant sein Abo per PayPal zahlen. PAYPAL_ENV bewusst freies Feld:
+  // nur exakt 'live' schaltet die Produktions-API, alles andere = Sandbox —
+  // ein Tippfehler soll nicht den App-Start crashen.
+  PAYPAL_CLIENT_ID: z.string().optional(),
+  PAYPAL_CLIENT_SECRET: z.string().optional(),
+  PAYPAL_ENV: z.string().optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -59,6 +66,9 @@ export function serverEnv() {
     PAYMENT_BANK_HOLDER: process.env.PAYMENT_BANK_HOLDER,
     PAYMENT_BANK_IBAN: process.env.PAYMENT_BANK_IBAN,
     PAYMENT_BANK_BIC: process.env.PAYMENT_BANK_BIC,
+    PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID,
+    PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET,
+    PAYPAL_ENV: process.env.PAYPAL_ENV,
     NODE_ENV: process.env.NODE_ENV,
   });
 }

@@ -63,9 +63,11 @@ export interface PlatformDatabase {
           total_cents: number;
           currency: string;
           status: 'open' | 'paid' | 'canceled' | 'refunded';
-          payment_method: 'bank_transfer' | 'stripe';
+          payment_method: 'bank_transfer' | 'stripe' | 'paypal';
           paid_at: string | null;
           payment_reference: string | null;
+          paypal_order_id: string | null;
+          paypal_capture_id: string | null;
           issued_at: string;
           due_at: string | null;
           billing_address: unknown;
@@ -85,9 +87,11 @@ export interface PlatformDatabase {
           total_cents: number;
           currency?: string;
           status?: 'open' | 'paid' | 'canceled' | 'refunded';
-          payment_method: 'bank_transfer' | 'stripe';
+          payment_method: 'bank_transfer' | 'stripe' | 'paypal';
           paid_at?: string | null;
           payment_reference?: string | null;
+          paypal_order_id?: string | null;
+          paypal_capture_id?: string | null;
           issued_at?: string;
           due_at?: string | null;
           billing_address?: unknown;
