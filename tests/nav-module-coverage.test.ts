@@ -206,9 +206,12 @@ describe('Nav-config <-> module-registry consistency', () => {
       ALL_NAV_ITEMS.map((i) => i.permission).filter((p): p is PermissionKey => p !== null),
     );
 
+    // isOwner=true passt zum Vollausschlag: auch inhaber-only-Links (Abo &
+    // Rechnungen) sollen hier auftauchen, damit die Ungebaut-/Tot-Pruefung sie
+    // mit abdeckt.
     const visible: NavItem[] = [
-      ...filterNavGroups(NAV_GROUPS, allModules, allPermissions).flatMap((g) => g.items),
-      ...filterNavItems(MOBILE_NAV_ITEMS, allModules, allPermissions),
+      ...filterNavGroups(NAV_GROUPS, allModules, allPermissions, true).flatMap((g) => g.items),
+      ...filterNavItems(MOBILE_NAV_ITEMS, allModules, allPermissions, true),
     ];
 
     it('sanity: bei allem an bleibt der Grossteil der Navigation stehen', () => {
@@ -307,5 +310,36 @@ describe('Nav-config <-> module-registry consistency', () => {
       .map((i) => i.href)
       .sort();
     expect(byKey).toEqual(byPath);
+  });
+});
+
+/**
+ * Inhaber-only-Eintraege (Abo & Rechnungen) haben bewusst keine eigene
+ * Permission — die Seite selbst erzwingt `ctx.isOwner` per redirect. Der
+ * Menuepunkt muss an derselben Bedingung haengen, sonst sieht ein Nicht-Inhaber
+ * den Link und landet beim Klick auf dem Dashboard. Genau das war der Zustand,
+ * den dieser Block absichert.
+ */
+describe('Inhaber-only-Navigation haengt am is_owner-Flag', () => {
+  const SUBSCRIPTION_HREF = '/settings/subscription';
+
+  // Leere Mengen genuegen: der Eintrag hat weder Modul noch Permission, also
+  // kann ihn hier allein das Inhaber-Flag verstecken — nichts anderes.
+  const visibleHrefs = (isOwner: boolean) =>
+    filterNavGroups(NAV_GROUPS, new Set<ModuleKey>(), new Set<PermissionKey>(), isOwner)
+      .flatMap((g) => g.items)
+      .map((i) => i.href);
+
+  it('sanity: es gibt ueberhaupt einen ownerOnly-Eintrag (sonst misst der Test nichts)', () => {
+    const ownerOnly = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.ownerOnly);
+    expect(ownerOnly.map((i) => i.href)).toContain(SUBSCRIPTION_HREF);
+  });
+
+  it('Nicht-Inhaber sieht "Abo & Rechnungen" nicht', () => {
+    expect(visibleHrefs(false)).not.toContain(SUBSCRIPTION_HREF);
+  });
+
+  it('Inhaber sieht "Abo & Rechnungen"', () => {
+    expect(visibleHrefs(true)).toContain(SUBSCRIPTION_HREF);
   });
 });

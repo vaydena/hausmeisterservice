@@ -11,6 +11,7 @@ export interface NavItem {
   icon: NavIconKey;
   module: ModuleKey | null; // null = immer sichtbar (Dashboard)
   permission: PermissionKey | null; // null = keine Permission-Prüfung
+  ownerOnly?: boolean; // true = nur für den Inhaber des Mandanten (is_owner)
 }
 
 export interface NavGroup {
@@ -93,7 +94,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     labelDe: 'Einstellungen',
     items: [
       { href: '/settings/account', labelDe: 'Konto', icon: 'user', module: null, permission: null },
-      { href: '/settings/subscription', labelDe: 'Abo & Rechnungen', icon: 'credit-card', module: null, permission: null },
+      { href: '/settings/subscription', labelDe: 'Abo & Rechnungen', icon: 'credit-card', module: null, permission: null, ownerOnly: true },
       { href: '/settings/tenant', labelDe: 'Mandant', icon: 'settings', module: 'core.tenants', permission: 'core.tenants.view' },
       { href: '/settings/users', labelDe: 'Benutzer & Rollen', icon: 'users', module: 'core.users_roles', permission: 'core.users_roles.view' },
       { href: '/settings/automations', labelDe: 'Automatisierungen', icon: 'zap', module: 'automations', permission: 'automations.view' },
@@ -123,11 +124,12 @@ export function filterNavGroups(
   groups: readonly NavGroup[],
   enabledModules: Set<ModuleKey>,
   permissions: Set<PermissionKey>,
+  isOwner: boolean,
 ): NavGroup[] {
   return groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => isVisible(item, enabledModules, permissions)),
+      items: group.items.filter((item) => isVisible(item, enabledModules, permissions, isOwner)),
     }))
     .filter((group) => group.items.length > 0);
 }
@@ -136,14 +138,16 @@ export function filterNavItems(
   items: readonly NavItem[],
   enabledModules: Set<ModuleKey>,
   permissions: Set<PermissionKey>,
+  isOwner: boolean,
 ): NavItem[] {
-  return items.filter((item) => isVisible(item, enabledModules, permissions));
+  return items.filter((item) => isVisible(item, enabledModules, permissions, isOwner));
 }
 
 function isVisible(
   item: NavItem,
   enabledModules: Set<ModuleKey>,
   permissions: Set<PermissionKey>,
+  isOwner: boolean,
 ): boolean {
   // Sprint 131: zuerst die Frage, ob es die Seite ueberhaupt gibt. Sie steht
   // bewusst VOR den beiden anderen, denn sie haengt nicht am Mandanten: ein
@@ -156,5 +160,10 @@ function isVisible(
   if (item.module && isUnbuiltModule(item.module)) return false;
   if (item.module && !enabledModules.has(item.module)) return false;
   if (item.permission && !permissions.has(item.permission)) return false;
+  // Inhaber-only-Seiten (z. B. Abo & Rechnungen) haben keine eigene Permission,
+  // sondern haengen am is_owner-Flag des Mandanten — dieselbe Bedingung, die
+  // die Seite selbst per redirect erzwingt. Ohne das sah ein Nicht-Inhaber den
+  // Menuepunkt und landete beim Klick auf dem Dashboard.
+  if (item.ownerOnly && !isOwner) return false;
   return true;
 }

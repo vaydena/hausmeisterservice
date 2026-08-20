@@ -77,8 +77,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     notFound();
   }
 
-  const navGroups = filterNavGroups(NAV_GROUPS, enabledModules, permissions);
-  const mobileItems = filterNavItems(MOBILE_NAV_ITEMS, enabledModules, permissions);
+  const navGroups = filterNavGroups(NAV_GROUPS, enabledModules, permissions, ctx.isOwner);
+  const mobileItems = filterNavItems(MOBILE_NAV_ITEMS, enabledModules, permissions, ctx.isOwner);
 
   return (
     <div className="flex min-h-dvh">
