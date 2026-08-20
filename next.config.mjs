@@ -97,7 +97,9 @@ const nextConfig = {
   // entfernen: Dokumente (src/lib/documents/actions.ts), Portal-Fotos
   // (src/app/(portal)/portal/defects/actions.ts) und die oeffentliche
   // Meldestrecke (src/app/melden/[token]/actions.ts).
-  serverExternalPackages: ['sharp'],
+  // nodemailer (SMTP-Versand) nutzt dynamische requires — wie sharp extern
+  // halten, sonst stolpert der Bundler beim Build darüber.
+  serverExternalPackages: ['sharp', 'nodemailer'],
   // Kompiliert die beiden Marker-Werte fest ins Bundle. Next.js ersetzt
   // dabei nur die woertliche Property-Schreibweise `process.env.APP_BUILD_*`
   // — siehe die Warnung in src/lib/build-info.ts.

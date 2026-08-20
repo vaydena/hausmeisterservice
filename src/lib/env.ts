@@ -17,6 +17,12 @@ const serverSchema = z.object({
   EMAIL_FROM_ADDRESS: z.string().email().optional(),
   EMAIL_FROM_NAME: z.string().optional(),
   EMAIL_REPLY_TO: z.string().email().optional(),
+  // SMTP-Versand (Prod: Hostinger-Postfach noreply@vaydena.de). Sind Host +
+  // User + Pass gesetzt, hat SMTP Vorrang vor Resend — siehe getEmailProvider().
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
   AUTOMATION_CRON_SECRET: z.string().min(16).optional(),
   PAYMENT_BANK_HOLDER: z.string().optional(),
   PAYMENT_BANK_IBAN: z.string().optional(),
@@ -45,6 +51,10 @@ export function serverEnv() {
     EMAIL_FROM_ADDRESS: process.env.EMAIL_FROM_ADDRESS,
     EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME,
     EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
+    SMTP_HOST: process.env.SMTP_HOST,
+    SMTP_PORT: process.env.SMTP_PORT,
+    SMTP_USER: process.env.SMTP_USER,
+    SMTP_PASS: process.env.SMTP_PASS,
     AUTOMATION_CRON_SECRET: process.env.AUTOMATION_CRON_SECRET,
     PAYMENT_BANK_HOLDER: process.env.PAYMENT_BANK_HOLDER,
     PAYMENT_BANK_IBAN: process.env.PAYMENT_BANK_IBAN,
