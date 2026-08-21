@@ -12,6 +12,16 @@ import type { EmailAddress, EmailProvider } from './types';
  *   2. sonst RESEND_API_KEY → Resend.
  *   3. sonst Log-Provider (Dev/Test, kein echter Versand).
  */
+/**
+ * SMTP gilt als konfiguriert, sobald Host + Benutzer + Passwort vorliegen —
+ * dieselbe Bedingung, die getEmailProvider den SMTP-Weg wählen lässt. Als
+ * Presence-Check (ohne Geheimwerte) auch von /api/health genutzt.
+ */
+export function isSmtpConfigured(): boolean {
+  const env = serverEnv();
+  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
+}
+
 export function getEmailProvider(): EmailProvider {
   const env = serverEnv();
   if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS) {

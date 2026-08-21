@@ -3,6 +3,7 @@ import { getBuildInfo } from '@/lib/build-info';
 import { serverEnv } from '@/lib/env';
 import { isPaypalConfigured } from '@/lib/platform/paypal';
 import { getBankDetails } from '@/lib/platform/bank-transfer';
+import { isSmtpConfigured } from '@/lib/email/provider';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +42,7 @@ export async function GET() {
         paypalConfigured: isPaypalConfigured(),
         paypalMode: serverEnv().PAYPAL_ENV === 'live' ? 'live' : 'sandbox',
         bankConfigured: getBankDetails() !== null,
+        smtpConfigured: isSmtpConfigured(),
       },
     },
     {
