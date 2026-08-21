@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getBuildInfo } from '@/lib/build-info';
+import { serverEnv } from '@/lib/env';
+import { isPaypalConfigured } from '@/lib/platform/paypal';
+import { getBankDetails } from '@/lib/platform/bank-transfer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +33,15 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       service: 'hausmeisterservice',
       build: getBuildInfo(),
+      // Konfig-Presence NUR als Booleans/Modus — keine Geheimwerte. Dient dem
+      // Go-live-Verify der Abo-Zahlarten von aussen (sieht der laufende Prozess
+      // die PAYPAL_*/PAYMENT_BANK_*-ENV?), ohne Login. Gleiche Abwaegung wie
+      // beim Build-Marker oben: verraet nichts Verwertbares.
+      config: {
+        paypalConfigured: isPaypalConfigured(),
+        paypalMode: serverEnv().PAYPAL_ENV === 'live' ? 'live' : 'sandbox',
+        bankConfigured: getBankDetails() !== null,
+      },
     },
     {
       status: 200,
