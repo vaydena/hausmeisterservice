@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import type { EmailOtpType } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { ensureTenantForUser } from '@/lib/auth/ensure-tenant';
 import { clientEnv } from '@/lib/env';
@@ -8,12 +9,43 @@ import { clientEnv } from '@/lib/env';
 // user_metadata; die eigentliche Tenant-Anlage delegiert an
 // ensureTenantForUser (identisch mit dem Fallback in signInAction).
 //
+// Zwei Eingangsvarianten, absichtlich in EINEM Handler (gemeinsame
+// Tenant-Provisionierung, ein Rückweg):
+//   • ?token_hash=…&type=signup — bevorzugt für die Bestätigungs-Mail. Der
+//     Link in der Mail zeigt dann auf die EIGENE Domain
+//     (hausmeisterservice.vaydena.de) statt auf *.supabase.co. Absender-
+//     und Link-Domain stimmen so überein → GMX/web.de stuft die Mail nicht
+//     mehr als Phishing/Spam ein. Bestätigung via verifyOtp.
+//   • ?code=<pkce> — klassischer PKCE-Rückweg (Magic-Link, OAuth, sowie
+//     bereits verschickte ältere Bestätigungs-Mails mit supabase.co-Link).
+//     Bestätigung via exchangeCodeForSession. Bleibt aus Kompatibilität
+//     erhalten — schon versendete Links funktionieren weiter.
+//
 // Der Handler ist idempotent: erneuter Aufruf mit gleichem User führt zu
 // keinem doppelten Tenant (die RPC prüft eine existierende Membership).
+
+const EMAIL_OTP_TYPES: readonly EmailOtpType[] = [
+  'signup',
+  'invite',
+  'magiclink',
+  'recovery',
+  'email_change',
+  'email',
+];
+
+// Nur bekannte Typen zulassen; Default 'signup', weil ausschließlich die
+// Bestätigungs-Mail auf den token_hash-Weg umgestellt ist (Reset/Magic-Link
+// laufen weiter über ?code).
+function parseOtpType(value: string | null): EmailOtpType {
+  return value && (EMAIL_OTP_TYPES as readonly string[]).includes(value)
+    ? (value as EmailOtpType)
+    : 'signup';
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get('code');
+  const tokenHash = searchParams.get('token_hash');
   const nextParam = searchParams.get('next');
   const errorDescription = searchParams.get('error_description');
   const appUrl = clientEnv.NEXT_PUBLIC_APP_URL;
@@ -24,12 +56,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!code) {
+  if (!tokenHash && !code) {
     return NextResponse.redirect(`${appUrl}/login`);
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+  // token_hash (Domain-eigener Link) hat Vorrang; sonst PKCE-Code.
+  const { data, error } = tokenHash
+    ? await supabase.auth.verifyOtp({
+        type: parseOtpType(searchParams.get('type')),
+        token_hash: tokenHash,
+      })
+    : await supabase.auth.exchangeCodeForSession(code ?? '');
 
   if (error || !data.user) {
     return NextResponse.redirect(
