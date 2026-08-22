@@ -1,7 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import * as Sentry from '@sentry/nextjs';
+import {
+  isStaleDeployError,
+  canSelfHealNow,
+  performStaleDeployReload,
+} from '@/lib/errors/stale-deploy';
 
 // Fallback fuer den Fall, dass selbst das RootLayout crasht. Muss ein
 // eigenes <html>/<body> mitbringen, weil das Layout nicht verfuegbar ist.
@@ -13,9 +18,44 @@ export default function GlobalErrorBoundary({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Wie in error.tsx: veraltete Chunks nach einem Deploy heilen durch ein
+  // einmaliges Neuladen, statt dem Nutzer den "Kritischer Fehler"-Schirm zu
+  // zeigen. Entscheidung einmal beim Mount, Neuladen im Effekt. Schleifenschutz
+  // in stale-deploy.ts.
+  const [selfHealing] = useState(
+    () => isStaleDeployError(error) && canSelfHealNow(),
+  );
+
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
+
+  useEffect(() => {
+    if (selfHealing) performStaleDeployReload();
+  }, [selfHealing]);
+
+  if (selfHealing) {
+    return (
+      <html lang="de">
+        <body
+          style={{
+            margin: 0,
+            minHeight: '100dvh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            fontFamily:
+              'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            color: '#475569',
+            background: '#f8fafc',
+          }}
+        >
+          <p style={{ margin: 0, fontSize: '0.875rem' }}>Seite wird aktualisiert …</p>
+        </body>
+      </html>
+    );
+  }
 
   return (
     <html lang="de">

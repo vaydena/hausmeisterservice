@@ -1,8 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import * as Sentry from '@sentry/nextjs';
+import {
+  isStaleDeployError,
+  canSelfHealNow,
+  performStaleDeployReload,
+} from '@/lib/errors/stale-deploy';
 
 // Fehler-Boundary fuer alle Routen unterhalb des RootLayouts. Faengt sowohl
 // serverseitige Render-Fehler (via Next-Fehlerprotokoll + digest) als auch
@@ -16,11 +21,36 @@ export default function AppErrorBoundary({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Ein "veralteter Build"-Fehler (alte Chunks/Action-IDs nach einem Deploy)
+  // ist kein Seiten-Bug, sondern Cache-Versatz — er heilt durch einmaliges
+  // Neuladen. Entscheidung EINMAL beim Mount treffen (rein lesend): stale UND
+  // Schleifenschutz erlaubt ein Reload? Greift der Schutz oder ist es ein
+  // echter Fehler, bleibt selfHealing false und wir zeigen die normale Meldung.
+  const [selfHealing] = useState(
+    () => isStaleDeployError(error) && canSelfHealNow(),
+  );
+
   useEffect(() => {
     // Sentry ist nur aktiv, wenn DSN gesetzt ist; Aufruf ist ansonsten
     // ein billiger No-Op.
     Sentry.captureException(error);
   }, [error]);
+
+  useEffect(() => {
+    // Das eigentliche Neuladen ist ein Seiten-Effekt (window/location) — hier
+    // richtig aufgehoben, ohne setState.
+    if (selfHealing) performStaleDeployReload();
+  }, [selfHealing]);
+
+  if (selfHealing) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+        <p className="text-sm text-[var(--color-muted-foreground)]">
+          Seite wird aktualisiert …
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 px-6 py-12 text-center">
