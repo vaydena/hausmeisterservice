@@ -24,17 +24,10 @@ export type SignupState = {
 };
 
 export async function signupAction(_prev: SignupState, formData: FormData): Promise<SignupState> {
-  // Rate-Limit vor Zod-Validierung: verhindert per-IP-Missbrauch als
-  // E-Mail-Enumeration-Vektor (Signup revealed indirekt "E-Mail bereits
-  // vergeben" durch Fehlermeldung). 3 Versuche/Stunde reichen fuer
-  // legitime Nutzer aus, blockieren aber Massen-Enumeration.
-  // KEIN Reset auf Erfolg — sonst waere der Enumeration-Schutz weg.
-  const ip = getClientIp(await headers());
-  const rl = await checkAuthRateLimit(ip, 'signup');
-  if (!rl.allowed) {
-    return { error: formatRateLimitError(rl.retryAfterSec) };
-  }
-
+  // Zuerst Zod-Validierung — formal ungueltige Absendungen (zu kurzes
+  // Passwort, fehlender Haken, ungueltige E-Mail) duerfen das Rate-Limit
+  // NICHT verbrauchen. Sonst sperrt sich ein Neukunde beim Ausfuellen selbst
+  // aus, bevor ueberhaupt ein gueltiger Signup-Versuch zustande kommt.
   const parsed = signupSchema.safeParse({
     companyName: formData.get('companyName'),
     slug: formData.get('slug'),
@@ -56,6 +49,17 @@ export async function signupAction(_prev: SignupState, formData: FormData): Prom
       }
     }
     return { fieldErrors };
+  }
+
+  // Rate-Limit erst fuer formal gueltige Versuche verbrauchen. Der Schutz
+  // gegen E-Mail-Enumeration bzw. das Timing-Orakel (frische Adresse ⇒ ~1s
+  // SMTP-Send, bestehende ⇒ schnelle Antwort) bleibt voll erhalten: jeder
+  // Versuch, der signUp + Slug-Check erreicht, zaehlt weiter. KEIN Reset auf
+  // Erfolg — sonst waere der Enumeration-Schutz weg.
+  const ip = getClientIp(await headers());
+  const rl = await checkAuthRateLimit(ip, 'signup');
+  if (!rl.allowed) {
+    return { error: formatRateLimitError(rl.retryAfterSec) };
   }
 
   const { companyName, slug, email, password, planCode, planInterval } = parsed.data;

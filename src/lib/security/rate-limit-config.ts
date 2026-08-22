@@ -15,11 +15,20 @@
  *     braucht selten mehr als 2 Versuche; 5 laesst Tippfehler zu, ohne
  *     Brute-Force zu erlauben (max. 20 Passwortversuche/Stunde bei 1
  *     Sperre alle 15 min).
- *   - signup / reset-password: 3 Aktionen pro Stunde. Beide Endpoints sind
- *     E-Mail-Enumeration-Vektoren (Signup revealed "E-Mail schon vergeben"
- *     zumindest indirekt, Reset schickt Mail nur an bestehende Konten).
- *     Bei 3/Stunde kann ein Angreifer maximal 72 E-Mails/Tag durchprobieren
- *     — praktisch unbrauchbar fuer Enumeration.
+ *   - signup: 5 gueltige Aktionen pro Stunde, danach 30 Minuten gesperrt.
+ *     Der Zaehler wird in signupAction ERST NACH der Zod-Validierung
+ *     verbraucht (2026-08-22) — formal ungueltige Absendungen (zu kurzes
+ *     Passwort, fehlender Haken, Tippfehler in der Mail) duerfen einen
+ *     Neukunden nicht aussperren, bevor ueberhaupt ein gueltiger Signup
+ *     zustande kommt. Der Enumeration-/Timing-Schutz bleibt voll erhalten:
+ *     jeder Versuch, der signUp + Slug-Check erreicht (der einzige Ort mit
+ *     Existenz-Signal), zaehlt weiter. 5/Stunde = max. 120 Mail-Proben/Tag,
+ *     fuer Enumeration weiter unbrauchbar. KEIN Reset auf Erfolg.
+ *   - reset-password: 3 Aktionen pro Stunde. Reset schickt Mail nur an
+ *     bestehende Konten und ist damit ein staerkerer Enumeration-Vektor als
+ *     Signup — daher konservativer. Auch hier zaehlt der Slot erst NACH der
+ *     E-Mail-Format-Pruefung (2026-08-22). Bei 3/Stunde max. 72 Proben/Tag
+ *     — praktisch unbrauchbar. KEIN Reset auf Erfolg.
  *   - password-change: 5 Fehlversuche in 15 Minuten, 15 Minuten Sperre.
  *     Sprint 22: Passwort-Aenderung im Konto-Bereich verlangt Re-Auth mit
  *     dem aktuellen Passwort. Zaehler ist auf die E-Mail des eingeloggten
@@ -94,7 +103,7 @@ export const AUTH_RATE_LIMITS = {
   login: { limit: 5, windowSec: 900, blockSec: 900 },
   'portal-login': { limit: 5, windowSec: 900, blockSec: 900 },
   'owner-login': { limit: 5, windowSec: 900, blockSec: 900 },
-  signup: { limit: 3, windowSec: 3600, blockSec: 3600 },
+  signup: { limit: 5, windowSec: 3600, blockSec: 1800 },
   'reset-password': { limit: 3, windowSec: 3600, blockSec: 3600 },
   'password-change': { limit: 5, windowSec: 900, blockSec: 900 },
   'mfa-verify': { limit: 5, windowSec: 900, blockSec: 900 },

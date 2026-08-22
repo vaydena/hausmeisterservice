@@ -2,12 +2,11 @@
 
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { signupAction, type SignupState } from './actions';
 import { slugify } from '@/lib/auth/signup-schema';
 
-type PlanCode = 'starter' | 'business' | 'enterprise';
-type PlanInterval = 'monthly' | 'yearly';
+export type PlanCode = 'starter' | 'business' | 'enterprise';
+export type PlanInterval = 'monthly' | 'yearly';
 
 const PLANS: Array<{ code: PlanCode; name: string; monthly: number; yearly: number; hint: string }> = [
   { code: 'starter',    name: 'Starter',    monthly: 49,  yearly: 490,  hint: 'bis 5 Mitarbeiter · 20 Objekte' },
@@ -29,13 +28,13 @@ function FieldError({ msg }: { msg?: string }) {
   );
 }
 
-export function SignupForm() {
-  const searchParams = useSearchParams();
-  const initialPlan =
-    ((searchParams.get('plan') as PlanCode) ?? 'starter');
-  const initialInterval =
-    ((searchParams.get('interval') as PlanInterval) ?? 'monthly');
-
+export function SignupForm({
+  initialPlan,
+  initialInterval,
+}: {
+  initialPlan: PlanCode;
+  initialInterval: PlanInterval;
+}) {
   const [state, formAction, pending] = useActionState(signupAction, INITIAL);
   const [companyName, setCompanyName] = useState('');
   const [slugInput, setSlugInput] = useState('');
