@@ -17,7 +17,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/preise', priority: 0.9, changeFrequency: 'monthly' },
     { path: '/login', priority: 0.4, changeFrequency: 'yearly' },
     { path: '/signup', priority: 0.7, changeFrequency: 'yearly' },
-    { path: '/hilfe', priority: 0.5, changeFrequency: 'monthly' },
     { path: '/impressum', priority: 0.3, changeFrequency: 'yearly' },
     { path: '/datenschutz', priority: 0.3, changeFrequency: 'yearly' },
     { path: '/agb', priority: 0.3, changeFrequency: 'yearly' },
