@@ -82,7 +82,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh">
-      <Sidebar groups={navGroups} appName={clientEnv.NEXT_PUBLIC_APP_NAME} />
+      <Sidebar
+        groups={navGroups}
+        appName={clientEnv.NEXT_PUBLIC_APP_NAME}
+        isPlatformAdmin={platformAdmin}
+      />
       <div className="flex flex-1 flex-col">
         <Header
           displayName={ctx.displayName}

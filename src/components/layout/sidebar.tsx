@@ -2,11 +2,26 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Shield } from 'lucide-react';
 import type { NavGroup } from './nav-config';
 import { NavIcon } from './nav-icons';
 import { cn } from '@/lib/utils/cn';
 
-export function Sidebar({ groups, appName }: { groups: NavGroup[]; appName: string }) {
+export function Sidebar({
+  groups,
+  appName,
+  isPlatformAdmin = false,
+}: {
+  groups: NavGroup[];
+  appName: string;
+  /**
+   * Nur der Betreiber (Plattform-Admin) sieht unten den Rueckweg in die
+   * Plattform-Verwaltung — das Gegenstueck zu „zurueck zur App" in der
+   * Plattform-Seitenleiste. Bis hierher lag dieser Link nur versteckt im
+   * Avatar-Menue; aus der App heraus war er praktisch unauffindbar.
+   */
+  isPlatformAdmin?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -49,6 +64,20 @@ export function Sidebar({ groups, appName }: { groups: NavGroup[]; appName: stri
           </div>
         ))}
       </nav>
+      {isPlatformAdmin && (
+        <div className="border-t border-[var(--color-border)] p-3">
+          <Link
+            href="/platform"
+            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-[var(--color-foreground)] transition hover:bg-[var(--color-muted)]"
+          >
+            <Shield className="size-4 shrink-0" aria-hidden />
+            <span>Plattform-Verwaltung</span>
+            <span aria-hidden className="ml-auto text-[var(--color-muted-foreground)]">
+              →
+            </span>
+          </Link>
+        </div>
+      )}
     </aside>
   );
 }
