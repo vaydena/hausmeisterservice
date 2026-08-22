@@ -1,252 +1,181 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
-import { clientEnv } from '@/lib/env';
+import { Archivo, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
+import './_landing/landing.css';
+import { LANDING_HTML } from './_landing/markup';
+
+/**
+ * Oeffentliche Startseite (/).
+ *
+ * Reine Marketing-Seite fuer NICHT angemeldete Besucher: der Proxy schickt
+ * eingeloggte Sessions von '/' sofort ins /dashboard (STAFF_PUBLIC_ROUTES),
+ * hier gibt es also bewusst keine auth-abhaengigen Inhalte.
+ *
+ * Das Markup ist statisches, selbst erzeugtes HTML (kein Nutzer-Input) und
+ * wird als Ganzes gerendert — so bleibt die im Artifact freigegebene, visuell
+ * gepruefte Landingpage 1:1 erhalten, ohne hunderte Inline-Styles/SVGs von
+ * Hand nach JSX zu uebertragen. Alle CSS-Regeln sind auf `.lp` gescopt
+ * (siehe _landing/landing.css), damit nichts in den Rest der App durchsickert.
+ * Schriften kommen selbst-gehostet aus next/font (kein Google-Aufruf → DSGVO).
+ *
+ * SEO: keyword-optimierter Title/Description (Hausmeistersoftware,
+ * Hausmeisterservice, Gebaeudedienste), Canonical, Open-Graph/Twitter und
+ * strukturierte Daten (JSON-LD: Organization + WebSite + SoftwareApplication).
+ */
+
+const SITE_URL = 'https://hausmeisterservice.vaydena.de';
+
+const archivo = Archivo({
+  subsets: ['latin'],
+  variable: '--font-archivo',
+  display: 'swap',
+});
+const plexSans = IBM_Plex_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-plex',
+  display: 'swap',
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-plex-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
-  title: 'Hausmeisterservice-Software',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    // absolute → ohne den "· Hausmeisterservice"-Zusatz des Root-Layouts,
+    // damit der Title exakt (und keyword-fuehrend) unter ~60 Zeichen bleibt.
+    absolute: 'Hausmeistersoftware für Hausmeisterservice & Gebäudedienste',
+  },
   description:
-    'Objekte, Aufträge, Zeiterfassung, Mängelmeldungen, Rechnungen — alles in einer App. 14 Tage kostenlos testen, keine Kreditkarte nötig.',
+    'Die Hausmeistersoftware für Ihren Hausmeisterservice: Objekte, Aufträge, Zeiterfassung, Wartung & Abrechnung in einer App. 14 Tage kostenlos testen – ohne Kreditkarte.',
+  keywords: [
+    'Hausmeistersoftware',
+    'Hausmeisterservice',
+    'Hausmeisterservice Software',
+    'Hausmeister Software',
+    'Hausmeister App',
+    'Gebäudedienst Software',
+    'Facility Management Software',
+    'Objektverwaltung Software',
+    'Hausverwaltung Software',
+    'Zeiterfassung Hausmeister',
+    'Wartungssoftware',
+    'Auftragsverwaltung Handwerk',
+  ],
+  applicationName: 'Hausmeisterservice',
+  authors: [{ name: 'Hausmeisterservice' }],
+  category: 'Business Software',
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    locale: 'de_DE',
+    url: '/',
+    siteName: 'Hausmeisterservice',
+    title: 'Hausmeistersoftware für Hausmeister- & Gebäudedienste',
+    description:
+      'Objekte, Aufträge, Einsätze und Abrechnung in einer App – die komplette Hausmeistersoftware. 14 Tage kostenlos testen, ohne Kreditkarte.',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Hausmeistersoftware für Hausmeister- & Gebäudedienste',
+    description:
+      'Die komplette Software für Hausmeister- & Gebäudedienste: Objekte, Aufträge, Zeiterfassung & Abrechnung. 14 Tage kostenlos testen.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
 };
 
+// Marketing-Seite ohne dynamische Daten: statisch mit stuendlicher Revalidierung.
 export const revalidate = 3600;
 
-const APP_NAME = 'Hausmeisterservice';
-
-const FEATURES: Array<{ title: string; body: string }> = [
-  {
-    title: 'Objekte & Aufträge',
-    body: 'Alle betreuten Objekte, Wohnungen und offenen Tickets an einem Ort — von der Meldung bis zum Abschluss mit Foto und Unterschrift.',
-  },
-  {
-    // Sprint 140: hier stand "Zeiterfassung mit GPS" und "optional mit
-    // Standort". Beides war unbelegt — `time_entries` hat in keiner Migration
-    // eine Koordinatenspalte. Was hier steht, muss die App koennen.
-    title: 'Mobile Zeiterfassung',
-    body: 'Mitarbeiter stempeln unterwegs ein und aus. Manuelle Korrekturen mit Freigabe-Workflow und CSV-Export für die Lohnbuchhaltung.',
-  },
-  {
-    title: 'Bewohner- & Eigentümer-Portal',
-    body: 'Mieter melden Mängel selbst, sehen den Bearbeitungsstand und bekommen Ankündigungen. Kein Anruf mehr wegen der Waschküche.',
-  },
-  {
-    title: 'Instandhaltung & Fristen',
-    body: 'Wiederkehrende Wartungen für Aufzüge, Heizung, Feuerlöscher — mit automatischer Erinnerung und lückenlosem Nachweis.',
-  },
-  {
-    title: 'Rechnungen & Angebote',
-    body: 'Angebote und Rechnungen mit einem Klick als PDF, direkt per E-Mail an den Eigentümer. Kleinunternehmer-konform nach §19 UStG.',
-  },
-  {
-    title: 'Automatisierungen',
-    body: 'Regeln wie „Bei neuer Mängelmeldung Foto an Eigentümer schicken" laufen im Hintergrund — ohne dass jemand daran denken muss.',
-  },
-];
-
-const SECONDARY_FEATURES = [
-  'Fuhrpark mit TÜV-Erinnerung',
-  'Schlüssel-Verwaltung mit Übergabeprotokoll',
-  'Zählerstände & Verbrauchsverfolgung',
-  'Material- und Lagerbestand',
-  'Touren-Planung mit Stopps',
-  'Interne Nachrichten & Ankündigungen',
-  'QR-Codes für Objekte und Schlüssel',
-  'Reports mit CSV-Export',
-];
-
-const AUDIENCES: Array<{ headline: string; body: string }> = [
-  {
-    headline: 'Hausmeister-Betriebe',
-    body: 'Kleine Teams von 2–5 Personen bis zu größeren Betrieben mit eigenem Fuhrpark, mehreren Objekten und Bereitschaftsdiensten.',
-  },
-  {
-    headline: 'Facility-Management',
-    body: 'Zentrale Steuerung mehrerer Standorte, delegierte Zuständigkeiten, konsolidierte Reports pro Auftraggeber.',
-  },
-  {
-    headline: 'WEG- & Immobilienverwalter',
-    body: 'Wenn der Hausmeisterservice ausgelagert ist: klare Schnittstelle für Aufträge, Nachweise und Abrechnung.',
-  },
-];
+// Strukturierte Daten fuer Suchmaschinen (Schema.org / JSON-LD).
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${SITE_URL}/#organization`,
+      name: 'Hausmeisterservice',
+      url: SITE_URL,
+      email: 'kontakt@vaydena.de',
+      description:
+        'Anbieter der Hausmeistersoftware „Hausmeisterservice" für Hausmeister- und Gebäudedienste.',
+      areaServed: 'DE',
+      address: { '@type': 'PostalAddress', addressCountry: 'DE' },
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: 'Hausmeisterservice',
+      description: 'Hausmeistersoftware für Hausmeister- und Gebäudedienste.',
+      inLanguage: 'de-DE',
+      publisher: { '@id': `${SITE_URL}/#organization` },
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${SITE_URL}/#software`,
+      name: 'Hausmeisterservice',
+      alternateName: 'Hausmeistersoftware',
+      applicationCategory: 'BusinessApplication',
+      applicationSubCategory: 'Facility-Management- & Hausmeistersoftware',
+      operatingSystem: 'Web (Browser), iOS, Android',
+      inLanguage: 'de-DE',
+      url: SITE_URL,
+      description:
+        'Die komplette Hausmeistersoftware für Hausmeister- und Gebäudedienste: Objekte, Aufträge, Zeiterfassung, Wartung, Kommunikation und Abrechnung in einer App.',
+      offers: {
+        '@type': 'Offer',
+        category: 'Subscription',
+        priceCurrency: 'EUR',
+        description:
+          '14 Tage kostenlos testen, danach im Monats- oder Jahresabo. Zahlung per Überweisung (GiroCode) oder PayPal.',
+      },
+      featureList: [
+        'Objekt- und Liegenschaftsverwaltung',
+        'Auftrags- und Mängelmanagement',
+        'Wartungsplanung und Instandhaltung',
+        'Mobile Zeiterfassung',
+        'Einsatz-, Schicht- und Tourenplanung',
+        'Material- und Fuhrparkverwaltung',
+        'Rechnungen und Reporting',
+        'Benutzer und Rollen (DSGVO-konform)',
+        'Automatisierungen',
+        'Bewohner- und Eigentümer-Portal',
+      ],
+      provider: { '@id': `${SITE_URL}/#organization` },
+    },
+  ],
+};
 
 export default function LandingPage() {
+  const html = LANDING_HTML.replace('{{YEAR}}', String(new Date().getFullYear()));
+
   return (
-    <div className="min-h-dvh bg-[var(--color-background)] text-[var(--color-foreground)]">
-      <header className="border-b border-[var(--color-border)]">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-          <div className="text-sm font-semibold tracking-tight">{APP_NAME}</div>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/preise" className="hover:underline">
-              Preise
-            </Link>
-            <Link
-              href="/login"
-              className="text-[var(--color-muted-foreground)] hover:underline"
-            >
-              Anmelden
-            </Link>
-            <Link
-              href="/signup"
-              className="inline-flex h-9 items-center rounded-md bg-[var(--color-primary)] px-3 text-xs font-medium text-[var(--color-primary-foreground)] transition hover:opacity-90"
-            >
-              14 Tage kostenlos testen
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <main>
-        <section className="mx-auto max-w-6xl px-4 pt-16 pb-12 sm:px-6 sm:pt-24">
-          <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
-              Die Software für den Hausmeisterservice — endlich ohne Zettel und WhatsApp.
-            </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-base text-[var(--color-muted-foreground)] md:text-lg">
-              Objekte, Aufträge, Zeiterfassung, Mängelmeldungen, Rechnungen — alles in
-              einer App. Vom Handy für draußen, vom Rechner fürs Büro.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                href="/signup"
-                className="inline-flex h-11 items-center rounded-md bg-[var(--color-primary)] px-5 text-sm font-medium text-[var(--color-primary-foreground)] transition hover:opacity-90"
-              >
-                14 Tage kostenlos testen
-              </Link>
-              <Link
-                href="/preise"
-                className="inline-flex h-11 items-center rounded-md border border-[var(--color-border)] px-5 text-sm font-medium hover:bg-[var(--color-muted)]/50"
-              >
-                Preise ansehen
-              </Link>
-            </div>
-            <p className="mt-4 text-xs text-[var(--color-muted-foreground)]">
-              Keine Kreditkarte nötig · monatlich kündbar · Server in Deutschland
-            </p>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <h2 className="text-2xl font-semibold tracking-tight">Was drin ist</h2>
-          <p className="mt-2 max-w-2xl text-sm text-[var(--color-muted-foreground)]">
-            Kein Baukasten zum Selbstzusammenklicken — die wichtigsten Werkzeuge sind
-            von Anfang an dabei und arbeiten zusammen.
-          </p>
-          <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-background)] p-5 shadow-sm"
-              >
-                <div className="text-base font-medium">{f.title}</div>
-                <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
-                  {f.body}
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 rounded-2xl border border-dashed border-[var(--color-border)] p-5">
-            <div className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted-foreground)]">
-              und außerdem
-            </div>
-            <ul className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2 md:grid-cols-4">
-              {SECONDARY_FEATURES.map((f) => (
-                <li key={f}>• {f}</li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <h2 className="text-2xl font-semibold tracking-tight">Für wen wir es bauen</h2>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {AUDIENCES.map((a) => (
-              <div
-                key={a.headline}
-                className="rounded-2xl border border-[var(--color-border)] p-5"
-              >
-                <div className="text-base font-medium">{a.headline}</div>
-                <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
-                  {a.body}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-muted)]/30 p-8 md:p-12">
-            <div className="grid gap-8 md:grid-cols-2 md:items-center">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">
-                  Ehrliche Preise, keine Überraschungen.
-                </h2>
-                <p className="mt-3 text-sm text-[var(--color-muted-foreground)]">
-                  Drei Pakete, monatlich oder jährlich (2 Monate gespart). 14 Tage
-                  kostenlos testen — erst nach Ablauf der Testphase bekommst du eine
-                  Rechnung, und erst nach deren Zahlung geht es aktiv weiter. Kein
-                  automatischer Bankeinzug.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/preise"
-                    className="inline-flex h-11 items-center rounded-md bg-[var(--color-primary)] px-5 text-sm font-medium text-[var(--color-primary-foreground)] transition hover:opacity-90"
-                  >
-                    Alle Preise ansehen
-                  </Link>
-                  <Link
-                    href="/signup"
-                    className="inline-flex h-11 items-center rounded-md border border-[var(--color-border)] px-5 text-sm font-medium hover:bg-[var(--color-background)]"
-                  >
-                    Direkt loslegen
-                  </Link>
-                </div>
-              </div>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 text-emerald-700">✓</span>
-                  <span>Ab 49 € pro Monat, alle Basis-Funktionen enthalten</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 text-emerald-700">✓</span>
-                  <span>Monatlich kündbar, keine Vertragslaufzeit</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 text-emerald-700">✓</span>
-                  <span>DSGVO-konform, Hosting in der EU</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="mt-0.5 text-emerald-700">✓</span>
-                  <span>Deutsche Oberfläche, deutscher Support</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="border-t border-[var(--color-border)]">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-xs text-[var(--color-muted-foreground)] sm:flex-row sm:px-6">
-          <div>
-            © {new Date().getFullYear()} {clientEnv.NEXT_PUBLIC_APP_NAME ?? APP_NAME}
-          </div>
-          <nav className="flex flex-wrap items-center gap-4">
-            <Link href="/impressum" className="hover:underline">
-              Impressum
-            </Link>
-            <Link href="/datenschutz" className="hover:underline">
-              Datenschutz
-            </Link>
-            <Link href="/agb" className="hover:underline">
-              AGB
-            </Link>
-            <Link href="/preise" className="hover:underline">
-              Preise
-            </Link>
-            <Link href="/login" className="hover:underline">
-              Anmelden
-            </Link>
-          </nav>
-        </div>
-      </footer>
-    </div>
+    <>
+      <script
+        type="application/ld+json"
+        // Eigene, statische Schema.org-Daten (kein Fremd-/Nutzerinput).
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div
+        className={`lp ${archivo.variable} ${plexSans.variable} ${plexMono.variable}`}
+        // Statisches, vertrauenswuerdiges Markup (keine Fremd-/Nutzerdaten) —
+        // siehe Datei-Kommentar oben.
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </>
   );
 }
