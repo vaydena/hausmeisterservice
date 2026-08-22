@@ -37,7 +37,9 @@ const FAQ: FaqItem[] = [
         </Link>{' '}
         Ihr erstes Objekt an, laden Sie Mitarbeiter ein und erstellen Sie einen
         ersten Auftrag. Der Willkommens-Assistent nach dem Login führt Sie durch
-        diese vier Schritte. Alternativ können Sie in{' '}
+        diese vier Schritte — über den Knopf „Erste Schritte" (oben auf dem
+        Dashboard oder gleich hier) öffnen Sie ihn jederzeit erneut. Alternativ
+        können Sie in{' '}
         <Link href="/settings/tenant" className="text-[var(--color-primary)] underline">
           Einstellungen → Mandant
         </Link>{' '}
@@ -203,6 +205,26 @@ export default async function HilfePage() {
         title="Hilfe & Kontakt"
         description="Antworten auf die häufigsten Fragen. Wenn Sie hier nichts finden, melden Sie sich einfach."
       />
+
+      {ctx.isOwner && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Erste Schritte</CardTitle>
+          </CardHeader>
+          <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-[var(--color-muted-foreground)]">
+              Der Willkommens-Assistent zeigt die vier Schritte für den Start Ihres
+              Betriebs — in empfohlener Reihenfolge. Sie können ihn jederzeit erneut öffnen.
+            </p>
+            <Link
+              href="/dashboard?willkommen=1"
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-[var(--color-primary)] px-4 text-sm font-medium text-[var(--color-primary-foreground)] hover:opacity-90"
+            >
+              Assistent öffnen →
+            </Link>
+          </CardBody>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

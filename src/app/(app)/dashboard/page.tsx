@@ -8,7 +8,7 @@ import { hasVerifiedMfaFactor } from '@/lib/auth/mfa-status';
 import { MODULES, MODULES_BY_KEY, type ModuleDomain, type ModuleKey } from '@/lib/modules/registry';
 import { unwrapMaybeRow, unwrapRows } from '@/lib/supabase/unwrap';
 import { hrefAvailable } from '@/lib/modules/href-guard';
-import { WelcomeOverlay } from './welcome-overlay';
+import { WelcomeGuide } from './welcome-overlay';
 import { ONBOARDING_STEPS } from './onboarding-steps';
 import { MfaReminderBanner } from './mfa-reminder-banner';
 
@@ -26,9 +26,17 @@ function greeting(): string {
   return 'Guten Abend';
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const ctx = await requireTenantContext();
   const supabase = await createSupabaseServerClient();
+
+  // /dashboard?willkommen=1 öffnet den Erste-Schritte-Assistenten gezielt —
+  // der Aufruf-Weg von der Hilfe-Seite (und jedem anderen Link) her.
+  const openWelcomeViaLink = (await searchParams).willkommen === '1';
 
   const [enabledModules, permissions, tenantRes, rolesRes] = await Promise.all([
     // Sprint 114: bewusst die tarifbereinigte Menge — die Kachel zaehlt,
@@ -65,7 +73,9 @@ export default async function DashboardPage() {
   const roles = unwrapRows(rolesRes, 'Dashboard: eigene Rollen');
 
   const tenantName = tenant?.name ?? 'Ihr Mandant';
-  const showWelcome = ctx.isOwner && !tenant?.onboarding_completed_at;
+  // Automatisch (einmalig) nur beim ersten Mal. Der Button, um den Assistenten
+  // erneut zu öffnen, steht dem Owner aber dauerhaft zur Verfügung.
+  const autoShowWelcome = ctx.isOwner && !tenant?.onboarding_completed_at;
 
   // MFA-Reminder nur fuer Owner (nur sie koennen dem Tenant Schaden
   // zufuegen), nur ohne verifizierten Faktor, und nur wenn der letzte
@@ -93,7 +103,10 @@ export default async function DashboardPage() {
   // und nicht ueber `enabledModules` direkt, damit es genau eine Stelle gibt,
   // die "Ziel erreichbar?" beantwortet. Die Menge ist `cache`d; die vier
   // Aufrufe kosten keine zusaetzliche Abfrage.
-  const onboardingSteps = showWelcome
+  // Für Owner immer berechnen (nicht nur beim ersten Mal), da der Assistent
+  // jederzeit erneut geöffnet werden kann. Die vier `hrefAvailable`-Aufrufe
+  // sind `cache`d und kosten keine zusätzliche Abfrage.
+  const onboardingSteps = ctx.isOwner
     ? await Promise.all(
         ONBOARDING_STEPS.map(async (step) =>
           !step.href || (await hrefAvailable(step.href))
@@ -105,22 +118,32 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <section>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {greeting()}
-          {ctx.displayName ? `, ${ctx.displayName.split(' ')[0]}` : ''}.
-        </h1>
-        <p className="text-sm text-[var(--color-muted-foreground)]">
-          Mandant: <span className="font-medium text-[var(--color-foreground)]">{tenantName}</span>
-          {roleNames.length > 0 && (
-            <>
-              {' · '}Rolle{roleNames.length > 1 ? 'n' : ''}:{' '}
-              <span className="font-medium text-[var(--color-foreground)]">
-                {roleNames.join(', ')}
-              </span>
-            </>
-          )}
-        </p>
+      <section className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {greeting()}
+            {ctx.displayName ? `, ${ctx.displayName.split(' ')[0]}` : ''}.
+          </h1>
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            Mandant: <span className="font-medium text-[var(--color-foreground)]">{tenantName}</span>
+            {roleNames.length > 0 && (
+              <>
+                {' · '}Rolle{roleNames.length > 1 ? 'n' : ''}:{' '}
+                <span className="font-medium text-[var(--color-foreground)]">
+                  {roleNames.join(', ')}
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+        {ctx.isOwner && (
+          <WelcomeGuide
+            tenantName={tenantName}
+            steps={onboardingSteps}
+            autoShow={autoShowWelcome}
+            openViaLink={openWelcomeViaLink}
+          />
+        )}
       </section>
 
       {showMfaReminder && <MfaReminderBanner />}
@@ -136,8 +159,6 @@ export default async function DashboardPage() {
       ) : (
         <OrderedModuleSections enabled={activeToggleable} />
       )}
-
-      {showWelcome && <WelcomeOverlay tenantName={tenantName} steps={onboardingSteps} />}
     </div>
   );
 }
